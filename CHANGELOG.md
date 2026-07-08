@@ -6,6 +6,15 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.2.2] - 2026-07-08
+
+### Fixed
+- **Broken YAML frontmatter in 0.2.1.** The optimized description contained `not just code: software`
+  — a colon-space that YAML parses as a mapping, so the skill loaded with **empty metadata** (the
+  description was silently dropped, killing auto-trigger). Replaced the colon with a dash. Added a
+  frontmatter YAML-parse check to the release routine so this can't recur. Anyone who pulled 0.2.1
+  should update to 0.2.2.
+
 ## [0.2.1] - 2026-07-08
 
 ### Changed
