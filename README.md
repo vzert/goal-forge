@@ -48,33 +48,45 @@ So this plugin **rides on top of** `/goal` rather than replacing it:
 This registers the `/goalspec` command, the `goal-adversary` subagent, the `goal-elaboration` skill,
 and the fail-open Stop gate.
 
-## Quickstart
+## Quickstart — zero config, any domain
+
+No setup, no config file. Just run it, whatever your agent does:
 
 ```
-/goalspec audit the checkout service latency
+/goalspec audit the checkout service latency          # software
+/goalspec plan the Q3 launch campaign                 # marketing
+/goalspec write the onboarding email sequence         # copywriting
+/goalspec decide whether to raise the chlorine dose on clarifier 2   # water-treatment ops
 ```
 
-The command loads your config, writes the goal-spec, executes the work steered by it, red-teams the
-outcome, routes terminal decisions to the adversary, and declares the completion-review. For an
-unconfigured project it still runs — the reasoning steps work everywhere; the sweep/coverage steps
-soften to prompts.
+The command writes the goal-spec, executes the work steered by it, red-teams the outcome, routes
+terminal decisions to the adversary, and declares the completion-review — inferring everything
+domain-specific from the task itself.
 
-## Configure for your domain
+## How it adapts to your domain — automatically
 
-Copy the template and edit five fields:
+There is **nothing to configure**. The methodology is domain-invariant; the domain-specific behavior
+is *emergent*, derived by the agent as it writes the goal-spec:
+
+| The agent needs… | …and infers it from |
+|---|---|
+| ground-truth sources | what *this* task verifies against — tests/CI, analytics, sensor & lab readings, primary docs |
+| which files hold inherited decisions | it **discovers** them (globs for TODO / open-decisions / pending docs) |
+| what "cover all the entities" means | the task noun — every widget, every changed file, every tank, every email |
+| which actions are terminal/irreversible | it judges reversibility per action — no list to maintain |
+
+Hardcoding those per-domain would be the exact "per-case rules" this method is built to replace — so
+it doesn't. A water-treatment expert and a Rust developer run the same command and get the same rigor.
+
+### Optional config (power users only)
+
+Create `.claude/goal.config.json` **only** if you want to pin exact sweep files for a deterministic
+grep, or route the adversary to a different model/CLI (`codex`, `gemini`, another Claude). Everything
+else stays inferred.
 
 ```
 cp plugins/goal-elaboration/goal.config.example.json .claude/goal.config.json
 ```
-
-| Field | What it is |
-|---|---|
-| `ground_truth_sources` | Verifiable things a success criterion can cite (tests/CI, DB, analytics, primary docs) |
-| `sweep_files` | Files the mechanical inherited-decision sweep greps before closing |
-| `enumerate_entities_step` | What "cover all the children, not a sample" means here |
-| `no_harm_threshold` | The reversibility bar for a mutating action |
-| `terminal_actions` | Actions that force an independent adversary before closing |
-| `adversary.backend` | `subagent` (fresh context, same model) or `external` (different model/CLI) |
 
 Full walkthrough with worked mappings for **code review** and **research** in
 [`plugins/goal-elaboration/references/adaptation-guide.md`](plugins/goal-elaboration/references/adaptation-guide.md).

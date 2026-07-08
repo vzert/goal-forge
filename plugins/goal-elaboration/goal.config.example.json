@@ -1,24 +1,19 @@
 {
-  "ground_truth_sources": [
-    "describe your verifiable sources here, e.g. analytics API, DB tables, the test suite / CI, an APM dashboard"
-  ],
+  "_comment": "OPTIONAL. The plugin works with ZERO config for any domain — it infers ground-truth, entities, and terminal actions from the task itself. Only create .claude/goal.config.json if you want to (a) pin exact sweep files for a deterministic grep, or (b) route the adversary to a different model/CLI. Delete any field you don't need.",
+
   "sweep_files": [
     ".claude/open-decisions.md",
-    "docs/pendientes.md"
+    "docs/pending.md"
   ],
-  "enumerate_entities_step": "list ALL <entities> (not a sample) with real per-entity data before declaring done — e.g. all changed files with their test result, all endpoints with their p95",
-  "no_harm_threshold": "don't remove/pause/scale what works without a validated replacement and a reversible path",
-  "terminal_actions": [
-    "delete",
-    "kill",
-    "deploy-to-prod",
-    "irreversible-migration",
-    "merge-to-main",
-    "force-push",
-    "publish"
-  ],
+
   "adversary": {
     "backend": "subagent",
     "external_cmd": "codex exec"
-  }
+  },
+
+  "_advanced_comment": "The fields below are ALWAYS inferred from the task by default. Set them only to override that inference with fixed values.",
+  "ground_truth_sources": ["e.g. the test suite / CI, a DB table, an analytics API, an APM dashboard, sensor/lab readings, primary documents"],
+  "enumerate_entities_step": "e.g. list ALL <entities> (not a sample) with real per-entity data before declaring done",
+  "no_harm_threshold": "e.g. don't remove/scale what works without a validated replacement and a reversible path",
+  "terminal_actions": ["e.g. delete", "kill", "deploy-to-prod", "publish", "merge-to-main"]
 }

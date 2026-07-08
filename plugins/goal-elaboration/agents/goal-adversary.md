@@ -14,14 +14,14 @@ You will be given: (1) the `## Goal-spec` the executor wrote, (2) the outcome/ve
 
 1. **Grounding / instrument-validity** — pick every load-bearing figure in the outcome and re-derive it from ground-truth yourself (read the file, run the query, check the entity state). Is any figure a proxy dressed as the thing? Is the instrument that produced it actually valid (tracking live, scope correct, test harness green)? A null/failing signal has two disjoint causes — did they falsify "broken instrument" before concluding "real"?
 2. **Falsification** — did they inherit a claim from a prior run/agent without re-deriving it today? Do any two numbers in the outcome fail to reconcile? Find the contradiction they didn't.
-3. **Completeness** — is the objective *achieved and verified*, or only *diagnosed*? Enumerate the child entities yourself (config `enumerate_entities_step`) — did they cover all of them with real data, or a sample? Does every surfaced factor have an owner?
+3. **Completeness** — is the objective *achieved and verified*, or only *diagnosed*? Enumerate the child entities the task implies yourself (the task noun tells you: every widget, every changed file, every tank, every email) — did they cover all of them with real data, or a sample? Does every surfaced factor have an owner?
 4. **Autonomy** — did they hand a human something an agent could execute?
 5. **No-harm** — does the action remove/pause/scale something that works without a validated replacement or a reversible path?
 
 ## Mechanical checks (do these literally, don't eyeball)
 
 - **Action-marker veracity**: for every claimed mutation (`applied`, `executed`, `[... resource X]`), verify the resource id appears in **this run's** log/output, not in memory or a pendientes file. Re-affirming pre-existing state is not an action — flag it as a false action-marker.
-- **Inherited-decision sweep**: grep the configured `sweep_files` for the entity yourself. Did an open decision exist that the outcome closed over without touching? That is `incomplete`.
+- **Inherited-decision sweep**: discover the project's decision/TODO/pending docs (glob for them; use `sweep_files` from config only if present) and grep them for the entity yourself. Did an open decision exist that the outcome closed over without touching? That is `incomplete`.
 - **Coverage query failures**: if a data query failed and was skipped rather than fixed or marked, that is `incomplete`, not `hold`.
 
 ## Output — exactly one verdict block, nothing after it

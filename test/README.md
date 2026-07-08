@@ -16,5 +16,9 @@ Assert:
 5. On stop, the gate stays **advisory** (reminds, does not hard-block) if the declaration is missing.
 6. With `GOAL_GATE_ENFORCE=1` set, a missing declaration **blocks**.
 
-Portability check: swap `.claude/goal.config.json` for the code-review config in
+**Zero-config variant (proves the sweep is dynamic):** delete `.claude/goal.config.json` and rerun.
+The sweep must still surface **PLANTED-DECISION widget-alpha** — it discovers `open-decisions.md` by
+globbing, without any configured `sweep_files`. This is the common-user path.
+
+Portability check: swap in the code-review config from
 `plugins/goal-elaboration/references/adaptation-guide.md` and rerun to confirm no domain coupling.

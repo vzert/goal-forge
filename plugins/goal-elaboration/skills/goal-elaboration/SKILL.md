@@ -41,14 +41,14 @@ Do not close until you pass your own adversary (Constitutional self-critique). A
 - **Autonomy**: am I handing a human something I or another agent could have executed?
 - **No-harm**: am I about to pause / scale / remove something that works without a validated replacement?
 
-For any **terminal or irreversible** decision (matches your config's `terminal_actions`, or the sweep touched an inherited open decision), this does NOT stay as self-critique: route to the **adversary** (a fresh-context subagent, or an external CLI/model — see `references/external-adversary-setup.md`). The adversary is your independent verifier — it is asked to **break** your outcome against the constitution, not to approve it. Fix-first reversible work can proceed while the adversary critiques.
+For any **terminal or irreversible** decision — one where undoing it would be hard or harmful — this does NOT stay as self-critique: route to the **adversary** (a fresh-context subagent, or an external CLI/model — see `references/external-adversary-setup.md`). You judge reversibility **per action**; you don't need a pre-declared list. The domain tells you what's terminal: `delete`/`kill`/`deploy-to-prod`/`irreversible-migration` for software, `publish`/`send-to-list` for marketing, `merge-to-main`/`force-push` for a repo, dosing a chemical feed for a treatment plant. The sweep touching an inherited open decision, or affirming a mutation, also triggers routing. The adversary is your independent verifier — it is asked to **break** your outcome against the constitution, not to approve it. Fix-first reversible work can proceed while the adversary critiques.
 
 ## The three derived patterns — how Grounding + Completeness land in real work
 
 These are **not** new rules — they are how principles 1 and 3 land when the task is an audit / optimization / decision. They are the mechanical teeth that make the work senior instead of aspirational:
 
-- **Mechanical sweep of inherited decisions + dedup** [Completeness] — "resolve what's inherited" is aspirational without a literal grep; **do it**. Before declaring done: (1) grep the configured `sweep_files` for the entity + its key terms, and fetch your own recent related items (last ~24h); (2) every **open decision** you find → resolve it or surface it — **do not close without touching it**; (3) every **handoff you already dispatched recently** → do NOT recreate it (dedup). A rule that is "aspirational" gets skipped exactly in the case that matters — the grep forces coverage.
-- **Coverage floor** [Completeness] — before declaring complete, enumerate **all** child entities (per your config's `enumerate_entities_step`) with real per-entity data — not a sample, not names+status. If a data query **fails**, that is a **blocker**, not a silent skip: fix it or mark the gap; never hide it under a "done" marker.
+- **Mechanical sweep of inherited decisions + dedup** [Completeness] — "resolve what's inherited" is aspirational without a literal search; **do it mechanically**. You don't need a config file to know where to look — **discover it**: (1) glob the project for wherever pending choices are tracked — files matching `TODO`, `open-decisions`, `decisions`, `pending`, `open-questions`, `known-issues`, `backlog`, `notes`, or the doc this project actually uses — and scan recent context/notes for the entity + its key terms; (2) grep those for the entity you're working on and your own recent related items; (3) every **open decision** you find → resolve it or surface it — **do not close without touching it**; (4) every **handoff you already dispatched recently** → do NOT recreate it (dedup). If no decision log exists, say so explicitly ("no decision log found — sweep skipped") rather than silently skipping. The point is a *literal* search that's always attempted, not one that waits on config. (Power users can pin exact files via optional `sweep_files` config for a deterministic grep.)
+- **Coverage floor** [Completeness] — before declaring complete, enumerate **all** the child entities the task implies — not a sample, not names+status — with real per-entity data. The task names them: "audit the widgets" → every widget; "review this PR" → every changed file; "check the clarifier stage" → every tank/sensor in it; "write the launch sequence" → every email. You infer the entity type from the task; no config needed. If a data query **fails**, that is a **blocker**, not a silent skip: fix it or mark the gap; never hide it under a "done" marker.
 - **Action-marker veracity** [Grounding] — never claim `[action executed]` / "applied (resource X)" unless the mutation **returned an id in this run**. Re-affirming pre-existing state (a config that already existed, an entity already paused) is **not** an action — don't report it as one, and the id you cite must come from the mutation result, not from memory. A completeness marker attests you *did the analysis*, not that you *ran the skill*.
 
 ## Completion-review declaration (the marker the gate looks for)
@@ -81,9 +81,22 @@ Fails: objective = the ticket's narrative; "improve" is not measurable; no basel
 > **Autonomy**: I run the load test and the trace analysis myself; only authorizing a production config rollout is a human decision.
 > **Done**: actionable config applied and verified by read-back, every non-owned factor assigned to an agent, no live contradiction.
 
-## Config + scope
+## Adapting to your domain — automatically, no config required
 
-- Read `.claude/goal.config.json` (fallback: a `## Goal Config` block in the project's `CLAUDE.md`). See `references/adaptation-guide.md` and the shipped `goal.config.example.json`.
-- **Graceful degradation**: with no config, still run the constitution + scaffold + red-team; the domain-specific sweep/coverage steps soften to prompts ("if you have an open-decisions doc, grep it now").
+**You do not need a config file.** This skill adapts to any domain — software, marketing, copywriting, operations, a water-treatment plant — by *reasoning*, not by configuration. As you answer the 6 questions you **derive**, for THIS task: what counts as ground-truth (Q2), what the child entities are (definition of done), which actions are irreversible (no-harm), and where inherited decisions might live (you discover the files). That derivation **is** the method — hardcoding it per-domain would be the very "per-case rules" this method is designed to replace, and a fixed list would miss your domain's own terminal actions.
+
+So the domain-specific behavior is emergent, not configured:
+
+| What the fleet version hardcoded | How you get it now |
+|---|---|
+| ground-truth sources | You name them per-task when answering Q2 (tests/CI, analytics, sensor readings, primary docs — whatever *your* work verifies against). |
+| files to sweep | You **discover** them (glob for decision/TODO/pending docs; scan recent context). |
+| what "all entities" means | The **task noun** tells you (widgets, changed files, tanks, emails). |
+| which actions are terminal | You **judge reversibility per action**; the domain makes it obvious. |
+
+**Optional config (power users only).** Create `.claude/goal.config.json` only if you want to (a) **pin exact `sweep_files`** so the grep is deterministic, or (b) **select an external adversary backend** (`adversary.backend: "external"`, `external_cmd: "codex exec"`) — a preference that can't be inferred. Nothing else needs configuring. See `goal.config.example.json` and `references/adaptation-guide.md`.
+
+## Scope
+
 - Runs at the **start of substantive tasks**, not on contentless "continue" turns. If a human goal-spec already exists, adopt it and still run the final red-team.
 - This skill adds **no governance markers beyond the completion-review declaration**. It is a reasoning method, not another rule in a wall — you cannot gate your way out of specification gaming; the only real levers are measurable criteria set up front and an independent adversary. See `references/outcome-loop-beats-gates.md`.

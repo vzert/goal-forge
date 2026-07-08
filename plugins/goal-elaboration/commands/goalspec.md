@@ -9,26 +9,26 @@ You are running the **goal-elaboration** methodology on this task: `$ARGUMENTS`
 
 Do NOT use the built-in `/goal` for this — that is a different, reserved command. Follow these steps in order.
 
-## 1. Load config
+## 1. (Optional) check for config — but don't require it
 
-Read `.claude/goal.config.json` (fallback: a `## Goal Config` block in `CLAUDE.md`). If neither exists, proceed with graceful degradation — run the reasoning steps, and soften the domain-specific sweep/coverage steps to prompts. Note in your output that no config was found and point the user to `goal.config.example.json`.
+This works with **zero config** for any domain. Best-effort read `.claude/goal.config.json` if it exists — you only need it to pin exact sweep files or select an external adversary backend. If it's absent, that is the normal case: infer everything domain-specific from the task itself (see the skill's "Adapting to your domain — automatically"). Do not tell the user to go write config.
 
 ## 2. Elaborate the goal-spec
 
-Invoke the **goal-elaboration** skill. Answer the 6 scaffold questions for `$ARGUMENTS` and emit a `## Goal-spec` block — grounded, falsifiable, with ≥2 measurable success criteria tied to the config's `ground_truth_sources`. If the task already carries a human-written goal-spec, adopt it (still run step 4).
+Invoke the **goal-elaboration** skill. Answer the 6 scaffold questions for `$ARGUMENTS` and emit a `## Goal-spec` block — grounded, falsifiable, with ≥2 measurable success criteria. **You name the ground-truth sources yourself** based on what this task verifies against (tests/CI, analytics, sensor/lab readings, primary docs — whatever fits the domain). If the task already carries a human-written goal-spec, adopt it (still run step 4).
 
 ## 3. Execute
 
-Do the actual work, steered by the spec — not by a fixed checklist. Run the mechanical sweep of `sweep_files` and the coverage-floor enumeration (`enumerate_entities_step`) before you consider the objective met. Respect action-marker veracity: only claim a mutation if it returned an id in this run.
+Do the actual work, steered by the spec — not by a fixed checklist. Run the mechanical sweep (discover decision/TODO/pending docs by globbing, then grep them — or pin `sweep_files` if config exists) and the coverage-floor enumeration (all the entities the task implies) before you consider the objective met. Respect action-marker veracity: only claim a mutation if it returned an id in this run.
 
 ## 4. Red-team, then route to the adversary if warranted
 
 Run the self-critique against the 5 principles. Then decide whether an **independent** adversary is required:
 
-- **Required** if: the action matches `terminal_actions` (terminal/irreversible), OR the sweep touched an inherited open decision, OR you affirmed a mutation.
-- If required, invoke the adversary per `adversary.backend`:
-  - `"subagent"` (default): spawn the `goal-adversary` subagent via the Task tool, passing it the goal-spec, your outcome, and where the work lives. It runs in fresh context and returns an `[ADVERSARY-VERDICT: ...]` block.
-  - `"external"`: run `${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh` (pipe the goal-spec + outcome on stdin). It routes to a different model/CLI (`adversary.external_cmd`) and returns the same verdict block.
+- **Required** if: the action is terminal/irreversible (you judge reversibility per-action — no list needed), OR the sweep touched an inherited open decision, OR you affirmed a mutation.
+- Invoke the adversary. Default backend is a subagent; use external only if config selects it:
+  - **subagent** (default, zero-config): spawn the `goal-adversary` subagent via the Task tool, passing it the goal-spec, your outcome, and where the work lives. It runs in fresh context and returns an `[ADVERSARY-VERDICT: ...]` block.
+  - **external** (only if `adversary.backend: "external"` in config): run `${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh` (pipe the goal-spec + outcome on stdin). It routes to a different model/CLI (`adversary.external_cmd`) and returns the same verdict block.
 - If the verdict is `break`, address every confirmed violation and re-verify before closing. Do not close over a `break`.
 
 ## 5. Declare the completion-review
