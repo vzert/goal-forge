@@ -15,7 +15,7 @@
 # Usage:  printf '%s' "$SPEC_AND_OUTCOME" | external-adversary.sh
 # The external command is passed the full prompt on stdin.
 #
-# Anti-recursion: if this backend routes to another Claude that itself has goal-elaboration
+# Anti-recursion: if this backend routes to another Claude that itself has goalspec
 # installed, GOAL_ADVERSARY_ACTIVE=1 is exported so its Stop gate / any nested /goalspec can detect
 # the loop and no-op. A nested invocation (already inside an external adversary) exits immediately.
 

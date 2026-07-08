@@ -19,14 +19,13 @@ restart Claude Code (or run `/reload-plugins` inside the REPL) for the plugin to
 
 # goal-forge
 
-A Claude Code plugin marketplace for one plugin: **goal-elaboration** — a portable
+A Claude Code plugin marketplace for one plugin: **goalspec** — a portable
 *self-goal + independent-adversary* methodology that turns a terse request into a grounded,
 falsifiable goal-spec, verifies the outcome with an independent adversary, and closes through a
 fail-open completion gate.
 
-It is a junior→senior uplift for agents, packaged so anyone can install it in one command and adapt
-it to their own domain with a small config file — no control plane, no fleet, no hand-editing agent
-files.
+It is a junior→senior uplift for agents, packaged so anyone can install it in one command and run it
+on any domain with **zero configuration** — no control plane, no fleet, no hand-editing agent files.
 
 ## What it does
 
@@ -54,11 +53,11 @@ demonstrate."* That is exactly the specification-gaming hole this plugin closes.
 
 So this plugin **rides on top of** `/goal` rather than replacing it:
 
-- `goal-elaboration` produces the *grounded, falsifiable* condition and an *independent adversary*
+- `goalspec` produces the *grounded, falsifiable* condition and an *independent adversary*
   that verifies it against ground-truth — the check `/goal` won't perform.
 - Its measurable criteria become the condition you hand to the built-in `/goal` for the multi-turn
-  loop (see `/goalspec` step 6).
-- Its command is `/goalspec` — never `/goal` — so it does not shadow the built-in.
+  loop (see the `/goalspec` runbook, step 7).
+- Its entry point is `/goalspec` — never `/goal` — so it does not shadow the built-in.
 
 ## Install
 
@@ -74,25 +73,31 @@ Run these two commands in your **regular shell** (this is what an agent will do 
 
 ```bash
 claude plugin marketplace add vzert/goal-forge
-claude plugin install goal-elaboration@goal-forge
+claude plugin install goalspec@goal-forge
 ```
 
 Then **restart Claude Code** (or run `/reload-plugins` inside the REPL) for the plugin to activate.
-This registers the `/goalspec` command, the `goal-adversary` subagent, the `goal-elaboration` skill,
-and the fail-open Stop gate.
+This registers the `/goalspec` skill (invoke it directly, or it auto-triggers on substantive tasks),
+the `goal-adversary` subagent, and the fail-open Stop gate.
 
 > **Already inside Claude Code?** The equivalent REPL slash commands are
-> `/plugin marketplace add vzert/goal-forge`, then `/plugin install goal-elaboration@goal-forge`,
+> `/plugin marketplace add vzert/goal-forge`, then `/plugin install goalspec@goal-forge`,
 > then `/reload-plugins`.
 
 > **Troubleshooting:** if `install` says "not found", confirm the marketplace was added with
 > `claude plugin marketplace list`, then retry. A restart of Claude Code after adding the marketplace
 > resolves most cases.
 
+> **Auto-update:** third-party marketplaces default to update-disabled, so the plugin ships a
+> `SessionStart` hook that flips the goal-forge marketplace to `autoUpdate: true` on first run —
+> future versions then pull automatically. To refresh immediately at any time:
+> `claude plugin marketplace update goal-forge`. To opt out, remove `"autoUpdate": true` from the
+> `goal-forge` entry in `~/.claude/plugins/known_marketplaces.json`.
+
 ### Verify it worked
 
 ```bash
-claude plugin list          # goal-elaboration should appear as enabled
+claude plugin list          # goalspec should appear as enabled
 ```
 
 Inside Claude Code, `/goalspec` should be available and the `goal-adversary` subagent listed. Confirm
@@ -101,7 +106,7 @@ Inside Claude Code, `/goalspec` should be available and the `goal-adversary` sub
 ### Alternative — team setup
 
 To make the marketplace known to everyone who trusts the repo, add to your project's
-`.claude/settings.json` (each teammate still runs `claude plugin install goal-elaboration@goal-forge`
+`.claude/settings.json` (each teammate still runs `claude plugin install goalspec@goal-forge`
 and restarts):
 
 ```json
@@ -132,7 +137,7 @@ git clone https://github.com/vzert/goal-forge.git \
     }
   },
   "enabledPlugins": {
-    "goal-elaboration@goal-forge": true
+    "goalspec@goal-forge": true
   }
 }
 ```
@@ -142,7 +147,7 @@ Restart Claude Code and the plugin is active.
 ### Development — test a local checkout without installing
 
 ```bash
-claude --plugin-dir ./goal-forge/plugins/goal-elaboration
+claude --plugin-dir ./goal-forge/plugins/goalspec
 ```
 
 Loads the plugin for one session only — useful for testing changes before publishing.
@@ -150,7 +155,7 @@ Loads the plugin for one session only — useful for testing changes before publ
 ### Uninstall
 
 ```bash
-claude plugin uninstall goal-elaboration@goal-forge
+claude plugin uninstall goalspec@goal-forge
 claude plugin marketplace remove goal-forge      # optional: also drop the marketplace
 ```
 
@@ -194,11 +199,11 @@ grep, or route the adversary to a different model/CLI (`codex`, `gemini`, anothe
 else stays inferred.
 
 ```
-cp plugins/goal-elaboration/goal.config.example.json .claude/goal.config.json
+cp plugins/goalspec/goal.config.example.json .claude/goal.config.json
 ```
 
 Full walkthrough with worked mappings for **code review** and **research** in
-[`plugins/goal-elaboration/references/adaptation-guide.md`](plugins/goal-elaboration/references/adaptation-guide.md).
+[`plugins/goalspec/references/adaptation-guide.md`](plugins/goalspec/references/adaptation-guide.md).
 
 ## The completion gate
 
@@ -209,7 +214,7 @@ The Stop hook enforces only when a session produced a `## Goal-spec`. If one exi
 
 Why fail-open? You cannot gate your way out of specification gaming — a blocking marker just
 relocates the gaming. The real levers are measurable criteria up front and an independent adversary.
-See [`references/outcome-loop-beats-gates.md`](plugins/goal-elaboration/references/outcome-loop-beats-gates.md).
+See [`references/outcome-loop-beats-gates.md`](plugins/goalspec/references/outcome-loop-beats-gates.md).
 
 ## How it's built
 
@@ -217,26 +222,27 @@ See [`references/outcome-loop-beats-gates.md`](plugins/goal-elaboration/referenc
 goal-forge/
   .claude-plugin/marketplace.json
   README.md
-  plugins/goal-elaboration/
+  plugins/goalspec/
     .claude-plugin/plugin.json
-    skills/goal-elaboration/SKILL.md      # constitution + 6-question scaffold + red-team
+    skills/goalspec/SKILL.md              # /goalspec — the single entry point: constitution +
+                                          #   6-question scaffold + clarify + red-team + runbook
     agents/goal-adversary.md              # independent adversarial verifier (read-only)
-    commands/goalspec.md                  # /goalspec — the single entry point
-    hooks/hooks.json                      # registers the Stop gate
+    hooks/hooks.json                      # registers the Stop gate + the auto-update enabler
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate
+    hooks/enable-autoupdate.sh            # SessionStart: idempotently enables marketplace auto-update
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
-    goal.config.example.json              # copy to .claude/goal.config.json
+    goal.config.example.json              # optional override — copy to .claude/goal.config.json
     references/                           # adaptation guide + the design rationale
 ```
 
 ## Design rationale (the interesting part)
 
-- [`why-mechanical-step.md`](plugins/goal-elaboration/references/why-mechanical-step.md) — a
+- [`why-mechanical-step.md`](plugins/goalspec/references/why-mechanical-step.md) — a
   self-goal skill isn't "senior" without a concrete mechanical step (a literal grep, a mandatory
   enumeration).
-- [`outcome-loop-beats-gates.md`](plugins/goal-elaboration/references/outcome-loop-beats-gates.md) —
+- [`outcome-loop-beats-gates.md`](plugins/goalspec/references/outcome-loop-beats-gates.md) —
   why you can't gate or verify your way out of specification gaming, and what to do instead.
-- [`external-adversary-setup.md`](plugins/goal-elaboration/references/external-adversary-setup.md) —
+- [`external-adversary-setup.md`](plugins/goalspec/references/external-adversary-setup.md) —
   routing critique to a different model for true independence.
 
 ## Prior art

@@ -1,5 +1,5 @@
 ---
-name: goal-elaboration
+name: goalspec
 description: Before executing any substantive task (audit, optimization, diagnosis, decision, build), convert the terse request into your own grounded goal-spec — objective + measurable success + pre-mortem + no-harm + autonomy + definition-of-done — applying the 5-principle constitution. When the request is ambiguous about objective/scope/authorization, ask clarifying multiple-choice questions BEFORE committing, to avoid drifting into the wrong long task. Before closing, red-team your own outcome against the constitution; route terminal/irreversible decisions to the adversary. Use at the start of substantive work, not on contentless "continue" turns.
 ---
 
@@ -118,3 +118,18 @@ So the domain-specific behavior is emergent, not configured:
 
 - Runs at the **start of substantive tasks**, not on contentless "continue" turns. If a human goal-spec already exists, adopt it and still run the final red-team.
 - This skill adds **no governance markers beyond the completion-review declaration**. It is a reasoning method, not another rule in a wall — you cannot gate your way out of specification gaming; the only real levers are measurable criteria set up front and an independent adversary. See `references/outcome-loop-beats-gates.md`.
+
+## Running the full loop (invoked as `/goalspec <task>`, or auto-triggered)
+
+When invoked explicitly or auto-triggered on a substantive task, run these in order:
+
+1. **(Optional) config** — best-effort read `.claude/goal.config.json` if present. Absent is the normal case; infer everything domain-specific from the task (above). Never tell the user to go write config.
+2. **Clarify before you commit** — resolve load-bearing ambiguity (objective / scope / terminal-action authorization / done-bar) via `AskUserQuestion` (one batched modal, ≤3 questions, recommended default first) — but only for genuine *user decisions*, never for facts you can determine. If clear enough to skip, open the spec with an **Assumptions (correct me if wrong)** line. In headless/cron, never block on the modal — take the most defensible default and record it.
+3. **Emit the `## Goal-spec`** — the 6 scaffold answers, grounded and falsifiable, ≥2 measurable success criteria whose ground-truth you named yourself.
+4. **Execute**, steered by the spec — run the mechanical sweep + coverage-floor enumeration before considering the objective met; respect action-marker veracity.
+5. **Red-team, then route to the adversary if warranted** (terminal/irreversible action, sweep touched an inherited decision, or you affirmed a mutation):
+   - **subagent** (default, zero-config): spawn the `goal-adversary` subagent via the Task tool with the goal-spec, your outcome, and where the work lives. It returns `[ADVERSARY-VERDICT: ...]`.
+   - **external** (only if `adversary.backend: "external"`): run `${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh` (goal-spec + outcome on stdin) to route to a different model/CLI.
+   - On `break`, address every confirmed violation and re-verify. Do not close over a `break`.
+6. **Declare the completion-review** — exactly one `[COMPLETION-REVIEW: ...]` (see grammar above). The Stop gate checks for it (fail-open advisory unless `GOAL_GATE_ENFORCE=1`).
+7. **Optional — hand off to the built-in `/goal`** — if the success criteria are turn-loopable (something Claude's own output can demonstrate), print a ready-to-paste `/goal "<condition derived verbatim from your measurable criteria>"` so the user gets the built-in multi-turn loop, now driven by a grounded, adversary-checked condition. Only when the condition is genuinely checkable from Claude's own output.

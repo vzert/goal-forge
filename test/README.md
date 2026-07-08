@@ -21,4 +21,4 @@ The sweep must still surface **PLANTED-DECISION widget-alpha** — it discovers 
 globbing, without any configured `sweep_files`. This is the common-user path.
 
 Portability check: swap in the code-review config from
-`plugins/goal-elaboration/references/adaptation-guide.md` and rerun to confirm no domain coupling.
+`plugins/goalspec/references/adaptation-guide.md` and rerun to confirm no domain coupling.
