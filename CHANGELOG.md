@@ -6,6 +6,16 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.2.3] - 2026-07-08
+
+### Changed
+- **Trigger description now lists common domains instead of a niche one.** 0.2.1 listed
+  "even a water-treatment plant" as a domain example — memorable, but too niche for a trigger
+  (it signals "for weird edge cases" rather than breadth). Replaced with the domains where users
+  actually are: software engineering, data and analytics, marketing, research, writing, and product
+  and business decisions. (The water-treatment worked example stays in the adaptation guide, where
+  it usefully proves domain-independence.)
+
 ## [0.2.2] - 2026-07-08
 
 ### Fixed
