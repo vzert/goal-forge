@@ -1,6 +1,6 @@
 ---
 name: goal-elaboration
-description: Before executing any substantive task (audit, optimization, diagnosis, decision, build), convert the terse request into your own grounded goal-spec — objective + measurable success + pre-mortem + no-harm + autonomy + definition-of-done — applying the 5-principle constitution. Before closing, red-team your own outcome against the constitution; route terminal/irreversible decisions to the adversary. Use at the start of substantive work, not on contentless "continue" turns.
+description: Before executing any substantive task (audit, optimization, diagnosis, decision, build), convert the terse request into your own grounded goal-spec — objective + measurable success + pre-mortem + no-harm + autonomy + definition-of-done — applying the 5-principle constitution. When the request is ambiguous about objective/scope/authorization, ask clarifying multiple-choice questions BEFORE committing, to avoid drifting into the wrong long task. Before closing, red-team your own outcome against the constitution; route terminal/irreversible decisions to the adversary. Use at the start of substantive work, not on contentless "continue" turns.
 ---
 
 # Goal-Elaboration — write your own goal before you execute
@@ -29,6 +29,24 @@ Post the answers as a `## Goal-spec` block at the start of the run (structured p
 4. **No-harm** [No-harm] — what is working that I must not break? Which action here is irreversible or high-blast-radius?
 5. **Autonomy** [Autonomy] — which part is executable by me or another **agent** (which one?), and which part is genuinely a **human decision**? Everything agent-executable is NOT assigned to a human.
 6. **Definition of done** [Completeness] — when is the objective *achieved and verified*, with every factor owned? (Not "diagnosed".)
+
+## Clarify before you commit — ask, don't drift
+
+A terse request is often ambiguous in a way that would send you down the *wrong* long task. Before you finalize the goal-spec, resolve that ambiguity — a 30-second question beats an hour of work on the wrong objective. This is the constitution's Autonomy principle read correctly: the human **decides** (intent, scope, authorization), the agent **executes** — so ask about *decisions you cannot make for them*, never about *facts you can look up yourself*.
+
+**When to ask** (balanced): if the **objective**, the **scope**, the **authorization for a terminal action**, or the **bar for "done"** is unclear — even if a plausible default exists — ask. First try to resolve it from context (the repo, the files, the conversation); ask only for what's genuinely a user decision. Do NOT ask about anything you can determine yourself (that violates Autonomy), and do NOT ask when every plausible answer leads to the same work.
+
+**How to ask** — use the `AskUserQuestion` tool (a multiple-choice modal), and:
+- **Batch it**: one modal, up to ~3 questions, not an iterative interrogation.
+- Each question targets a load-bearing fork, most often one of: *objective* ("audit the widgets" → for cost? correctness? to decide kills?), *scope* (all entities vs the one that alarmed), *terminal authorization* (**execute** the irreversible action vs only **recommend** it), *done-bar* (ship-ready vs quick check).
+- Make the **first option the recommended default** (label it "(Recommended)") so the user can proceed in one click.
+- Fold the answers into the goal-spec's objective, scope, success criteria, and Autonomy split.
+
+**When you DON'T ask** (task is clear enough): still make your assumptions visible. Open the goal-spec with a short **Assumptions (correct me if wrong)** line stating the load-bearing choices you made — objective, scope, and whether you'll *execute* or *recommend* any terminal action — then proceed without blocking. This lets the user course-correct early without a modal.
+
+**Headless / non-interactive (cron, CI, `-p`)**: `AskUserQuestion` may not be answerable. If so, do not block — pick the most defensible default, record every assumption explicitly in the goal-spec's **Assumptions** line and pre-mortem, and proceed. Never hang a scheduled run on a modal.
+
+This front-loads the pre-mortem (Q3): instead of only asking "how could I be wrong?" *after* the work, you make sure you're solving the right problem *before* spending the effort.
 
 Then execute the work **steered by this spec**, not by a fixed checklist.
 

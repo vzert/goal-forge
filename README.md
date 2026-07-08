@@ -11,10 +11,13 @@ files.
 
 ## What it does
 
-1. **Writes its own goal.** Before executing a substantive task, the agent converts the terse
-   request into a `## Goal-spec` — objective, ≥2 measurable success criteria tied to ground-truth,
-   a pre-mortem, a no-harm clause, an autonomy split, and a definition of done — by applying a
-   5-principle constitution (Grounding · Falsification · Completeness · Autonomy · No-harm).
+1. **Clarifies, then writes its own goal.** If the terse request is ambiguous about objective,
+   scope, or authorization, it asks a quick multiple-choice question *before* committing — so it
+   never drifts into an hour of work on the wrong task. Then it converts the request into a
+   `## Goal-spec` — objective, ≥2 measurable success criteria tied to ground-truth, a pre-mortem, a
+   no-harm clause, an autonomy split, and a definition of done — by applying a 5-principle
+   constitution (Grounding · Falsification · Completeness · Autonomy · No-harm). When the task is
+   clear it skips the question and states its assumptions inline so you can course-correct.
 2. **Does the work, with mechanical teeth.** A literal sweep of your decision files (so inherited
    decisions can't be silently skipped), a coverage floor (enumerate all children, not a sample),
    and action-marker veracity (only claim a mutation that returned an id this run).

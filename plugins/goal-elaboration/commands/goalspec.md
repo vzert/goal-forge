@@ -13,15 +13,21 @@ Do NOT use the built-in `/goal` for this — that is a different, reserved comma
 
 This works with **zero config** for any domain. Best-effort read `.claude/goal.config.json` if it exists — you only need it to pin exact sweep files or select an external adversary backend. If it's absent, that is the normal case: infer everything domain-specific from the task itself (see the skill's "Adapting to your domain — automatically"). Do not tell the user to go write config.
 
-## 2. Elaborate the goal-spec
+## 2. Clarify before you commit (don't drift)
 
-Invoke the **goal-elaboration** skill. Answer the 6 scaffold questions for `$ARGUMENTS` and emit a `## Goal-spec` block — grounded, falsifiable, with ≥2 measurable success criteria. **You name the ground-truth sources yourself** based on what this task verifies against (tests/CI, analytics, sensor/lab readings, primary docs — whatever fits the domain). If the task already carries a human-written goal-spec, adopt it (still run step 4).
+Before writing the goal-spec, check whether `$ARGUMENTS` is ambiguous in a way that would change the work. First resolve what you can from context (repo, files, conversation). If the **objective**, **scope**, **terminal-action authorization**, or **done-bar** is still genuinely a *user decision* — even if a default exists — ask via the `AskUserQuestion` tool: one batched modal, up to ~3 questions, first option a recommended default. Fold the answers into the spec. Do not ask about facts you can determine yourself (that violates Autonomy), and don't ask when every answer leads to the same work.
 
-## 3. Execute
+If the task is clear enough to skip asking, still open the goal-spec with a short **Assumptions (correct me if wrong)** line stating objective, scope, and whether you'll *execute* or *recommend* any terminal action. In a headless/non-interactive run where the modal can't be answered, never block — pick the most defensible default, record it in Assumptions + the pre-mortem, and proceed.
+
+## 3. Elaborate the goal-spec
+
+Invoke the **goal-elaboration** skill. Answer the 6 scaffold questions for `$ARGUMENTS` and emit a `## Goal-spec` block — grounded, falsifiable, with ≥2 measurable success criteria. **You name the ground-truth sources yourself** based on what this task verifies against (tests/CI, analytics, sensor/lab readings, primary docs — whatever fits the domain). If the task already carries a human-written goal-spec, adopt it (still run step 5).
+
+## 4. Execute
 
 Do the actual work, steered by the spec — not by a fixed checklist. Run the mechanical sweep (discover decision/TODO/pending docs by globbing, then grep them — or pin `sweep_files` if config exists) and the coverage-floor enumeration (all the entities the task implies) before you consider the objective met. Respect action-marker veracity: only claim a mutation if it returned an id in this run.
 
-## 4. Red-team, then route to the adversary if warranted
+## 5. Red-team, then route to the adversary if warranted
 
 Run the self-critique against the 5 principles. Then decide whether an **independent** adversary is required:
 
@@ -31,7 +37,7 @@ Run the self-critique against the 5 principles. Then decide whether an **indepen
   - **external** (only if `adversary.backend: "external"` in config): run `${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh` (pipe the goal-spec + outcome on stdin). It routes to a different model/CLI (`adversary.external_cmd`) and returns the same verdict block.
 - If the verdict is `break`, address every confirmed violation and re-verify before closing. Do not close over a `break`.
 
-## 5. Declare the completion-review
+## 6. Declare the completion-review
 
 Emit exactly one:
 - `[COMPLETION-REVIEW: adversary <details>]` — if you invoked the adversary (an `[ADVERSARY-VERDICT: ...]` is present in the session).
@@ -39,7 +45,7 @@ Emit exactly one:
 
 The Stop hook checks for this. It is fail-open/advisory by default (it reminds, it does not block), unless `GOAL_GATE_ENFORCE=1`.
 
-## 6. Optional — hand off to the built-in /goal
+## 7. Optional — hand off to the built-in /goal
 
 If the success criteria are turn-loopable (something Claude's own output can demonstrate across turns), print a ready-to-paste line so the user gets the built-in multi-turn loop, now driven by a grounded, adversary-checked condition:
 
