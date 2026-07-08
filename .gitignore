@@ -1,2 +1,8 @@
 .DS_Store
 *.log
+
+# 3-tier local commands (auto-reinstalled by the plugin SessionStart hook)
+/.claude/
+
+# 3-tier memory — local only; this is a PUBLIC repo, keep session logs/learnings/pendientes private
+/memory/
