@@ -1,0 +1,14 @@
+{
+  "name": "goal-forge",
+  "owner": {
+    "name": "vzert"
+  },
+  "description": "Portable self-goal + adversary methodology for Claude Code agents.",
+  "plugins": [
+    {
+      "name": "goal-elaboration",
+      "source": "./plugins/goal-elaboration",
+      "description": "Self-goal constitution + independent adversary + fail-open completion gate. Hardens the built-in /goal."
+    }
+  ]
+}

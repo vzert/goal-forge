@@ -1,0 +1,5 @@
+{ "entities": [
+  {"id": "widget-alpha", "status": "active", "conversions_30d": 42, "cost": 1200},
+  {"id": "widget-beta",  "status": "active", "conversions_30d": 0,  "cost": 900},
+  {"id": "widget-gamma", "status": "paused", "conversions_30d": 8,  "cost": 300}
+]}

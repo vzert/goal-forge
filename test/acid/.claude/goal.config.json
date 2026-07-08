@@ -1,0 +1,8 @@
+{
+  "ground_truth_sources": ["test/acid/metrics.json", "test/acid/entities.json"],
+  "sweep_files": ["test/acid/open-decisions.md"],
+  "enumerate_entities_step": "list ALL entities in entities.json (not a sample) with real per-entity data before declaring done",
+  "no_harm_threshold": "don't kill an entity that still converts without a validated replacement",
+  "terminal_actions": ["kill", "delete", "deploy-to-prod"],
+  "adversary": { "backend": "subagent", "external_cmd": "codex exec" }
+}

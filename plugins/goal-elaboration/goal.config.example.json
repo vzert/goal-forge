@@ -1,0 +1,24 @@
+{
+  "ground_truth_sources": [
+    "describe your verifiable sources here, e.g. analytics API, DB tables, the test suite / CI, an APM dashboard"
+  ],
+  "sweep_files": [
+    ".claude/open-decisions.md",
+    "docs/pendientes.md"
+  ],
+  "enumerate_entities_step": "list ALL <entities> (not a sample) with real per-entity data before declaring done — e.g. all changed files with their test result, all endpoints with their p95",
+  "no_harm_threshold": "don't remove/pause/scale what works without a validated replacement and a reversible path",
+  "terminal_actions": [
+    "delete",
+    "kill",
+    "deploy-to-prod",
+    "irreversible-migration",
+    "merge-to-main",
+    "force-push",
+    "publish"
+  ],
+  "adversary": {
+    "backend": "subagent",
+    "external_cmd": "codex exec"
+  }
+}
