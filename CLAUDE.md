@@ -20,6 +20,18 @@ Layout: `plugins/goalspec/` (skill + agent + hooks + config), `.claude-plugin/ma
 - **Don't rename the plugin.** A rename breaks auto-update (it only bumps same-name versions) and
   forces every existing user through a manual migration. The name `goalspec` is now stable.
 
+## Verifying a change (manual acid-test)
+No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-end:
+1. Validate manifests (real exit code, not `| tail`) and parse SKILL.md frontmatter as YAML.
+2. In a throwaway dir with an `open-decisions.md` holding a planted inherited decision, run
+   `/goalspec audit <thing> and decide what to kill`. Assert: a `## Goal-spec` with grounded criteria
+   appears; the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
+   action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
+   stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
+3. Unit-test the Stop gate by piping synthetic `{"last_assistant_message": …}` JSON to
+   `hooks/gate-goal-close.sh` across its branches (no-spec → silent; spec-no-review → advisory;
+   valid `[COMPLETION-REVIEW: none reason=…]` → pass).
+
 ## Memory System
 This project uses the 3-tier memory plugin. Operational indexes live in `memory/`:
 - `memory/MEMORY.md` — lean Tier 1 index (stable orientation only, no volatile data)
