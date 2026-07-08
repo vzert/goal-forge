@@ -6,6 +6,18 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.2.1] - 2026-07-08
+
+### Changed
+- **Optimized the skill's auto-trigger description** (reviewed via the official skill-creator method).
+  The old description listed task *types* but no *domains*, so it read as software/ops jargon and
+  risked silently under-triggering on marketing/copywriting/ops/research tasks — undermining the
+  zero-config-any-domain design. The new description names explicit domains, adds real-world trigger
+  phrasings ("should I kill/ship/publish Y", "figure out why Z dropped", "review this before I
+  merge"), and is more directive ("Trigger it whenever…") to counter Claude's known tendency to
+  under-trigger skills — while keeping the anti-false-fire clause (no contentless "continue" turns,
+  no trivial one-step lookups). Methodology in the body is unchanged.
+
 ## [0.2.0] - 2026-07-08
 
 ### Changed
