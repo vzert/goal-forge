@@ -75,7 +75,7 @@ So this plugin **rides on top of** `/goal` rather than replacing it:
 - `goalspec` produces the *grounded, falsifiable* condition and an *independent adversary*
   that verifies it against ground-truth — the check `/goal` won't perform.
 - Its measurable criteria become the condition you hand to the built-in `/goal` for the multi-turn
-  loop (see the `/goalspec` runbook, step 7).
+  loop (see the `/goalspec` runbook, step 8).
 - Its entry point is `/goalspec` — never `/goal` — so it does not shadow the built-in.
 
 ## Install

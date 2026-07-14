@@ -24,7 +24,7 @@ verification." For true independence, route the critique to a **different model 
    ```json
    "adversary": { "backend": "external", "external_cmd": "codex exec" }
    ```
-3. `/goalspec` step 4 will then run `hooks/external-adversary.sh`, which pipes the goal-spec +
+3. `/goalspec` step 6 will then run `hooks/external-adversary.sh`, which pipes the goal-spec +
    outcome + the adversary prompt to that command on stdin and expects the standard
    `[ADVERSARY-VERDICT: ...]` block back.
 
@@ -37,7 +37,7 @@ grammar the subagent produces:
 [ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
 ```
 
-So the rest of the loop (`/goalspec` step 4, the completion-review declaration, the Stop gate) is
+So the rest of the loop (`/goalspec` step 6, the completion-review declaration, the Stop gate) is
 identical regardless of backend.
 
 ## Safety rails

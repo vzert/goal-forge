@@ -6,6 +6,25 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.3.0] - 2026-07-14
+
+### Added
+- **"Ground yourself before you spec" — the agent can now acquire missing context before it commits
+  the goal-spec.** A new pre-spec step: if any load-bearing Q2 (success) or Q3 (pre-mortem) claim
+  depends on context the agent doesn't have firsthand — how the repo/codebase actually works, what
+  the real ground-truth source contains, or the external prior-art / community best-practice — it
+  delegates a *bounded* exploration to a fresh-context subagent via the Task tool (whatever agent
+  type the environment provides: an `Explore`-style read-only searcher if present, else a
+  general-purpose agent) and folds the synthesis into its criteria and pre-mortem. This stops the
+  agent from spec-ing off a thin context, which is where shallow goal-specs come from.
+- Guardrails baked in so this stays true to the method, not a new rule: **conditional** (skip if you
+  already know the terrain — stays a lightweight prefix, not "always investigate"); **fail-open**
+  (no subagent / no web / headless → do what you can and record the gap in the Assumptions line);
+  **mechanical teeth** (the test is that Q2/Q3 visibly reflect what was found, not a "did I research"
+  checkbox); and an explicit firewall — this forward **helper shares the host's frame and is NOT the
+  independent adversary**; its output is re-derived and still passes the red-team/adversary before
+  close. No new governance marker; it's an application of Grounding + Falsification + Autonomy.
+
 ## [0.2.3] - 2026-07-08
 
 ### Changed

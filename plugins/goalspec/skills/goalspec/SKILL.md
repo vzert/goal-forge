@@ -48,6 +48,15 @@ A terse request is often ambiguous in a way that would send you down the *wrong*
 
 This front-loads the pre-mortem (Q3): instead of only asking "how could I be wrong?" *after* the work, you make sure you're solving the right problem *before* spending the effort.
 
+## Ground yourself before you spec — acquire context you don't have
+
+Clarify resolves *ambiguity only the human can settle*; this resolves *missing context you can get yourself*. You cannot write a grounded success criterion (Q2) or an honest pre-mortem (Q3) about terrain you've never seen — spec-ing from a thin context is exactly where a shallow goal-spec comes from. So before you finalize the spec, check: does any **load-bearing** claim in Q2/Q3 depend on context you don't have firsthand — how this repo/codebase actually works, what the real ground-truth source contains, or the external prior-art / community best-practice for this kind of task? If yes, **go get it before you commit the spec** — don't guess and hope.
+
+- **How** — delegate a *bounded* exploration to a **fresh-context subagent via the Task tool**, using whatever agent type the environment provides (an `Explore`-style read-only searcher if one exists, else a general-purpose agent). Ask it for a **synthesis with citations, not file dumps** — that grounds you *and* keeps your own context clean. For a code task that's the repo/files that hold real per-entity ground-truth; for an external task it's community/best-practice research (web).
+- **A helper, not the adversary.** This explorer does *forward* work and **shares your frame** — it is NOT the independent verifier. What it returns is **input you re-derive** (Grounding: don't inherit), and it stays subject to your red-team and the adversary before close. It never substitutes for either.
+- **Mechanical teeth, not "research more."** The test is not "did I explore" (a gameable checkbox) — it's that your Q2 criteria and Q3 pre-mortem **visibly reflect what you found**. If exploration changed nothing load-bearing, you didn't need it; if it did, the spec must show it.
+- **Conditional and fail-open.** Only when context is genuinely thin — if you already know the terrain, skip it (this stays a lightweight prefix, not "always investigate"). If no subagent is available, no web for the external case, or you're headless, **don't block**: do what you can yourself and record the gap in the **Assumptions** line.
+
 Then execute the work **steered by this spec**, not by a fixed checklist.
 
 ## Before closing — red-team your own outcome against the constitution
@@ -125,11 +134,12 @@ When invoked explicitly or auto-triggered on a substantive task, run these in or
 
 1. **(Optional) config** — best-effort read `.claude/goal.config.json` if present. Absent is the normal case; infer everything domain-specific from the task (above). Never tell the user to go write config.
 2. **Clarify before you commit** — resolve load-bearing ambiguity (objective / scope / terminal-action authorization / done-bar) via `AskUserQuestion` (one batched modal, ≤3 questions, recommended default first) — but only for genuine *user decisions*, never for facts you can determine. If clear enough to skip, open the spec with an **Assumptions (correct me if wrong)** line. In headless/cron, never block on the modal — take the most defensible default and record it.
-3. **Emit the `## Goal-spec`** — the 6 scaffold answers, grounded and falsifiable, ≥2 measurable success criteria whose ground-truth you named yourself.
-4. **Execute**, steered by the spec — run the mechanical sweep + coverage-floor enumeration before considering the objective met; respect action-marker veracity.
-5. **Red-team, then route to the adversary if warranted** (terminal/irreversible action, sweep touched an inherited decision, or you affirmed a mutation):
+3. **Ground yourself before you spec** — if any load-bearing Q2/Q3 claim depends on context you don't have firsthand (repo internals, the real ground-truth source, external best-practice), delegate a *bounded* exploration to a fresh-context subagent via the Task tool (whatever agent type exists — `Explore`-style if present, else general-purpose) and fold its synthesis into your criteria and pre-mortem. Conditional (skip if you know the terrain) and fail-open (no subagent/web/headless → do what you can, note the gap in Assumptions). This is a forward helper, not the independent adversary — re-derive what it returns.
+4. **Emit the `## Goal-spec`** — the 6 scaffold answers, grounded and falsifiable, ≥2 measurable success criteria whose ground-truth you named yourself.
+5. **Execute**, steered by the spec — run the mechanical sweep + coverage-floor enumeration before considering the objective met; respect action-marker veracity.
+6. **Red-team, then route to the adversary if warranted** (terminal/irreversible action, sweep touched an inherited decision, or you affirmed a mutation):
    - **subagent** (default, zero-config): spawn the `goal-adversary` subagent via the Task tool with the goal-spec, your outcome, and where the work lives. It returns `[ADVERSARY-VERDICT: ...]`.
    - **external** (only if `adversary.backend: "external"`): run `${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh` (goal-spec + outcome on stdin) to route to a different model/CLI.
    - On `break`, address every confirmed violation and re-verify. Do not close over a `break`.
-6. **Declare the completion-review** — exactly one `[COMPLETION-REVIEW: ...]` (see grammar above). The Stop gate checks for it (fail-open advisory unless `GOAL_GATE_ENFORCE=1`).
-7. **Optional — hand off to the built-in `/goal`** — if the success criteria are turn-loopable (something Claude's own output can demonstrate), print a ready-to-paste `/goal "<condition derived verbatim from your measurable criteria>"` so the user gets the built-in multi-turn loop, now driven by a grounded, adversary-checked condition. Only when the condition is genuinely checkable from Claude's own output.
+7. **Declare the completion-review** — exactly one `[COMPLETION-REVIEW: ...]` (see grammar above). The Stop gate checks for it (fail-open advisory unless `GOAL_GATE_ENFORCE=1`).
+8. **Optional — hand off to the built-in `/goal`** — if the success criteria are turn-loopable (something Claude's own output can demonstrate), print a ready-to-paste `/goal "<condition derived verbatim from your measurable criteria>"` so the user gets the built-in multi-turn loop, now driven by a grounded, adversary-checked condition. Only when the condition is genuinely checkable from Claude's own output.
