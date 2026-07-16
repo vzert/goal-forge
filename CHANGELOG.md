@@ -6,6 +6,37 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.6.0] - 2026-07-16
+
+### Added
+- **Fourth derived pattern: instrument-consumer trace + rule-surface enumeration.** Five defects
+  shipped in this method itself had one shape — an instrument requesting evidence that nothing
+  consumes, or whose input can be satisfied by non-evidence (see the new
+  `references/instrument-validity-own-tools.md` for the case study). The red-team's "turn this on
+  your own instruments too" phrase demonstrably did not prevent instance 5 (it shipped *during*
+  the release fixing its neighbor, and was caught by two independent Sonnet passes, not by the
+  method). The mechanism is **conditional — it fires only when the change adds or modifies an
+  instrument or a written rule**, so a run that touches neither pays nothing (user-ratified
+  design). Executor side: for each instrument touched, name the consumer of every emission and
+  check the consumer can't be satisfied by non-evidence; for each rule changed, grep its key terms
+  and update or exempt every carrier found. Adversary side (subagent def + external prompt): the
+  same sweep run from outside, with `ungrounded` for consumer-less emissions and `incomplete` for
+  stale rule carriers.
+- **Both empirical branches of 0.5.0 observed live.** (a) The installed 0.5.0 agent def emits
+  `[ADVERSARY-MODEL: …]` **spontaneously** — a spawn prompt that never mentioned the self-report
+  got it anyway, corroborated by 24/24 `"model":"claude-sonnet-5"` entries in the subagent's own
+  transcript (the 0.4.0 def omitted it twice even under explicit prompting; contract-in-def works
+  where contract-in-prompt didn't). (b) The `UNVERIFIABLE-BY-THIS-BACKEND` abstention branch was
+  exercised for the first time with a partner that **genuinely** could not read the session log
+  (an OS-level sandbox denying reads under `~/.claude/projects`): the partner diagnosed the exact
+  scope of its own blindness, reported UNVERIFIABLE, and did **not** count the unverifiable ask —
+  honest abstention, exactly as specified.
+
+### Changed
+- Step-6 tier examples generalized to a dynamic rule that doesn't age: "running any tier above
+  Sonnet-class → spawn `sonnet`; running Sonnet-class or below → spawn `opus`" — no model-family
+  names to fall out of date (user-ratified over naming new families explicitly).
+
 ## [0.5.0] - 2026-07-16
 
 ### Added
