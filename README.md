@@ -57,7 +57,10 @@ on any domain with **zero configuration** — no control plane, no fleet, no han
    clear it skips the question and states its assumptions inline so you can course-correct.
 2. **Does the work, with mechanical teeth.** A literal sweep of your decision files (so inherited
    decisions can't be silently skipped), a coverage floor (enumerate all children, not a sample),
-   and action-marker veracity (only claim a mutation that returned an id this run).
+   and action-marker veracity (only claim a mutation that returned an id this run). The ask door
+   stays open the whole run: a fork it discovers *inside* the work — the kind you only see once
+   you've read the code — comes back to you as a question, not as a line in a summary you can't
+   reply to. A decision it never asked is a decision you never made.
 3. **Red-teams itself, then routes to an independent adversary** for terminal/irreversible decisions
    — a fresh-context subagent by default, or a different model/CLI for true independence.
 4. **Closes through a completion gate** — a Stop hook that requires a `[COMPLETION-REVIEW: …]`
