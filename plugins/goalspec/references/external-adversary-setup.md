@@ -1,18 +1,21 @@
 # External adversary setup — "the partner reviews, never the host"
 
-By default the adversary is a `goal-adversary` **subagent**: fresh context, same model. Fresh context
-is a real independence lever — it hasn't seen your reasoning, so it can't inherit your blind spots.
-But it *is* the same model, so it shares correlated biases. Community prior art on adversarial-review
-plugins is blunt about this: a same-model panel is "structured self-critique, not independent
-verification." For true independence, route the critique to a **different model or CLI** — the
-"partner reviews, never the host" pattern.
+By default the adversary is a `goal-adversary` **subagent**: fresh context — it hasn't seen your
+reasoning, so it can't inherit your conversation's blind spots. Since 0.5.0, for **terminal
+decisions** the executor also spawns it on a **different model tier** than its own (a per-spawn
+`model` override — zero install, zero config) and verifies where it actually ran from the
+adversary's own `[ADVERSARY-MODEL: …]` self-report, because harnesses fall back silently when an
+override can't be honored. That closes most of the correlated-bias gap within one model family.
+Community prior art on adversarial-review plugins is still blunt about the remainder: a same-vendor
+panel is weaker than a genuinely foreign one. For the strongest independence, route the critique to
+a **different vendor's model/CLI** — the "partner reviews, never the host" pattern.
 
 ## When to use which
 
 | Backend | Independence | Setup | Use when |
 |---|---|---|---|
-| `subagent` (default) | Fresh context, same model | None | Most tasks; correlated bias is acceptable |
-| `external` | Different model *and* context | A second CLI on PATH | Terminal/irreversible decisions; when you want a genuinely uncorrelated check |
+| `subagent` (default) | Fresh context; different *tier* of the same family for terminal actions (self-attested, degrades announced) | None | Most tasks, including terminal ones |
+| `external` | Different **vendor** *and* context | A second CLI on PATH | The premise under review came from your model family; single-model harnesses; maximum decorrelation |
 
 ## Enabling the external backend
 
@@ -36,11 +39,18 @@ verification." For true independence, route the critique to a **different model 
 ## Contract
 
 `external-adversary.sh` reads the goal-spec + outcome + ask record on stdin and prints exactly the
-same verdict grammar the subagent produces:
+same verdict grammar the subagent produces — including the model self-report that opens it:
 
 ```
+[ADVERSARY-MODEL: <name> / <exact id, or UNKNOWN>]
+...confirmed-violation bullets...
 [ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
 ```
+
+The model line exists because "I routed to a different model" is itself a load-bearing claim, and
+the routing parameter (config, spawn override) is not evidence for it — a wrapper can be broken, a
+harness can fall back silently. Only the partner can attest what it is; `UNKNOWN` is honest and
+downgrades the independence claim, a fabricated ID would poison it.
 
 So the rest of the loop (`/goalspec` step 6, the completion-review declaration, the Stop gate) is
 identical regardless of backend.
@@ -68,6 +78,10 @@ rather than assume**.
 - **Missing binary → fail-open.** If the configured CLI isn't on PATH, the script prints a `hold`
   verdict *plus a stderr note that no independent check ran* — treat that `hold` as UNVERIFIED, not
   as a pass. It never blocks the host.
+- **Missing self-report → independence UNVERIFIED.** A filled verdict with no `[ADVERSARY-MODEL: …]`
+  line still counts as a verdict, but the script says so on stderr and the completion-review must
+  claim `model=same`, not `model=different`. The Stop gate cross-checks a `model=different (<id>)`
+  claim against a matching self-report in the turn (advisory, fail-open).
 - **Anti-recursion.** If the external command is itself a Claude that has this plugin installed, the
   script exports `GOAL_ADVERSARY_ACTIVE=1`; a nested invocation detects the flag and refuses to
   re-enter the loop. Without this, an external-Claude backend could recurse indefinitely.

@@ -76,6 +76,13 @@ the claimed outcome against this 5-principle constitution — not to approve it:
      Do not assume you cannot reach it: check.
   5. No-harm — don't remove/pause/scale something that works without a validated, reversible replacement.
 
+FIRST LINE OF YOUR OUTPUT — identify yourself. The executor claims model-independent verification
+and the only ground-truth for that claim is your own self-report (a spawn/config parameter proves
+nothing; harnesses fall back silently). Emit, quoted from your own context/knowledge of what model
+you are — never a guess, and UNKNOWN if you genuinely do not know:
+
+[ADVERSARY-MODEL: <model name> / <exact model id, or UNKNOWN>]
+
 Attack every load-bearing figure. Default to skeptical: if you cannot verify a claim, count it as a
 violation, not a pass — the one exception is the dead-handoff check in principle 4, and ONLY if you
 truly cannot reach the session log (an unreachable instrument is not a finding; an unchecked one is
@@ -114,6 +121,10 @@ set +e
 OUT=$(printf '%s' "$PROMPT" | $EXT_CMD 2>&1)
 RC=$?
 VERDICT=$(printf '%s' "$OUT" | grep -Eo "$VERDICT_RE" | tail -1 || true)
+# The model self-report is requested by the prompt, so requesting it is not enforcing it (two
+# different-model reviews confirmed this gap by reading this very file). Extract it mechanically;
+# reject the prompt's own literal template (`<model name>`) the same way VERDICT_RE rejects `<n>`.
+MODEL_LINE=$(printf '%s' "$OUT" | grep -Eo '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 || true)
 set -e
 
 if [ $RC -ne 0 ] || [ -z "$VERDICT" ]; then
@@ -124,6 +135,22 @@ if [ $RC -ne 0 ] || [ -z "$VERDICT" ]; then
     printf '%s\n' "$OUT" | head -20
   } >&2
   exit 0
+fi
+
+# Verdict is valid either way (fail-open); but an absent self-report degrades the INDEPENDENCE
+# claim, and silence here is how a degraded pass gets read as an independent one.
+if [ -z "$MODEL_LINE" ]; then
+  echo "external-adversary: partner returned no [ADVERSARY-MODEL:] self-report — independence UNVERIFIED; report model=same in the completion-review, not model=different." >&2
+fi
+
+# Bare-verdict floor: a verdict with NO evidence of work above it (no bullets, no ground-truth —
+# observed in the wild: a real partner's last round returned a naked hold after two rounds of showing
+# all its work) is not a pass. This is a FLOOR, not proof of diligence — filler lines can game it
+# (you cannot gate your way out of specification gaming; the lever is the executor treating
+# UNVERIFIED as UNVERIFIED) — but it catches the lazy-partner case that actually happened.
+EVIDENCE_LINES=$(printf '%s' "$OUT" | grep -vE '^\s*$|\[ADVERSARY-VERDICT:|\[ADVERSARY-MODEL:' | grep -c . || true)
+if [ "$EVIDENCE_LINES" -eq 0 ]; then
+  echo "external-adversary: partner returned a bare verdict with no evidence of work (no bullets/ground-truth above it) — treat it as UNVERIFIED, not a pass; re-run or route to the other backend." >&2
 fi
 
 printf '%s\n' "$OUT"

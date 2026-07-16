@@ -62,7 +62,9 @@ on any domain with **zero configuration** — no control plane, no fleet, no han
    you've read the code — comes back to you as a question, not as a line in a summary you can't
    reply to. A decision it never asked is a decision you never made.
 3. **Red-teams itself, then routes to an independent adversary** for terminal/irreversible decisions
-   — a fresh-context subagent by default, or a different model/CLI for true independence.
+   — a fresh-context subagent spawned on a **different model tier** than the executor (automatic,
+   zero-config; the adversary self-attests where it ran, and a same-model fallback is announced,
+   never silent), or a different vendor's model/CLI for maximum decorrelation.
 4. **Closes through a completion gate** — a Stop hook that requires a `[COMPLETION-REVIEW: …]`
    declaration. Fail-open/advisory by default; opt-in blocking with `GOAL_GATE_ENFORCE=1`.
 
@@ -265,7 +267,7 @@ goal-forge/
 - [`outcome-loop-beats-gates.md`](plugins/goalspec/references/outcome-loop-beats-gates.md) —
   why you can't gate or verify your way out of specification gaming, and what to do instead.
 - [`external-adversary-setup.md`](plugins/goalspec/references/external-adversary-setup.md) —
-  routing critique to a different model for true independence.
+  routing critique to a different vendor's model/CLI for maximum decorrelation.
 
 ## Prior art
 

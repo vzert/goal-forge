@@ -24,7 +24,7 @@ Create `.claude/goal.config.json` (copy `goal.config.example.json`) **only** for
 | Field | When to set it |
 |---|---|
 | `sweep_files` | You want the inherited-decision grep to be *deterministic* — pin the exact files instead of relying on discovery. |
-| `adversary.backend` / `external_cmd` | You want the adversary routed to a *different model/CLI* (`codex`, `gemini`, another Claude) for true independence. This is a preference — it can't be inferred. See `external-adversary-setup.md`. |
+| `adversary.backend` / `external_cmd` | You want the adversary routed to a *different vendor's model/CLI* (`codex`, `gemini`, another Claude) for maximum decorrelation. (A different *tier* of the same family is already automatic for terminal actions — no config.) This is a preference — it can't be inferred. See `external-adversary-setup.md`. |
 
 The remaining fields (`ground_truth_sources`, `enumerate_entities_step`, `no_harm_threshold`,
 `terminal_actions`) exist in the example only as **overrides** — set them to *force* a fixed value

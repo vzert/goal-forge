@@ -87,6 +87,15 @@ body = cr.group(2)
 if mode == "adversary":
     if not re.search(r"\[ADVERSARY-VERDICT:", text, re.I):
         print("REMIND|completion-review:adversary-claimed-but-no-verdict"); sys.exit(0)
+    # model=different is a claim about who verified; its only ground-truth is the adversary
+    # own [ADVERSARY-MODEL: ...] self-report. An executor-typed id with no matching self-report
+    # in the turn is exactly the unverified-independence claim this field exists to prevent.
+    md = re.search(r"model=different\s*\(([^)]+)\)", body, re.I)
+    if md:
+        claimed = md.group(1).strip().lower()
+        reports = re.findall(r"\[ADVERSARY-MODEL:\s*([^\]]*)\]", text, re.I)
+        if not any(claimed and claimed in r.lower() for r in reports):
+            print("REMIND|completion-review:model-different-claimed-but-no-matching-self-report"); sys.exit(0)
 else:  # none
     if not re.search(r"reason=.{20,}", body):
         print("REMIND|completion-review:none-needs-reason>=20"); sys.exit(0)

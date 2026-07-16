@@ -6,6 +6,55 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.5.0] - 2026-07-16
+
+### Added
+- **Different-model adversary by default for terminal actions — zero install, zero config.** The
+  evidence (v0.4.0, recorded in the repo memory): 6 same-model fresh-context adversary rounds
+  accepted a false load-bearing premise — round 6 explicitly blessed it — and a different model
+  refuted it on first contact, by doing the thing the premise called impossible. Fresh context buys
+  independence from the *conversation*, never from the *model's priors*. Yet the only
+  different-model path was opt-in, config-gated, and dependent on an external CLI that can be absent
+  or broken. Now, when closing a terminal/irreversible decision, the executor reads its **own**
+  model from its context and spawns `goal-adversary` with a per-spawn `model` override on a
+  different tier (Opus-class executor → `sonnet`; Sonnet-class or below → `opus` — verification is
+  the wrong place to save capability). Verified by controlled experiment before building: identical
+  probes to the plugin-provided agent, differing only in the override, self-identified as Sonnet 5
+  vs the executor's Opus 4.8.
+- **`[ADVERSARY-MODEL: <name> / <id>]` self-report opens every adversary output** (subagent and
+  external backend both). The routing parameter is *not* evidence that routing happened: the harness
+  documentedly **falls back silently** to the inherited model when an override can't be honored, and
+  `external_cmd` can be a broken wrapper. Only the partner can attest what it is. The executor
+  copies the self-report — never the spawn parameter — into the completion-review as
+  `model=different (<id>)` or `model=same`.
+- **The self-report has mechanical teeth, not just prompt text** — added after two *independent
+  Sonnet reviews of this very change* converged on the same finding: the model line was requested in
+  three prompts and enforced by zero code paths (the exact "check without evidence intake" failure
+  the method warns about). Now `external-adversary.sh` extracts `[ADVERSARY-MODEL: …]` (rejecting
+  the prompt's own `<model name>` template, as `VERDICT_RE` rejects `<n>`) and flags its absence on
+  stderr as independence-UNVERIFIED; and the Stop gate cross-checks a `model=different (<id>)`
+  completion-review claim against a matching self-report in the turn — advisory, fail-open, like
+  every other gate branch.
+
+- **A `hold` must show the work — the bare-hold gap is closed the same way.** Real case: a partner's
+  third round returned a naked `hold` with zero bullets after two rounds of showing all its work.
+  Now the agent contract states a hold's bullets change subject (what was attacked, what held) rather
+  than disappear; `external-adversary.sh` mechanically flags a verdict with no evidence lines above
+  it as UNVERIFIED on stderr (a floor, not proof of diligence — filler can game it; the lever remains
+  the executor treating UNVERIFIED as UNVERIFIED); and the skill instructs the executor to never cite
+  a bare hold as verification. Found in round 2 of this release's own dogfooding: the adversary
+  caught the executor closing over the open pendiente that documented this exact gap.
+
+### Changed
+- **Degradation is announced, never silent** (fail-open preserved): same-or-UNKNOWN self-report →
+  the verdict still counts, but the completion-review must disclose `model=same` — the exact pattern
+  of the external backend's UNVERIFIED hold. No harness override, single-model account, non-Claude
+  harness: proceed same-model and say so. Nothing blocks.
+- **`external` backend repositioned, not demoted**: the subagent override decorrelates across tiers
+  of one family; `external` decorrelates across **vendors** — still the strongest form and the only
+  lever left on a single-model harness. (The backend that caught the v0.4.0 premise stays exactly
+  where it was.)
+
 ## [0.4.0] - 2026-07-16
 
 ### Added
