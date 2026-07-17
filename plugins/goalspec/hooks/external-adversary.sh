@@ -75,8 +75,11 @@ the claimed outcome against this 5-principle constitution — not to approve it:
      claim the executor authored — a POINTER, never evidence. TEST YOUR REACH FIRST: if you can read
      files on this host, go verify the ask yourself in the session log (Claude Code: the top-level
      <session-id>.jsonl under ~/.claude/projects/<cwd, every non-alphanumeric mapped to a dash>; read
-     the parent file, never a subagents/ child, never newest-mtime; match the AskUserQuestion
-     tool_use + its user tool_result by STRUCTURE, not by text-grep; confirm it is this run and this
+     the parent file, never a subagents/ child, never newest-mtime; never exclude a file because it
+     contains your own input — the parent session records the very invocation that produced your
+     stdin, so overlap with your payload identifies the LIVE parent, it does not make the file
+     yours; match the AskUserQuestion tool_use + its user tool_result by STRUCTURE, not by
+     text-grep; confirm it is this run — the file holds the invocation that launched you — and this
      decision). A claimed ask you can reach and cannot find is a confirmed DEAD HANDOFF. Only if you
      genuinely have no file access, report UNVERIFIABLE-BY-THIS-BACKEND and do NOT count it — do not
      manufacture a violation with an instrument that cannot see; that is principle 1 turned on you.

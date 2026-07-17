@@ -1,13 +1,13 @@
 # Instrument-validity, turned on the method's own tools
 
-Five defects shipped in this method itself — across four releases — had **one shape**: an
+Six defects shipped in this method itself — across five releases — had **one shape**: an
 instrument that requests or checks evidence that nothing actually consumes, or whose input
 channel cannot carry (or can be spoofed into carrying) the evidence it claims to check. Each was
 caught from *outside* the method — by an independent different-model review, by a real partner
 falsifying a premise, or by dogfooding pain — never by the method's own red-team, which at the
 time only carried the aspirational phrase "turn this on your own instruments too".
 
-## The five instances
+## The six instances
 
 1. **A check without intake (v0.4.0).** A verification step asked another party for evidence, and
    no code path or agent ever received or read what came back. The check "existed"; its output
@@ -26,6 +26,17 @@ time only carried the aspirational phrase "turn this on your own instruments too
    prompts and consumed by zero code paths — the exact shape of instance 1, reintroduced *during
    the release that fixed its neighbor*. Two independent Sonnet passes caught it; the method
    didn't.
+6. **A transcript sweep that disowned its own parent (caught during the 0.7.0 verification, fixed
+   in 0.7.1).** The different-model adversary excluded the executor's live session file from its
+   ask sweep because the file contained the adversary's own spawn-prompt text and kept growing
+   mid-run — reading both parent signatures as "this is my own transcript". The inference is
+   backwards: a parent session *necessarily* records the spawn `tool_use` verbatim and grows
+   because the main conversation is progressing — so the sweep dismissed the one file guaranteed
+   to hold the evidence, and burned two rounds on a phantom missing-session. Same shape as
+   instance 2 with a different selector: a rule that structurally cannot find what it seeks —
+   mtime there, content-overlap here. The fix is the mechanical identity check now in the def:
+   find **your own spawn record** in the candidate file; the file carrying the prompt you actually
+   received is the live parent.
 
 ## The mechanical questions (the fix)
 

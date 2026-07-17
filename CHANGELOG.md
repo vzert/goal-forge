@@ -6,6 +6,27 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.7.1] - 2026-07-16
+
+### Fixed
+- **Third transcript-identity trap: never disown the parent by content overlap.** During the 0.7.0
+  release verification itself, the different-model adversary excluded the executor's live session
+  file from its ask sweep after finding its own spawn-prompt text inside it — reading "contains the
+  text I was launched with" as "this is my own transcript". The inference is exactly backwards: the
+  parent session *necessarily* records the `Task`/`Agent` `tool_use` that launched the subagent
+  (prompt verbatim), and it keeps growing while the subagent runs because the main conversation is
+  progressing. Two verification rounds were burned reporting a phantom missing-session while the
+  `AskUserQuestion` pair sat in the dismissed file. The agent def now names the trap alongside the
+  existing two (never newest-mtime, never text-grep) and upgrades the positive control to a
+  mechanical identity check the adversary can run without trusting anyone: **find your own spawn
+  record in the candidate file — the file that contains the prompt you actually received is the
+  live parent, the one that must hold the ask.** The external backend's prompt carries the same
+  rule for its stdin payload (overlap with your payload identifies the live parent; it does not
+  make the file yours). The case-study reference (`references/instrument-validity-own-tools.md`)
+  records the incident as **instance 6** — a carrier this release's own first pass left stale,
+  caught by the verifying adversary running the rule-surface enumeration against the release
+  itself (the 0.6.0 mechanism working as designed, on the doc that documents it).
+
 ## [0.7.0] - 2026-07-16
 
 ### Added
