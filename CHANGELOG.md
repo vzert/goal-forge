@@ -6,6 +6,31 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.7.0] - 2026-07-16
+
+### Added
+- **Size-aware grounding: an inline branch the spec previously didn't license.** "Ground yourself
+  before you spec" modeled acquisition as binary — *skip* (terrain known) or *delegate* (subagent) —
+  with inline reading existing only as the degraded no-subagent fallback. A user-reported
+  production run on Fable exposed the gap (session-status evidence: grounding that needed ~10
+  targeted operations — 1 pattern, 1 file read, 3 dirs, ~3.6k tokens at 7% context — was correctly
+  done inline, against the letter of the spec), and the harness's own
+  delegation policy ("single-fact / known-file lookups go direct; delegate when sweeping many
+  files") actively steers that way. The step now sizes the acquisition first: **targeted** (you can
+  name the exact few files/queries; what you read is what you keep) → inline; **broad** (you'd sift
+  far more than you'll keep — many files, unknown locations, web research) → delegate. The test is
+  **context hygiene, not command count** — spec-compliant behavior no longer costs a spawn that
+  saves nothing.
+- **Cheap tier for the explorer — the 0.5.0 adversary rule, mirrored.** The adversary spends
+  capability *up* a tier because independence is its product; the explorer saves capability *down*
+  a tier because its output is re-derived input. Mechanical explorations (locate/enumerate/cite)
+  now default to a `model` override targeting a cheaper tier (`haiku`-class or the harness's
+  smallest); judgment-heavy explorations (weighing prior-art, characterizing subtle behavior) keep
+  the session tier — a cheap model that mis-summarizes terrain poisons the spec it was meant to
+  ground. Deliberately **no self-report and no marker**, unlike the adversary: a silently-ignored
+  override loses nothing because the explorer's independence is not load-bearing (its synthesis is
+  re-derived input either way, and stays subject to the red-team and the adversary).
+
 ## [0.6.0] - 2026-07-16
 
 ### Added
