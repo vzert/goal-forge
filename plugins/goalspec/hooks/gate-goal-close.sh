@@ -36,11 +36,10 @@ except Exception:
 
 # 1. Gather the assistant text for this turn.
 #    Prefer last_assistant_message (current turn, never lags). Best-effort append the transcript.
-parts = []
 lam = data.get("last_assistant_message")
-if isinstance(lam, str) and lam:
-    parts.append(lam)
+lam_text = lam if isinstance(lam, str) else ""
 
+tx_parts = []
 tpath = data.get("transcript_path")
 if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
     try:
@@ -58,15 +57,17 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
                 msg = ev.get("message") or {}
                 content = msg.get("content")
                 if isinstance(content, str):
-                    parts.append(content)
+                    tx_parts.append(content)
                 elif isinstance(content, list):
                     for blk in content:
                         if isinstance(blk, dict) and blk.get("type") == "text":
-                            parts.append(blk.get("text") or "")
+                            tx_parts.append(blk.get("text") or "")
     except Exception:
         pass
 
-text = "\n".join(parts)
+tx_text = "\n".join(tx_parts)
+# Full text for order-independent checks (goal-spec presence, waiver, ADVERSARY-MODEL reports).
+text = lam_text + "\n" + tx_text
 if not text.strip():
     fail_open()
 
@@ -79,11 +80,16 @@ if re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I):
     fail_open()
 
 # 4. Validate the completion-review declaration.
-cr = re.search(r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]", text, re.I)
-if not cr:
+# Operative completion-review = the current-turn declaration if present (last_assistant_message is
+# the reliable current-turn source), else the MOST RECENT one in the transcript. Anchoring on the
+# *last* declaration — never the first re.search match — is what prevents an earlier exploratory or
+# malformed [COMPLETION-REVIEW] from permanently poisoning the check after a correct one is emitted.
+cr_pat = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
+crs = re.findall(cr_pat, lam_text, re.I) or re.findall(cr_pat, tx_text, re.I)
+if not crs:
     print("REMIND|completion-review:absent"); sys.exit(0)
-mode = cr.group(1).lower()
-body = cr.group(2)
+mode, body = crs[-1]
+mode = mode.lower()
 if mode == "adversary":
     if not re.search(r"\[ADVERSARY-VERDICT:", text, re.I):
         print("REMIND|completion-review:adversary-claimed-but-no-verdict"); sys.exit(0)

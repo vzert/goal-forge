@@ -6,6 +6,23 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.8.1] - 2026-07-18
+
+### Fixed
+- **Stop gate: anchor the completion-review on the LAST declaration, not the first `re.search` match.**
+  Found by dogfooding 0.8.0's own close. `hooks/gate-goal-close.sh` builds its scan text as
+  `last_assistant_message + entire transcript`, then used `re.search` (first match) to pick the
+  `[COMPLETION-REVIEW: …]` to validate — so an earlier *exploratory or malformed* declaration
+  permanently poisoned the check even after a correct one was emitted. Concretely: a first summary
+  wrote `model=different (Sonnet 5 / claude-sonnet-5, vs my Opus 4.8)` — the trailing `, vs my Opus
+  4.8` made the claimed id longer than the adversary's `[ADVERSARY-MODEL: …]` self-report, so the
+  substring match failed; a later, clean re-declaration could not rescue it because first-match keeps
+  returning the earliest occurrence. The gate now selects the **current-turn** declaration
+  (`last_assistant_message`) if present, else the **most recent** one in the transcript — a stale or
+  malformed earlier marker can no longer poison a valid close. Verified: malformed-then-clean now
+  passes; malformed-only and genuinely-unmatched-self-report still block. (Instrument-validity on the
+  method's own tooling — the same class of defect the 4th derived pattern exists to catch.)
+
 ## [0.8.0] - 2026-07-18
 
 ### Added
