@@ -6,6 +6,48 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.8.0] - 2026-07-18
+
+### Added
+- **"Ratify the spec before you execute" — the plan-mode checkpoint (root-cause fix).** New
+  first-class step (4b) between *emit spec* and *execute*. Once the goal-spec is written, the user
+  still hasn't seen what the terse request *became* — "resolve the dates" spec'd into an ~80-column
+  migration + a prod deploy while the user only asked about a label reading "6h ago." Conditional
+  (fires when the spec is non-trivial, contains a terminal/irreversible action, or the work outgrew
+  the trigger request; skipped for trivial specs so it never adds ceremony to a one-liner) and
+  portable (one `AskUserQuestion` summarizing objective + blast-radius + terminal action, with
+  Approve / Narrow / Minimal-fix / Stop; least-irreversible default when a terminal action is
+  present; native plan mode optional where the harness has it). This is the checkpoint the audited
+  session lacked: the spec was correct and the execution competent, and it *still* felt like it
+  "dragged on for an hour" purely because the user never got to approve the scope the (correct)
+  reframe produced. Requested directly by the user after they read this audit.
+- **"When the work outgrows the request" — signal the reframe early, don't run dark.** Companion
+  section, derived from the same session (a "why does it say synced 6h ago?" the user misdiagnosed as
+  a server-clock display bug, which goalspec correctly reframed into a real per-row
+  timestamp-corruption migration across ~20 tables + a prod deploy). The transcript decomposed to
+  **~1.5h of dense agent activity out of 8.26h wall-clock (~18%)**; the other ~82% was long gaps with
+  no logged agent action. Crucially — corrected by the user's primary-source account — those gaps
+  were **not** the user being away: they were **present and waiting**, interrupting mid-run (*"Listo?"*
+  ×2) because the agent looked stuck while it worked silently or blocked on the ~100-min adversary run
+  / deploy rebuild (the agent itself later opened with *"perdón — llevo rato en modo silencioso"*).
+  So "it took too long" was dominated by **silent long-running stretches watched by a present user**,
+  not by inefficient work. Fixes: (1) surface a **cheap coarse fork** before sinking the full
+  coverage-floor enumeration; (2) drop a **one-line progress beat** at natural checkpoints so a long
+  silence never reads as "abandoned."
+
+### Changed
+- **Least-irreversible default for scope/terminal forks.** The `AskUserQuestion` convention "make the
+  first option the recommended default so the user can proceed in one click" one-click-shipped a
+  **production deploy** in the audited session (the *Alcance* modal defaulted to "Implementar, testear
+  y **deployar** (Recommended)"). The rule now carries a hard exception: for a **scope** or
+  **terminal-authorization** question, the recommended default is the **least-irreversible option that
+  still meets the confirmed objective** — the terminal/maximal option goes in as an explicit
+  *non-default* choice. Updated in all three carriers (clarify step, "Decisions you find mid-run",
+  and the run-loop step-2 summary) per rule-surface enumeration. (Note: the audited session's
+  *Históricos* modal already defaulted correctly to the conservative middle option — the footgun was
+  isolated to the terminal-action question, so the fix is scoped there, not a blanket "default to
+  smallest".)
+
 ## [0.7.1] - 2026-07-16
 
 ### Fixed

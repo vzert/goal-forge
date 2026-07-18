@@ -25,7 +25,9 @@ No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-
 1. Validate manifests (real exit code, not `| tail`) and parse SKILL.md frontmatter as YAML.
 2. In a throwaway dir with an `open-decisions.md` holding a planted inherited decision, run
    `/goalspec audit <thing> and decide what to kill`. Assert: a `## Goal-spec` with grounded criteria
-   appears; the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
+   appears; because the spec carries a terminal action (kill), the **4b ratify-the-spec gate** fires
+   (an `AskUserQuestion` presenting scope/blast-radius before execution, least-irreversible default);
+   the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
 3. Unit-test the Stop gate by piping synthetic `{"last_assistant_message": …}` JSON to
