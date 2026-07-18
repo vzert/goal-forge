@@ -6,6 +6,32 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.9.0] - 2026-07-18
+
+### Added
+- **Surface-the-minimal-fix lens (Q2) — the systemic frame must not eat the symptom-fix option.**
+  Q1 ("real objective behind the narrative") is a reframing lever: right when the user *under*-scoped
+  (shallow symptom, deep cause). Its opposite trap is subtle — and, importantly, it is **not** "the
+  agent went deep without asking." In the audited session goalspec's clarify step *did* surface scope
+  choices, and the user chose depth: they were explicitly offered *"Dejar histórico como está — cero
+  riesgo sobre prod"* and picked *"Migración segura acotada (Recommended)"* + *"Implementar, testear y
+  deployar (Recommended)"* themselves. The real gap is narrower and grounded: the agent offered three
+  *sizes* of production migration but **never put the genuinely minimal option on the table** — a
+  reversible read-layer fix for the one timestamp the user actually complained about, touching no prod
+  data. The systemic frame pre-empted the symptom-fix, so the user could pick *how big a migration* but
+  never *migration vs. no migration at all*. New Q2 lens: name **both** the smallest reversible fix for
+  the reported symptom and the systemic fix, and make the minimal one a real choice via the ratify gate.
+  Deliberately **not** "always ship the band-aid" — if the minimal fix is genuinely insufficient for a
+  correctness the user needs, say so; the point is an honest fork with blast-radius visible, so the
+  *user* chooses depth rather than depth being chosen by omission. **Enforced:** the `goal-adversary`'s
+  No-harm check now flags executing a systemic/irreversible fix while the minimal option was never
+  surfaced — with two mandatory guards (don't flag when the minimal fix was genuinely insufficient and
+  they said so; don't flag when the minimal option *was* surfaced and the user chose depth). Requested
+  by the user after this audit; the first draft of this lens ("default to minimal, systemic is opt-in")
+  was caught by the different-model adversary as ungrounded (it contradicted 0.8.0's own transcript
+  finding that the reframe was the method working) and unsafe (it licensed shipping band-aids over
+  genuinely-required fixes) — this is the corrected form.
+
 ## [0.8.1] - 2026-07-18
 
 ### Fixed
