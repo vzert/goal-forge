@@ -6,6 +6,28 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.10.0] - 2026-07-18
+
+### Changed
+- **Ratify gate blast-radius: phrase it for a non-technical user, and a counts-anchored size label —
+  never a time estimate.** The audited user's wrong expectation came from authorizing a loop without
+  gauging its size. The ratify gate (0.8.0) already shows the blast-radius (*"~80 columns across ~20
+  tables + a deploy"*) — this makes that legible to a non-technical reader (*"this changes about 80
+  things across your database and pushes to production — not something we can easily undo"*: what it
+  touches + whether it's reversible, not jargon), optionally with a coarse **small / substantial /
+  large** label anchored **strictly to countable structure** (things touched, reversible vs terminal).
+- **Explicitly bans a time/effort estimate.** An earlier draft of this release tried a human-effort
+  *time* band per option. Three consecutive different-model adversary rounds broke it as ungrounded:
+  converting enumerated structure → a time band needs a per-unit human-effort rate an LLM has no
+  calibration for, and coarse buckets don't absorb it (even "80 columns" spans ~1.3h–13h across three
+  buckets depending on an unknowable per-column rate — false precision just relocated from the agent's
+  own ETA). The convergence guard ("three breaks → the design is wrong, not the wording") retired the
+  time approach entirely. What *is* groundable — and equally dimensioning for a non-technical user —
+  is countable structure (how much a change touches, and reversibility), which the agent knows from
+  the coverage floor. So the plugin dimensions by *what it touches*, never by *how long it takes*. A
+  fitting close: the minimal-fix lens shipped in 0.9.0 caught this very release starting to build an
+  estimation subsystem when a phrasing touch on existing blast-radius was the whole fix.
+
 ## [0.9.0] - 2026-07-18
 
 ### Added
