@@ -28,10 +28,21 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
    - **Google Gemini CLI** — needs an adapter: `gemini -p` takes the prompt as an **argument**, not on
      stdin, so it cannot be used bare with this script. Wrap it, e.g. a `gemini-stdin` on your PATH:
      `#!/usr/bin/env bash` + `exec gemini -p "$(cat)"`, then `external_cmd: "gemini-stdin"`.
-2. In `.claude/goal.config.json`:
+2. In `.claude/goal.config.json` (project) **or** `~/.claude/goal.config.json` (user-global):
    ```json
    "adversary": { "backend": "external", "external_cmd": "codex exec" }
    ```
+   **Resolution is per-key, project→global.** Each of `adversary.backend`, `adversary.external_cmd`,
+   `sweep_files` is taken from the project file if set there, else from the global file — it is *not*
+   whole-file precedence. Put `adversary` in `~/.claude/goal.config.json` and *every* project inherits
+   the external backend with no per-repo file — the right place when you've decided you always want a
+   different-vendor adversary (e.g. your host pins subagents to a weak tier, so the subagent backend
+   can't give you a capable one; the external CLI runs as a shell command, not a subagent, and sidesteps
+   that entirely). A project file can then override just one key (point at a different CLI, or set
+   `backend: "subagent"` to opt out) **or** add only `sweep_files` **without** nulling the global
+   adversary. Both surfaces use this same per-key fallback — `/goalspec` step 6 reads `adversary.backend`,
+   `external-adversary.sh` reads `external_cmd` — so the routing decision and the command invoked are
+   drawn from the same resolution and never disagree.
 3. `/goalspec` step 6 will then run `hooks/external-adversary.sh`, which pipes the goal-spec +
    outcome + ask record + the adversary prompt to that command on stdin and expects the standard
    `[ADVERSARY-VERDICT: ...]` block back.

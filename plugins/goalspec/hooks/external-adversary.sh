@@ -14,7 +14,8 @@
 # (0.4.0 drafted the assumption "external cannot read the log" as fact; a Sonnet partner falsified it
 # by reading the log, before release. Do not re-introduce it.) See references/external-adversary-setup.md.
 #
-# Config (.claude/goal.config.json -> adversary.external_cmd), e.g.:
+# Config (adversary.external_cmd, read per-key from project .claude/goal.config.json, else user-global
+# ~/.claude/goal.config.json), e.g.:
 #   "codex exec"      (OpenAI Codex CLI)
 #   "gemini -p"       (Google Gemini CLI)
 #   "claude -p --model claude-sonnet-5"   (a different Claude model as the partner)
@@ -35,13 +36,19 @@ if [ "${GOAL_ADVERSARY_ACTIVE:-}" = "1" ]; then
 fi
 export GOAL_ADVERSARY_ACTIVE=1
 
-# Resolve the external command from config, arg, or env. Default: codex exec.
-CONFIG="${GOAL_CONFIG_PATH:-.claude/goal.config.json}"
+# Resolve the external command from env, arg, or config. Default: codex exec.
+# Config precedence: project (CWD .claude/goal.config.json) OVERRIDES user-global
+# (~/.claude/goal.config.json). The global file exists so a user who has chosen an external backend
+# sets external_cmd ONCE and every project inherits it — no per-repo file. GOAL_CONFIG_PATH, if set,
+# pins the project layer explicitly. The SKILL reads adversary.backend with the SAME precedence, so
+# the gate that decides to call this hook and the command it runs stay in agreement.
+PROJECT_CONFIG="${GOAL_CONFIG_PATH:-.claude/goal.config.json}"
+GLOBAL_CONFIG="${HOME:-}/.claude/goal.config.json"
+_read_ext_cmd() { python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('adversary',{}) or {}).get('external_cmd','') or '')" "$1" 2>/dev/null || true; }
 EXT_CMD="${GOAL_ADVERSARY_CMD:-}"
 if [ -z "$EXT_CMD" ] && [ -n "${1:-}" ]; then EXT_CMD="$1"; fi
-if [ -z "$EXT_CMD" ] && [ -f "$CONFIG" ]; then
-  EXT_CMD=$(python3 -c "import json,sys; print((json.load(open('$CONFIG')).get('adversary',{}) or {}).get('external_cmd','') or '')" 2>/dev/null || true)
-fi
+if [ -z "$EXT_CMD" ] && [ -f "$PROJECT_CONFIG" ]; then EXT_CMD=$(_read_ext_cmd "$PROJECT_CONFIG"); fi
+if [ -z "$EXT_CMD" ] && [ -n "${HOME:-}" ] && [ -f "$GLOBAL_CONFIG" ]; then EXT_CMD=$(_read_ext_cmd "$GLOBAL_CONFIG"); fi
 [ -z "$EXT_CMD" ] && EXT_CMD="codex exec"
 
 # Verify the external binary exists — else fail-open with a hold + a note (never block the host).

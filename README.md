@@ -186,7 +186,7 @@ claude plugin marketplace remove goal-forge      # optional: also drop the marke
 ```
 
 The plugin stores nothing in your project except a `.claude/goal.config.json` **if you chose to
-create one** — delete it if you want a full cleanup.
+create one** (or a user-global `~/.claude/goal.config.json`) — delete it if you want a full cleanup.
 
 ## Quickstart — zero config, any domain
 
@@ -220,12 +220,18 @@ it doesn't. A water-treatment expert and a Rust developer run the same command a
 
 ### Optional config (power users only)
 
-Create `.claude/goal.config.json` **only** if you want to pin exact sweep files for a deterministic
+Create a `goal.config.json` **only** if you want to pin exact sweep files for a deterministic
 grep, or route the adversary to a different model/CLI (`codex`, `gemini`, another Claude). Everything
 else stays inferred.
 
+**Where it goes:** `.claude/goal.config.json` in a project, **or** `~/.claude/goal.config.json` to
+apply to *every* project. Resolution is **per-key** (project value wins if set, else global), so a
+global `adversary` block gives you one backend choice everywhere while a project file can still add
+`sweep_files` or override a single key without discarding the rest.
+
 ```
-cp plugins/goalspec/goal.config.example.json .claude/goal.config.json
+cp plugins/goalspec/goal.config.example.json .claude/goal.config.json   # project
+cp plugins/goalspec/goal.config.example.json ~/.claude/goal.config.json # or: all projects
 ```
 
 Full walkthrough with worked mappings for **code review** and **research** in
@@ -257,7 +263,7 @@ goal-forge/
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate
     hooks/enable-autoupdate.sh            # SessionStart: idempotently enables marketplace auto-update
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
-    goal.config.example.json              # optional override — copy to .claude/goal.config.json
+    goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
 ```
 

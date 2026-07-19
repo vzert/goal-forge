@@ -6,6 +6,31 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.11.0] - 2026-07-19
+
+### Added
+- **User-global config: choose the external adversary once, inherit it everywhere.** A user-global
+  `~/.claude/goal.config.json` is now read alongside the project `.claude/goal.config.json`. Resolution
+  is **per-key, not whole-file**: each of `adversary.backend`, `adversary.external_cmd`, `sweep_files`
+  is taken from the project file if set there, else from the global file. So a global `adversary` block
+  makes *every* project route to the external CLI with no per-repo file, while a project file can still
+  add `sweep_files` or override a single key **without** nulling the rest. The one key enforced in code
+  is `external_cmd` — `hooks/external-adversary.sh` resolves it project→global (tested T1–T5, incl.
+  empty/malformed project config falling through, and fail-open when nothing resolves). `backend` and
+  `sweep_files` are resolved by `/goalspec` step 6 per the SKILL's identical per-key instruction (the
+  executor reads them; no separate script consumes them). `GOAL_CONFIG_PATH` still pins the project layer.
+
+### Why
+- Observed in the wild (2026-07-19): a host that **pins plugin subagents to a weak tier** — two real
+  `/goalspec` runs on an Opus-4.8 main spawned the adversary with `model: sonnet` (and once with no
+  override), and the subagent ran `claude-haiku-4-5` **regardless** — the spawn `model` override was
+  dropped by the environment, not by goalspec. The self-report caught it honestly (that mechanism
+  worked). The subagent backend can't produce a capable adversary in such a host, but the **external
+  backend runs as a shell CLI, not a subagent**, so it sidesteps the pin entirely. Global config makes
+  "always use the external adversary" a one-time choice instead of a per-project chore — turning the
+  only working path on such hosts into the default the user actually wanted. (The weak-tier pin itself
+  is a host bug to fix separately; goalspec's side already did the right thing.)
+
 ## [0.10.0] - 2026-07-18
 
 ### Changed

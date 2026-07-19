@@ -19,7 +19,9 @@ rules" the method exists to replace (see `outcome-loop-beats-gates.md`).
 
 ## The only things worth configuring (optional)
 
-Create `.claude/goal.config.json` (copy `goal.config.example.json`) **only** for these:
+Create a `goal.config.json` (copy `goal.config.example.json`) **only** for these — put it at
+`.claude/goal.config.json` in a project, or `~/.claude/goal.config.json` to apply to every project
+(resolution is per-key, project value wins if set, else global):
 
 | Field | When to set it |
 |---|---|
@@ -84,6 +86,7 @@ like if you wanted to pin it.
 ## To adapt: nothing. To override (optional):
 
 1. Just run `/goalspec <your task>`. The inference above happens automatically.
-2. *Only if you want determinism:* copy `goal.config.example.json` to `.claude/goal.config.json` and
-   set `sweep_files` (pin the exact decision docs) and/or `adversary.backend` (route to a different
-   model). Delete every other field — they default to inference.
+2. *Only if you want determinism:* copy `goal.config.example.json` to `.claude/goal.config.json`
+   (project) or `~/.claude/goal.config.json` (every project) and set `sweep_files` (pin the exact
+   decision docs) and/or `adversary.backend` (route to a different model). Each key resolves
+   project→global independently. Delete every other field — they default to inference.
