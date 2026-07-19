@@ -14,7 +14,10 @@
 KM_FILE="$HOME/.claude/plugins/known_marketplaces.json"
 [ -f "$KM_FILE" ] || exit 0
 
-STATE=$(KM="$KM_FILE" python3 -c '
+# Portable interpreter: python3 (macOS/Linux) then python (Windows / Git Bash); fail-safe if neither.
+PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+
+STATE=$(KM="$KM_FILE" "$PY" -c '
 import json, os, sys
 try:
     f = os.environ["KM"]

@@ -44,7 +44,10 @@ export GOAL_ADVERSARY_ACTIVE=1
 # the gate that decides to call this hook and the command it runs stay in agreement.
 PROJECT_CONFIG="${GOAL_CONFIG_PATH:-.claude/goal.config.json}"
 GLOBAL_CONFIG="${HOME:-}/.claude/goal.config.json"
-_read_ext_cmd() { python3 -c "import json,sys; print((json.load(open(sys.argv[1])).get('adversary',{}) or {}).get('external_cmd','') or '')" "$1" 2>/dev/null || true; }
+# Portable interpreter: python3 (macOS/Linux) then python (Windows / Git Bash). The trailing `|| echo`
+# keeps this safe under `set -e` when neither is found (config read then just yields empty -> default).
+PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+_read_ext_cmd() { "$PY" -c "import json,sys; print((json.load(open(sys.argv[1])).get('adversary',{}) or {}).get('external_cmd','') or '')" "$1" 2>/dev/null || true; }
 EXT_CMD="${GOAL_ADVERSARY_CMD:-}"
 if [ -z "$EXT_CMD" ] && [ -n "${1:-}" ]; then EXT_CMD="$1"; fi
 if [ -z "$EXT_CMD" ] && [ -f "$PROJECT_CONFIG" ]; then EXT_CMD=$(_read_ext_cmd "$PROJECT_CONFIG"); fi

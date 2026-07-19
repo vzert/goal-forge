@@ -91,8 +91,10 @@ rather than assume**.
   as a pass. It never blocks the host.
 - **Missing self-report → independence UNVERIFIED.** A filled verdict with no `[ADVERSARY-MODEL: …]`
   line still counts as a verdict, but the script says so on stderr and the completion-review must
-  claim `model=same`, not `model=different`. The Stop gate cross-checks a `model=different (<id>)`
-  claim against a matching self-report in the turn (advisory, fail-open).
+  claim `model=same`, not `model=different`. The Stop gate requires a `model=different` close to have
+  at least one `[ADVERSARY-MODEL: …]` self-report naming a real, non-`UNKNOWN` id present in the turn —
+  it does **not** re-match the claimed id against the self-report (id-precision and cross-run provenance
+  are the outcome loop's job, not the marker's); advisory, fail-open.
 - **Anti-recursion.** If the external command is itself a Claude that has this plugin installed, the
   script exports `GOAL_ADVERSARY_ACTIVE=1`; a nested invocation detects the flag and refuses to
   re-enter the loop. Without this, an external-Claude backend could recurse indefinitely.

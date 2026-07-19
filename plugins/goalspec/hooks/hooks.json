@@ -21,6 +21,18 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Task|Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/route-external-adversary.sh",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

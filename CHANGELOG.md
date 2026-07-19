@@ -6,6 +6,65 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.11.1] - 2026-07-19
+
+### Added
+- **`adversary.backend: "external"` now has a mechanical consumer — a PreToolUse hook that nudges the
+  agent to actually route to it.** Choosing the external backend (codex / a different vendor) was a
+  prose instruction in the SKILL that the executing agent had to remember to read every run; nothing
+  enforced it, so an agent — and the fleet — would default to the zero-config subagent path and silently
+  never run the configured independent adversary. That is a config emission with no consumer, the exact
+  instrument-validity defect the method warns about. The new `hooks/route-external-adversary.sh` fires on
+  a `goal-adversary` spawn (Task/Agent) and, when the per-key-resolved config (project → user-global, the
+  same precedence `external-adversary.sh` uses) says `backend=external`, injects a one-line reminder to
+  pipe the goal-spec + outcome + ask record through `hooks/external-adversary.sh` (the configured
+  `external_cmd`). Deliberately **non-blocking and fail-open**: it never denies the spawn (the subagent
+  is still a valid context-independent adversary, running *both* is stronger, and blocking could leave a
+  host with no adversary at all if the external binary is unreachable — e.g. a sanitized daemon PATH); it
+  fires only for a goal-adversary spawn with `backend=external`, and any parse error → silent exit 0.
+  Registered as PreToolUse (matcher `Task|Agent`) in `hooks/hooks.json`; unit-tested across all branches
+  (fires / silent-when-not-external / silent-when-not-adversary / silent-on-other-tools / fail-open on
+  malformed input / no python exception).
+
+### Fixed
+- **Stop gate no longer rebounds a correct `model=different` completion-review, and the fragile id-match
+  that caused it is gone.** The old parser cross-checked the `model=different (<id>)` parenthetical
+  against the adversary's `[ADVERSARY-MODEL: …]` self-report with a **one-directional** substring test
+  (`claimed in report`). The natural, honest form — naming *both* models to show they differ,
+  `model=different (Sonnet 5 / claude-sonnet-5 vs Opus 4.8)` — made `claimed` a **superstring** of the
+  self-report, so the match was impossible by construction and a substantively-verified close rebounded
+  with `model-different-claimed-but-no-matching-self-report` even though a correct self-report was
+  present (observed: a real close spun 3 extra turns before landing on the bare-id form).
+
+  An attempt to *repair* the matcher (bidirectional substring → id-like-token intersection → positional
+  canonical extraction with dotted-id support) was broken **five consecutive times** by two independent
+  adversaries — a fresh-context subagent and an external `codex` run on a different vendor (GPT-5): a
+  substring collision (`o3` inside `gpt-4o-3-turbo-preview`), an `UNKNOWN`-sentinel leak, a generic-word
+  echo (`(fabricated-model vs Sonnet 5)` passing on the shared `sonnet`), prose harvesting (`UNKNOWN /
+  requested gpt-5 unavailable` leaking `gpt-5`), and a dotted-version-id false-negative (`gpt-5.1`). Each
+  round closed one surface and exposed another. That is the method's own convergence guard firing:
+  free-text id-matching from an **agent-authored transcript** is a bottomless proxy, and *you cannot gate
+  your way out of specification gaming* (`references/outcome-loop-beats-gates.md`).
+
+  So the check is **simplified** to the one assertion it can make honestly: a `model=different` close
+  requires **at least one `[ADVERSARY-MODEL:]` self-report naming a real, non-`UNKNOWN` model id** — the
+  canonical id taken **positionally** (single whitespace-free token after the last `/`, carrying a
+  letter **and** a digit/hyphen/dot version marker — so `claude-sonnet-5`/`o3`/`gpt-5.1` qualify but a
+  bare word like `apology` does not, not the `unknown` sentinel, so a fallback field like
+  `UNKNOWN / requested gpt-5 unavailable` yields none). If every self-report is `UNKNOWN`/absent — the harness silently fell back to same-model,
+  the *exact honest mistake* this guards — `model=different` is unsupported and must degrade to
+  `model=same`. **Deliberately not gated:** id-*precision* (the claimed `(<id>)` need not equal the
+  self-reported id) and cross-run *provenance* (a stale self-report from another run in the same session)
+  — both are agent-authored-transcript proxies the outcome loop owns, not this marker. New detail slug:
+  `completion-review:model-different-needs-nonunknown-self-report`. Guarded by a 20-case acid-test
+  (including every adversary counterexample above, `model=same`+`UNKNOWN` passing, and a guard that the
+  embedded python raises no exception — a prior round shipped an apostrophe inside the single-quoted
+  heredoc that silently fail-opened everything).
+- **More actionable advisory text.** The Stop reminder now states that both marker lines must appear in
+  the assistant's **own** turn (not only in the subagent's output — a task-notification `[ADVERSARY-VERDICT:]`
+  is invisible to the transcript-anchored gate), and that a `model=different` close needs the adversary's
+  `[ADVERSARY-MODEL: …]` line naming a real, non-`UNKNOWN` id — else declare `model=same`.
+
 ## [0.11.0] - 2026-07-19
 
 ### Added
