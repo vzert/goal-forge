@@ -240,9 +240,11 @@ Full walkthrough with worked mappings for **code review** and **research** in
 ## The completion gate
 
 The Stop hook enforces only when a session produced a `## Goal-spec`. If one exists but no valid
-`[COMPLETION-REVIEW: …]` was declared, it posts an **advisory reminder** and lets the turn end
-(fail-open). Set `GOAL_GATE_ENFORCE=1` to make it blocking instead. Operator escape:
-`[GOAL-CLOSE-WAIVED reason=<≥20 chars>]`.
+`[COMPLETION-REVIEW: …]` was declared — or the declared one closes over your operative
+`[ADVERSARY-VERDICT: break …]` instead of a `hold` — it posts an **advisory reminder** and lets the
+turn end (fail-open). Set `GOAL_GATE_ENFORCE=1` to make it blocking instead. Stuck on a residual
+break you've judged non-actionable? `[GOAL-CLOSE-WAIVED reason=<≥20 chars>]` is the honest close —
+usable by the agent itself, not only a human operator.
 
 Why fail-open? You cannot gate your way out of specification gaming — a blocking marker just
 relocates the gaming. The real levers are measurable criteria up front and an independent adversary.

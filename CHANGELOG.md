@@ -6,6 +6,42 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.11.2] - 2026-07-20
+
+### Fixed
+- **The Stop gate now has a mechanical consumer for "do not close over a `break`."** A live session
+  showed an executor declare `[COMPLETION-REVIEW: adversary model=same …]` while the operative
+  `[ADVERSARY-VERDICT: break …]` still said `break`, rationalizing it via the convergence-guard's
+  "stop iterating" language instead of the existing `[GOAL-CLOSE-WAIVED reason=…]` escape — because
+  the gate never actually checked the verdict value, only that the markers were well-formed. "Do not
+  close over a break" was a written rule with zero mechanical consumer, the exact instrument-consumer
+  defect this method exists to catch. The gate now reads the operative `[ADVERSARY-VERDICT: …]`
+  (current-turn-preferred, transcript-fallback — the same precedence already used for
+  `[COMPLETION-REVIEW: …]` itself) and rejects a close over a structured `break`, for both
+  `[COMPLETION-REVIEW: adversary …]` and the `[COMPLETION-REVIEW: none …]` side-channel. Verdict
+  matching requires the full structured grammar (all five `field=n` counts), not a bare word, so
+  narrative text mentioning "break" never false-positives.
+- **`[GOAL-CLOSE-WAIVED reason=…]` reframed from "operator escape" to explicitly agent-usable.** It
+  already worked mechanically, but was undocumented in SKILL.md (only in the hook's own comments) and
+  labeled in a way that read as human-only — so an executor stuck on a residual break it judged
+  non-actionable had no visible honest path and reformulated the completion-review instead. Now
+  documented in SKILL.md's completion-review grammar and convergence-guard sections, and in
+  README.md, as usable by the agent itself: the honest, greppable way to override a break you've
+  judged non-actionable, versus a completion-review that silently disagrees with its own verdict.
+- **Verdict-precedence ordering bug**, found by an external-vendor adversary review of the fix above
+  before release: the first pass compared verdicts positionally across the concatenated
+  `lam_text + tx_text`, which inverts recency — since historical transcript content is appended
+  *after* the current turn, any older structured verdict still sitting in the transcript (e.g. an
+  earlier round's `hold`) could outrank a live `break` in the current turn. Fixed by matching
+  `lam_text` and `tx_text` separately with `lam_text` preferred, mirroring the completion-review
+  match's existing precedence exactly.
+
+### Known limitation
+- A non-canonical `[ADVERSARY-VERDICT: …]` (reordered or extra fields, deviating from the documented
+  grammar) fails open — it isn't recognized as a structured verdict, so a break in that shape can't
+  block a close. This is consistent with the project's fail-open philosophy and the documented
+  grammar the adversary is instructed to emit; noted here rather than left silent.
+
 ## [0.11.1] - 2026-07-19
 
 ### Added

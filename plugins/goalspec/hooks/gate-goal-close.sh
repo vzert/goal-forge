@@ -13,9 +13,23 @@
 #     the stop is allowed (fail-open). This is deliberate: you cannot gate your way out of
 #     specification gaming; a fail-closed marker just relocates the gaming. See
 #     references/outcome-loop-beats-gates.md.
+#   * A `[COMPLETION-REVIEW: adversary ...]` closed over the operative `[ADVERSARY-VERDICT: break ...]`
+#     (and `[COMPLETION-REVIEW: none ...]` closed while one sits unresolved in the transcript) is
+#     rejected the same way a malformed declaration is. "Operative" = the SAME current-turn-preferred,
+#     else-transcript precedence the completion-review match uses a few lines below — not a literal
+#     chronological scan. This is an internal-consistency check (does your closure claim match your
+#     own most-recently-declared verdict?), not an outcome check and not a truthfulness check — it
+#     cannot catch a fabricated or misremembered self-report in the current turn any more than the
+#     completion-review check can (you cannot gate your way out of specification gaming — see
+#     references/outcome-loop-beats-gates.md); it catches the honest-but-mistaken close, same as the
+#     model=different check below.
 #   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block (agent must complete the
 #     declaration before stopping).
-#   * Operator escape: [GOAL-CLOSE-WAIVED reason=<>=20 chars>] anywhere in the turn.
+#   * Explicit close-over-break escape, usable by you (the agent) or a human operator alike —
+#     it is not gated to either: [GOAL-CLOSE-WAIVED reason=<>=20 chars>] anywhere in the turn. Use it
+#     when you've judged a residual break non-actionable and are stuck (e.g. the three-consecutive-
+#     breaks convergence limit) rather than reformulating the completion-review to paper over it —
+#     the waiver is greppable and honest; a disguised close is neither.
 #   * Any parse error / missing input -> exit 0 (fail-open).
 #
 # Registered as a Stop hook by hooks/hooks.json.
@@ -80,7 +94,7 @@ if not text.strip():
 if not re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I):
     fail_open()
 
-# 3. Operator waiver.
+# 3. Explicit close-over-break waiver (agent- or human-usable — see header).
 if re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I):
     fail_open()
 
@@ -95,9 +109,31 @@ if not crs:
     print("REMIND|completion-review:absent"); sys.exit(0)
 mode, body = crs[-1]
 mode = mode.lower()
+
+# Hardened verdict match, reused from the anti-echo pattern already in external-adversary.sh: require the
+# FULL structured grammar (break|hold followed by all five numeric fields), not a bare "break" —
+# free prose ("cerrado en break parcial", "verdict final registrado=break") and the literal
+# grammar placeholder ("break|hold") both defeat a loose match. SAME current-turn-preferred,
+# else-transcript precedence as the completion-review match directly above — NOT a last-match
+# scan over the concatenated `text`: lam_text (current turn) is prepended before tx_text
+# (historical transcript, chronological), so a naive scan over `text` treats ANY older verdict
+# still sitting in tx_text as more recent than a live one in lam_text — e.g. a `hold` from an
+# earlier round would outrank the current turn `break`, defeating the whole check in exactly the
+# multi-round convergence case it exists to catch. Search lam_text first; fall back to tx_text
+# (last match there = most recent, since tx_text is chronologically ordered) only if lam_text has
+# no structured verdict at all.
+verdict_re = (r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+\s+unfalsified=\d+\s+"
+              r"incomplete=\d+\s+autonomy-violations=\d+\s+unsafe=\d+\s*\]")
+lam_verdicts = re.findall(verdict_re, lam_text, re.I)
+tx_verdicts = re.findall(verdict_re, tx_text, re.I)
+verdicts = lam_verdicts or tx_verdicts
+last_verdict = verdicts[-1].lower() if verdicts else None
+
 if mode == "adversary":
     if not re.search(r"\[ADVERSARY-VERDICT:", text, re.I):
         print("REMIND|completion-review:adversary-claimed-but-no-verdict"); sys.exit(0)
+    if last_verdict == "break":
+        print("REMIND|completion-review:closed-over-break"); sys.exit(0)
     # model=different asserts the adversary verified you on a DIFFERENT model; its only ground-truth is
     # the adversary own [ADVERSARY-MODEL:] self-report. We deliberately DO NOT parse the claimed id and
     # re-match it against the self-report: five adversarial rounds (a fresh-context subagent + an external
@@ -128,6 +164,8 @@ if mode == "adversary":
 else:  # none
     if not re.search(r"reason=.{20,}", body):
         print("REMIND|completion-review:none-needs-reason>=20"); sys.exit(0)
+    if last_verdict == "break":
+        print("REMIND|completion-review:none-but-break-recorded"); sys.exit(0)
 
 print("OK")
 ' 2>/dev/null)
@@ -141,7 +179,14 @@ case "$RESULT" in
 esac
 
 DETAIL="${RESULT#REMIND|}"
-MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Operator escape: [GOAL-CLOSE-WAIVED reason=…]."
+case "$DETAIL" in
+  completion-review:closed-over-break|completion-review:none-but-break-recorded)
+    MSG="Goal-spec present but your operative [ADVERSARY-VERDICT: …] is \`break\` (${DETAIL}) — your [COMPLETION-REVIEW: …] cannot close over it as-is. Do NOT reformulate the completion-review to paper over the break. Pick one, honestly: (1) address the confirmed violation(s) and get a fresh \`hold\` from the adversary; (2) if you are stuck (e.g. three consecutive breaks — the design is wrong, not the wording), route to a genuinely different model/vendor and get a hold there; (3) if you've judged the residual break non-actionable, close explicitly with \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) — this is usable by you, the agent, not only a human operator; it is the honest, greppable way to override, unlike a completion-review that quietly disagrees with its own verdict."
+    ;;
+  *)
+    MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
+    ;;
+esac
 
 if [ "${GOAL_GATE_ENFORCE:-}" = "1" ]; then
   # Opt-in teeth: block the stop and force completion.
