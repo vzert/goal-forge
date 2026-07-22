@@ -69,6 +69,19 @@ Put it in `~/.claude/goal.config.json` if you want the nudge on every project; a
 override just `warn_threshold`, or set `enabled: false` to opt back out for one repo, without
 touching any other resolved key (same per-key precedence as `adversary`).
 
+### Quick enable — hand this prompt to your own agent
+
+You just read the caveat above yourself, so you're the informed party — this prompt has your
+agent make the edit without re-litigating consent with itself:
+
+```
+Lee plugins/goalspec/references/usage-budget-setup.md (o dime en 2-3 líneas qué implica de
+seguridad si no lo encuentras) antes de tocar nada. Si estoy de acuerdo después de eso, crea o
+edita .claude/goal.config.json (este proyecto) o ~/.claude/goal.config.json (todos mis proyectos)
+para incluir "usage_budget": {"enabled": true, "warn_threshold": 80} sin sobreescribir otras claves
+que ya existan ahí.
+```
+
 ## Relationship to a statusline tool (e.g. ccstatusline)
 
 If you already run a statusline tool that reads this same endpoint (community tools like

@@ -6,6 +6,17 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.14.1] - 2026-07-22
+
+### Added
+- **"Quick enable" copy-paste agent prompts, in README.md and `references/usage-budget-setup.md`.**
+  So a user who hands this repo to their own agent (or gets pointed at it) can trigger the two new
+  opt-in features without hand-writing config: one prompt for `usage_budget` (which still routes
+  through reading the security doc first, not silent activation) and one for Claude Code's own
+  experimental Agent Teams (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`, referenced by 0.12.0's
+  coverage-floor decomposition guidance). Also added a "What's new" pointer to CHANGELOG.md in
+  README.md. Docs only — no hook/behavior changes.
+
 ## [0.14.0] - 2026-07-22
 
 ### Added

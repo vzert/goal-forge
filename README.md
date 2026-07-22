@@ -240,6 +240,40 @@ cp plugins/goalspec/goal.config.example.json ~/.claude/goal.config.json # or: al
 Full walkthrough with worked mappings for **code review** and **research** in
 [`plugins/goalspec/references/adaptation-guide.md`](plugins/goalspec/references/adaptation-guide.md).
 
+### Quick enable — hand these prompts to your own agent
+
+If you're reading this file because someone pointed their agent at this repo, these are ready to
+paste as-is; the agent can act on them directly.
+
+**Turn on the usage-budget nudge** (off by default — reads your local OAuth credential to call
+Anthropic's own usage endpoint, so this asks the agent to explain the security implication first,
+not just flip it on):
+
+```
+Lee plugins/goalspec/references/usage-budget-setup.md (o dime en 2-3 líneas qué implica de
+seguridad si no lo encuentras) antes de tocar nada. Si estoy de acuerdo después de eso, crea o
+edita .claude/goal.config.json (este proyecto) o ~/.claude/goal.config.json (todos mis proyectos)
+para incluir "usage_budget": {"enabled": true, "warn_threshold": 80} sin sobreescribir otras claves
+que ya existan ahí.
+```
+
+**Turn on Claude Code Agent Teams** (a Claude Code feature, not goalspec's own — experimental,
+off by default, referenced by the coverage-floor decomposition guidance above):
+
+```
+Activa Claude Code Agent Teams agregando "env": {"CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"} a mi
+~/.claude/settings.json (o .claude/settings.json de este proyecto si prefiero que sea solo aquí),
+sin sobreescribir otras claves que ya existan. Es experimental: usa más tokens por sesión y no
+sobrevive a /resume — dime si quiero eso antes de aplicarlo.
+```
+
+### What's new
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.14.0** added
+context-budget-aware execution decomposition (coverage floor), the opt-in usage-budget nudge
+above, and a fix for a recurring friction where a real adversary verdict — arriving in a tool
+result, never scanned by the Stop gate — had to be manually re-quoted before it could close a run.
+
 ## The completion gate
 
 The Stop hook enforces only when a session produced a `## Goal-spec`. If one exists but no valid
