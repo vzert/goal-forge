@@ -6,6 +6,114 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.14.0] - 2026-07-22
+
+### Added
+- **`PostToolUse` nudge for the recurring "gate can't see the verdict" friction
+  (`hooks/remind-quote-verdict.sh`) + a matching fix inside `hooks/external-adversary.sh`.**
+  Reported as a recurring, previously-unresolved pattern across most goalspec sessions:
+  `gate-goal-close.sh` only ever scans assistant-authored text for
+  `[ADVERSARY-MODEL: …]`/`[ADVERSARY-VERDICT: …]`, by design — never a tool result. A real verdict
+  from the `goal-adversary` subagent or `hooks/external-adversary.sh` arrives as a tool result, so
+  it stays invisible to the gate until the executor personally re-types it into their own turn —
+  easy to forget across a long session, costing a Stop-hook round-trip every time it's missed (this
+  exact session hit it twice in a row). Considered making the gate itself correlate tool_use/
+  tool_result pairs to find the verdict automatically, but that repeats the "get clever with the
+  parser" pattern that already broke 5 consecutive rounds once before (the model-id matcher,
+  0.11.1) — the ruling then was "simplify, don't out-clever it."
+  - `remind-quote-verdict.sh` (matcher `Task|Agent` only) fires on a `goal-adversary` spawn
+    (subagent_type anchored to end-with "goal-adversary" — a fabricated
+    `"not-goal-adversary-example"` substring was caught by adversary review and excluded) whose
+    `tool_response` contains a well-formed verdict (or a model line with a malformed/missing one),
+    nudging to quote it verbatim in the very next turn.
+  - The Bash/`external-adversary.sh` case is deliberately **not** handled by command-string
+    detection in that hook. An earlier draft tried exactly that and an external adversary review
+    broke it twice in a row: first a bare substring match false-positived on read-only inspection
+    (the script's own source contains literal fallback `[ADVERSARY-VERDICT: hold …]` strings, so a
+    plain `cat`/`grep` of the file — routine when inspecting hook scripts — would have nudged to
+    quote non-evidence into the transcript the real gate reads); then, after tightening to an
+    invocation-verb check, real invocation forms (a bare `./external-adversary.sh`, `sh -c "..."`)
+    were missed. Rather than patch the heuristic a third time, the reminder was moved to the one
+    place that needs no heuristic at all: `external-adversary.sh` itself now emits the identical
+    reminder to stderr from the single code path that only runs after it has already validated a
+    real, well-formed verdict came back — a structural guarantee, not a guess. `stdout` (the actual
+    verdict contract callers parse) is unaffected.
+  - Zero changes to `gate-goal-close.sh`'s own parsing logic throughout. Also clarified in
+    `SKILL.md`'s completion-review section that "present in the session" means in the executor's
+    own authored text, never a tool result — the ambiguity that let this recur silently.
+  - A further adversary round found both nudge messages **asserted** "a real verdict" when neither
+    hook can actually verify the underlying conclusion is genuine adversarial work rather than
+    copied/echoed text (a synthetic "copied example only" response, or a fake `external_cmd` that
+    merely echoes a well-formed string, would satisfy the same structural checks). This is the same
+    self-report limitation this method already documents everywhere else (`references/`
+    `outcome-loop-beats-gates.md`; the bare-verdict-evidence-floor already in `external-adversary.sh`
+    is explicitly commented as "a FLOOR, not proof of diligence") — the nudges never granted a
+    lazy/copied verdict any new power to satisfy the real gate, but the wording overclaimed a
+    certainty neither hook has. Reworded both to explicitly defer the genuineness judgment to the
+    executor ("a verdict-shaped block... whether it reflects genuine adversarial work is still
+    yours to judge... if you judge it genuine, quote it") rather than asserting authenticity, and
+    synced every carrier that still described the old framing (`README.md`, `SKILL.md`, both
+    hooks' own header comments).
+
+## [0.13.0] - 2026-07-22
+
+### Added
+- **Opt-in usage-budget nudge (`usage_budget.enabled`, off by default).** A new Stop hook,
+  `hooks/check-usage-budget.sh`, reads the local Claude Code OAuth credential and calls Anthropic's
+  own `api.anthropic.com/api/oauth/usage` endpoint to read the real 5-hour/7-day account usage
+  ceiling, nudging (non-blocking, advisory) to checkpoint state once utilization crosses a
+  configurable threshold (default 80%) — only within a goalspec-tracked session. This is a
+  materially larger trust surface than any other hook in this plugin (every other one reads
+  project-local files or spawns a subagent), confirmed the hard way mid-investigation: even
+  *checking whether the credentials file exists* was blocked by the executing agent's own
+  permission classifier as a sensitive action. So unlike every other config key, it defaults to
+  `false` and ships with its own informed-consent doc, `references/usage-budget-setup.md`, that
+  must be read before enabling it. The token itself is never logged, cached, or printed — only the
+  resulting percentages are cached locally with a short TTL, in the plugin's own cache file,
+  independent of any third-party statusline tool's cache (its credential-lookup and endpoint were
+  cross-checked against one such tool's source — `ccstatusline` — since `api.anthropic.com/api/oauth/usage`
+  is itself undocumented; this is observed compatibility, not a stable guaranteed capability — see
+  the caveat in `references/usage-budget-setup.md`. Also confirmed context-window usage specifically
+  has no equivalent persisted, hook-readable source — it is delivered live to a statusline script
+  only, never to a hook. This is why context risk is addressed instead through execution
+  decomposition, not number-reading — see 0.12.0 below.)
+- **Fixed before ship, by an external (different-vendor) adversary review, not by the executor:**
+  the macOS Keychain path initially treated the raw `security find-generic-password` stdout as a
+  bare bearer token. It is not one — the Keychain secret is the same `{claudeAiOauth:{accessToken}}`
+  JSON shape as `.credentials.json` (confirmed against `ccstatusline`'s own `parseUsageAccessToken`,
+  which JSON-parses it identically) — so the original code would have sent the whole credential
+  blob, potentially including other credential fields, into the Authorization header on macOS.
+  Fixed to parse it the same way, and reordered to match ccstatusline's own precedence (Keychain
+  first on macOS, file as fallback) rather than the reverse. Caught on the first adversary round: a
+  fresh-context, different-tier subagent (opus) returned `hold` and missed it; a different-vendor
+  external backend (codex/GPT-5) returned `break` and caught it — the exact reason this plugin
+  routes security-sensitive decisions to a genuinely different vendor, not just a fresh context.
+
+## [0.12.0] - 2026-07-22
+
+### Added
+- **Context-budget-aware execution decomposition (coverage floor).** Users hitting either the agent's
+  own context window or the account's rolling 5-hour usage ceiling on long goalspec-driven loops
+  prompted a deep investigation of Claude Code's actual mechanisms (verified against primary docs, not
+  assumed — the flagship "188% context" incident that motivated this turned out to be a broken
+  instrument in an unrelated plugin, not real exhaustion). Findings landed as an extension to the
+  existing **coverage-floor** derived pattern: when the enumerated child entities are independent
+  (own file/artifact, no round-by-round shared state) and the task is long enough to risk exhausting
+  one context, decompose execution across them — prefer agent teams when available
+  (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, experimental/off-by-default) for entities that must stay
+  mutually consistent, else dispatch one subagent per entity in parallel and resume the *specific*
+  subagent by its returned agent ID for revision rounds, rather than collapsing everything onto one
+  resumable subagent (which just relocates the same exhaustion into a single worker).
+- **Checkpoint-to-disk + countable stop conditions (execute step).** For multi-round tasks, checkpoint
+  state to disk after each major round so a context limit or a session cutoff loses at most the
+  in-flight round, not the whole run — mirrors this project's own `/checkpoint-3t` pattern. Prefer a
+  countable stop condition (a round/entity cap from the coverage-floor enumeration) over open-ended
+  "keep refining."
+- **Scope note: don't re-invoke `/goalspec:goalspec` mid-session.** A quantified real-session finding
+  (two explicit re-invocations duplicated the full SKILL.md body into context, ~10% of that session's
+  content bytes, for zero benefit — auto-trigger already applies the method without re-injecting the
+  file) is now documented directly in the Scope section.
+
 ## [0.11.2] - 2026-07-20
 
 ### Fixed

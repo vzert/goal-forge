@@ -221,8 +221,11 @@ it doesn't. A water-treatment expert and a Rust developer run the same command a
 ### Optional config (power users only)
 
 Create a `goal.config.json` **only** if you want to pin exact sweep files for a deterministic
-grep, or route the adversary to a different model/CLI (`codex`, `gemini`, another Claude). Everything
-else stays inferred.
+grep, route the adversary to a different model/CLI (`codex`, `gemini`, another Claude), or opt into
+the usage-budget nudge (`usage_budget.enabled` — off by default; unlike the other keys it reads your
+local OAuth credential to call Anthropic's own usage endpoint, so read
+[`references/usage-budget-setup.md`](plugins/goalspec/references/usage-budget-setup.md) before
+turning it on). Everything else stays inferred.
 
 **Where it goes:** `.claude/goal.config.json` in a project, **or** `~/.claude/goal.config.json` to
 apply to *every* project. Resolution is **per-key** (project value wins if set, else global), so a
@@ -261,10 +264,13 @@ goal-forge/
     skills/goalspec/SKILL.md              # /goalspec — the single entry point: constitution +
                                           #   6-question scaffold + clarify + red-team + runbook
     agents/goal-adversary.md              # independent adversarial verifier (read-only)
-    hooks/hooks.json                      # registers the Stop gate + the auto-update enabler
-    hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate
+    hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart hooks below
+    hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop)
+    hooks/check-usage-budget.sh           # opt-in, off by default: 5h/7d usage-ceiling nudge (Stop)
     hooks/enable-autoupdate.sh            # SessionStart: idempotently enables marketplace auto-update
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
+    hooks/route-external-adversary.sh     # PreToolUse nudge: never silently skip a configured external backend
+    hooks/remind-quote-verdict.sh         # PostToolUse nudge: quote the verdict before you forget it
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
 ```
@@ -278,6 +284,8 @@ goal-forge/
   why you can't gate or verify your way out of specification gaming, and what to do instead.
 - [`external-adversary-setup.md`](plugins/goalspec/references/external-adversary-setup.md) —
   routing critique to a different vendor's model/CLI for maximum decorrelation.
+- [`usage-budget-setup.md`](plugins/goalspec/references/usage-budget-setup.md) — the one opt-in
+  config key that reads your local OAuth credential; read this before enabling it.
 
 ## Prior art
 

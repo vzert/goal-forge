@@ -173,4 +173,25 @@ if [ "$EVIDENCE_LINES" -eq 0 ]; then
   echo "external-adversary: partner returned a bare verdict with no evidence of work (no bullets/ground-truth above it) — treat it as UNVERIFIED, not a pass; re-run or route to the other backend." >&2
 fi
 
+# This line only runs after $VERDICT was confirmed non-empty and well-formed above (line ~150) — a
+# structural guarantee, not a guess, that $EXT_CMD actually ran and produced matching output (NOT a
+# guarantee that its content is genuine adversarial reasoning rather than an echo — that judgment
+# stays the executor's, same as every other self-report this method accepts). That is why this
+# reminder lives HERE rather than in a separate hook trying to detect "was this Bash call an
+# invocation of this script" from the command string alone: that detection was tried and reviewed
+# by an external adversary, which broke it twice (a fabricated subagent_type substring slipped
+# through once; then, after tightening, real invocation forms like a bare `./external-adversary.sh`
+# were missed while `cat`/`nl` of THIS SOURCE FILE — which contains literal fallback verdict text
+# above — still risked a false positive that could induce quoting non-evidence into the transcript
+# the Stop gate reads). Emitting the reminder from inside the one code path that only executes on
+# genuine success removes the guessing game entirely.
+# Deliberately does NOT assert this verdict is authentic adversarial work -- exit 0 plus a
+# regex-matching format only proves $EXT_CMD produced well-formed OUTPUT, never that it actually did
+# adversarial reasoning (a misconfigured external_cmd pointing at something that merely echoes a
+# verdict-shaped string would satisfy this exact same check). That is the same self-report
+# limitation this method already documents everywhere else (the bare-verdict floor above is a
+# floor, not proof of diligence) -- caught by adversary review when this line still said "a real
+# verdict." Judging genuineness stays the executor's job, same as for every other self-report.
+echo "external-adversary: a verdict-shaped block was just produced above -- whether it reflects genuine adversarial work is still yours to judge (see the bare-verdict-floor note above). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM in your very next assistant turn. The Stop gate cannot see this script's stdout directly, only text you personally author — this is far easier to forget once you move on to other work than it is right now." >&2
+
 printf '%s\n' "$OUT"

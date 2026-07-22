@@ -11,6 +11,12 @@
     "external_cmd": "codex exec"
   },
 
+  "_usage_budget_comment": "OFF BY DEFAULT, and unlike every other key above, opting in has a real security implication: hooks/check-usage-budget.sh reads your LOCAL Claude Code OAuth credential (the same file/Keychain entry Claude Code itself uses) and sends it to Anthropic's own account-usage endpoint (api.anthropic.com/api/oauth/usage) to read your real 5-hour/7-day usage percentage. The token is never logged, cached, or printed -- only the resulting percentages are cached, locally, briefly. Read references/usage-budget-setup.md before enabling this. Only fires as an advisory nudge (never blocks) within a goalspec-tracked session, and only when usage crosses warn_threshold.",
+  "usage_budget": {
+    "enabled": false,
+    "warn_threshold": 80
+  },
+
   "_advanced_comment": "The fields below are ALWAYS inferred from the task by default. Set them only to override that inference with fixed values.",
   "ground_truth_sources": ["e.g. the test suite / CI, a DB table, an analytics API, an APM dashboard, sensor/lab readings, primary documents"],
   "enumerate_entities_step": "e.g. list ALL <entities> (not a sample) with real per-entity data before declaring done",
