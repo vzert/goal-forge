@@ -24,13 +24,23 @@ intervention would be narrower than the observed deficit, and the deficit itself
 characterized well enough (n=3 comparison rows) to design against. Revisit at n≥5.
 
 **Added — `backends=` in the completion-review details.** `backends=both` /
-`backends=subagent-only` / `backends=external-only`, so a single-backend verification is announced
-rather than silent, in the same pattern as `model=same`. Deliberately **not gated**: it is true by
-construction (you know which backends you ran), and the honest mechanical check does not exist —
-two backends routinely return a byte-identical `hold 0/0/0/0/0`, so counting *distinct* verdicts
-would downgrade a genuine dual-backend close, while counting *occurrences* would bless a re-quote of
-one backend. That is the bottomless-proxy pattern the 0.11.1 id-matcher removal already paid for.
-The field asserts nothing about what a second backend would have found.
+`backends=subagent-only` / `backends=external-only`: a place for a single-backend verification to
+say so, in the same pattern as `model=same`. It is true by construction (you know which backends you
+ran) and asserts nothing about what a second backend would have found.
+
+Scope of what this does and does not do, stated precisely because an adversarial round caught the
+first wording overclaiming it: the field is **ungated, and its absence is ungated too** — omitting it
+passes exactly as omitting `model=` does. So it is a slot plus an instruction to fill it, **not** a
+guarantee that a single-backend close cannot stay silent.
+
+Its *value* is not honestly gateable — two backends routinely return a byte-identical
+`hold 0/0/0/0/0`, so counting *distinct* verdicts would downgrade a genuine dual-backend close while
+counting *occurrences* would bless a re-quote of one backend; that is the bottomless-proxy pattern
+the 0.11.1 id-matcher removal already paid for. Its *presence* is a different question and would be
+mechanizable (the `none` branch already gates `reason=` for presence and length without judging its
+truth). Not done here: the ratified scope for this release was explicitly zero change to
+`gate-goal-close.sh`, and gating presence changes the outcome for every existing close that omits
+the field. Left as a named follow-up.
 
 **Tests** — three cases (21–23) pinning that an extra field inside the completion-review bracket
 does not break a valid close and does not mask the `model=different` self-report check, which
