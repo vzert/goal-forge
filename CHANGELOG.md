@@ -45,9 +45,11 @@ the field. Left as a named follow-up.
 **Fixed — the same overclaim about `model=`, found by round 2 of this release's own verification.**
 `README.md` described a same-model fallback as "announced, **never silent**". It is the identical
 claim just retracted for `backends=`, one field over: `gate-goal-close.sh` only checks a body that
-*contains* `model=different`, so a close omitting `model=` entirely passes clean. The README now
-says what the gate does — it can reject an unsupported `model=different` claim, not a close that
-omits the field. Earlier CHANGELOG entries carry the old wording too; those are left as the
+*contains* `model=different`, so a close omitting `model=` entirely passes clean. The same wording
+had spread to SKILL.md's step 6 ("never a silently-hollow one") and to the backend table in
+`references/external-adversary-setup.md` ("degrades announced"). All now say the same thing: you
+declare the degradation, and the gate can reject an unsupported `model=different` but not a close
+that omits the field. Earlier CHANGELOG entries carry the old wording too; those are left as the
 historical record of what was claimed at the time, and this entry is the correction.
 
 **Tests** — three cases (21–23) pinning that an extra field inside the completion-review bracket

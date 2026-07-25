@@ -14,7 +14,7 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
 
 | Backend | Independence | Setup | Use when |
 |---|---|---|---|
-| `subagent` (default) | Fresh context; different *tier* of the same family for terminal actions (self-attested, degrades announced) | None | Most tasks, including terminal ones |
+| `subagent` (default) | Fresh context; different *tier* of the same family for terminal actions (self-attested; you declare the degradation, ungated) | None | Most tasks, including terminal ones |
 | `external` | Different **vendor** *and* context | A second CLI on PATH | The premise under review came from your model family; single-model harnesses; maximum decorrelation |
 
 ## Enabling the external backend
