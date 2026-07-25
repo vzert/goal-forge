@@ -269,10 +269,10 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.14.0** added
-context-budget-aware execution decomposition (coverage floor), the opt-in usage-budget nudge
-above, and a fix for a recurring friction where a real adversary verdict — arriving in a tool
-result, never scanned by the Stop gate — had to be manually re-quoted before it could close a run.
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.15.0** closed three places
+where a written rule had no teeth — the ratify gate now says where all four of its answers lead,
+the Stop gate counts the convergence guard instead of leaving it to the agent's memory, and the
+adversary is explicitly spawned isolated (never as a teammate with a channel back to the executor).
 
 ## The completion gate
 
@@ -282,6 +282,13 @@ The Stop hook enforces only when a session produced a `## Goal-spec`. If one exi
 turn end (fail-open). Set `GOAL_GATE_ENFORCE=1` to make it blocking instead. Stuck on a residual
 break you've judged non-actionable? `[GOAL-CLOSE-WAIVED reason=<≥20 chars>]` is the honest close —
 usable by the agent itself, not only a human operator.
+
+The reminder also carries a **convergence floor**: when at least three of the agent's most recent
+verdict-carrying turns each contain a `break`, with no `hold`-only turn between them, it says so and
+points at the guard ("at three consecutive breaks the design is wrong, not the wording"). It is a
+claim about turns, not a round count — damped toward under-counting on purpose, because a false alarm at round 2 would push toward
+a premature waiver. The half that isn't mechanizable stays with the agent: the verdict's five
+integers are cardinalities, not severities.
 
 Why fail-open? You cannot gate your way out of specification gaming — a blocking marker just
 relocates the gaming. The real levers are measurable criteria up front and an independent adversary.

@@ -6,6 +6,64 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.15.0] - 2026-07-25
+
+Phase 1 of the graph-vs-loops research: three places where a written rule had no teeth. All three
+were verified defects in shipped code, found by an investigation into whether goalspec should be
+replaced by a graph-shaped orchestrator (conclusion: no — of ten frameworks reviewed, none has a
+forced different-model verifier or a gate on terminal actions; but a graph would have caught these).
+
+### Added
+- **The Stop gate now counts the convergence guard (`hooks/gate-goal-close.sh`).** SKILL.md has said
+  "at three consecutive breaks, stop editing — the design is wrong, not the wording" since 0.4.0, and
+  nothing but the agent's memory observed it. The gate now counts and appends a **convergence floor**
+  to whatever reminder it was already emitting (both the `absent` branch — the state a mid-loop agent
+  is actually in — and `closed-over-break`).
+  The claim it makes is deliberately weak, and phrased to say exactly what the walk checks and no
+  more: *"at least N of your most recent verdict-carrying turns each contain a `break`, with no
+  `hold`-only turn between them"* — a statement about **turns, not rounds**. (The first wording said
+  "no intervening `hold`" and the external vendor adversary broke it in round 2: a turn quoting both
+  backends, one holding and one breaking, is a break round the walk does not reset on, so a `hold`
+  really can sit inside the counted run. The counter was right; the sentence claimed more than it
+  checked — and it claimed it in four carriers at once.) It cannot honestly be a round count, because the skill instructs the agent to quote
+  every verdict verbatim in its own turn, so a multi-round loop naturally re-quotes earlier rounds
+  when summarizing and a transcript-wide tally inflates *in exactly the scenario the guard exists
+  for*. A false "three breaks, stop editing" at round 2 would push toward a premature
+  `[GOAL-CLOSE-WAIVED]` — worse than not counting at all. So the count is damped: at most one round
+  per assistant turn, identical verdict sets de-duplicated within the trailing run (which under-counts
+  identical consecutive breaks — the fail-open direction), a `hold`-only turn ends the run, and a turn
+  quoting both backends is one round. The message tells the agent to verify its real round count
+  rather than asserting one.
+  Only the **counter** is mechanized. The other half of the guard — "each round should break something
+  smaller than the last" — is left to the agent explicitly, because it is not mechanizable: the
+  verdict's five integers are **cardinalities, not severities** (`incomplete=3` → `unsafe=1` is fewer
+  violations and a worse break). Mechanizing it would repeat the id-matching mistake 0.11.1 retired.
+  Consumer: the hook's own message branches and the `block` reason under `GOAL_GATE_ENFORCE=1` — no
+  new marker, nothing else reads it. Verified across a 20-case branch suite with synthetic multi-turn
+  transcripts, including the dedup case (same verdict in `last_assistant_message` **and** as the last
+  recorded turn → the floor must not jump) and hold-resets; the eleven pre-existing branches emit
+  byte-identical detail codes before and after.
+
+### Fixed
+- **The ratify gate (4b) offered four answers and drew one edge.** `Approve / Narrow / Minimal-fix /
+  Stop` — and only "Approve" said where it went, leaving the agent to improvise the other three
+  mid-run. Now drawn, in step 4b only (the other carrier points at it rather than restating it):
+  Narrow → rewrite the spec to the given scope, re-emit it, go to step 5 **without a second modal**;
+  Minimal-fix → the minimal reversible fix *becomes* the objective and the systemic branch is demoted
+  to a surfaced, unexecuted follow-up; **Stop** → execute nothing but still close, with
+  `[COMPLETION-REVIEW: none reason=…]` naming the stop. That last edge closed a real gap: a stopped
+  run leaves a `## Goal-spec` behind, so the gate expects a declaration and would otherwise nag an
+  agent that had correctly done nothing.
+- **Nothing said the `goal-adversary` must be spawned isolated.** 0.12.0 introduced agent-teams
+  guidance for *execution* decomposition; neither the adversary spawn nor `agents/goal-adversary.md`
+  excluded itself. A teammate is addressable and resumable, so the executor could brief the adversary
+  mid-verification or the adversary could ask instead of re-deriving from ground truth — collapsing
+  both independence levers at once and **invisibly to the gate**, which only checks the marker's
+  shape. Latent, not observed (it needs the experimental flag on, a named-teammate spawn, and someone
+  using the channel), and the fix is one clause at the spawn site plus a matching instruction in the
+  agent definition itself: no message goes to it after the spawn, and an unreachable fact is an
+  unverified claim to report, not a question to ask.
+
 ## [0.14.1] - 2026-07-22
 
 ### Added

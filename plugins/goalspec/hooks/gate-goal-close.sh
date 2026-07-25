@@ -23,6 +23,25 @@
 #     completion-review check can (you cannot gate your way out of specification gaming — see
 #     references/outcome-loop-beats-gates.md); it catches the honest-but-mistaken close, same as the
 #     model=different check below.
+#   * Convergence FLOOR (advisory text only, never its own branch): SKILL.md's convergence guard
+#     ("at three consecutive breaks, stop editing — the design is wrong, not the wording") was until
+#     0.15.0 observed by nothing but the agent's memory. The gate now counts, and the claim it makes
+#     is deliberately weak, and phrased to say exactly what the walk below checks and no more: "at
+#     least N of your most recent verdict-carrying turns each contain a break, with no hold-only turn
+#     between them" — a statement about turns, NOT a round count. (An earlier wording said "no
+#     intervening hold", which the external adversary broke: a turn quoting BOTH backends, one holding
+#     and one breaking, is a break round that the walk does not reset on, so a hold really can sit
+#     inside the counted run. The counter was right; the sentence was claiming more than it checked.) It cannot be a round count: the
+#     skill instructs the agent to quote every verdict verbatim in its own turn, so a multi-round loop
+#     naturally re-quotes earlier rounds when summarizing, and a transcript-wide tally inflates in
+#     exactly the scenario the guard exists for. A false "three breaks, stop editing" at round 2 would
+#     push toward a premature waiver — worse than not counting. So the count is damped: at most ONE
+#     round per assistant turn, identical verdict sets de-duplicated within the trailing run (which
+#     under-counts identical consecutive breaks — the fail-open direction), and the message tells the
+#     agent to verify its real round count rather than asserting one. Consumer: the message branches
+#     below (and the `block` reason under GOAL_GATE_ENFORCE=1) — it adds no new marker and nothing
+#     else reads it. Like every other check here it is an internal-consistency signal over the agent's
+#     own self-reports, not a lie detector.
 #   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block (agent must complete the
 #     declaration before stopping).
 #   * Explicit close-over-break escape, usable by you (the agent) or a human operator alike —
@@ -30,7 +49,13 @@
 #     when you've judged a residual break non-actionable and are stuck (e.g. the three-consecutive-
 #     breaks convergence limit) rather than reformulating the completion-review to paper over it —
 #     the waiver is greppable and honest; a disguised close is neither.
-#   * Any parse error / missing input -> exit 0 (fail-open).
+#   * Any parse error / missing input -> exit 0 (fail-open). Read the scope of that promise exactly:
+#     it is about the EXIT CODE, and about the DEFAULT advisory mode, which never blocks. A
+#     transcript_path that cannot be opened or parsed is swallowed and the checks proceed on
+#     last_assistant_message alone — so under the opt-in GOAL_GATE_ENFORCE=1 an unreadable transcript
+#     can still end in a `block`. That is what opting into teeth means, not a fail-open violation
+#     (an external adversary read the looser wording as a contradiction; the behavior is unchanged
+#     since the first release and identical with the transcript readable or not).
 #
 # Registered as a Stop hook by hooks/hooks.json.
 
@@ -58,7 +83,10 @@ except Exception:
 lam = data.get("last_assistant_message")
 lam_text = lam if isinstance(lam, str) else ""
 
-tx_parts = []
+#    tx_turns holds ONE entry per assistant turn (its text blocks joined) — the unit the convergence
+#    floor counts in. tx_text is derived from it and is byte-identical to the flat block join it
+#    replaced, so every pre-existing check sees exactly the same string it saw before.
+tx_turns = []
 tpath = data.get("transcript_path")
 if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
     try:
@@ -75,16 +103,19 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
                     continue
                 msg = ev.get("message") or {}
                 content = msg.get("content")
+                blocks = []
                 if isinstance(content, str):
-                    tx_parts.append(content)
+                    blocks.append(content)
                 elif isinstance(content, list):
                     for blk in content:
                         if isinstance(blk, dict) and blk.get("type") == "text":
-                            tx_parts.append(blk.get("text") or "")
+                            blocks.append(blk.get("text") or "")
+                if blocks:
+                    tx_turns.append("\n".join(blocks))
     except Exception:
         pass
 
-tx_text = "\n".join(tx_parts)
+tx_text = "\n".join(tx_turns)
 # Full text for order-independent checks (goal-spec presence, waiver, ADVERSARY-MODEL reports).
 text = lam_text + "\n" + tx_text
 if not text.strip():
@@ -98,18 +129,10 @@ if not re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I):
 if re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I):
     fail_open()
 
-# 4. Validate the completion-review declaration.
-# Operative completion-review = the current-turn declaration if present (last_assistant_message is
-# the reliable current-turn source), else the MOST RECENT one in the transcript. Anchoring on the
-# *last* declaration — never the first re.search match — is what prevents an earlier exploratory or
-# malformed [COMPLETION-REVIEW] from permanently poisoning the check after a correct one is emitted.
-cr_pat = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
-crs = re.findall(cr_pat, lam_text, re.I) or re.findall(cr_pat, tx_text, re.I)
-if not crs:
-    print("REMIND|completion-review:absent"); sys.exit(0)
-mode, body = crs[-1]
-mode = mode.lower()
-
+# 4. Verdict state: the operative verdict (drives the checks below) and the convergence floor
+#    (advisory text only). Computed BEFORE the completion-review branch so every reminder can carry
+#    the floor — including "absent", which is the state a mid-loop agent is actually in.
+#
 # Hardened verdict match, reused from the anti-echo pattern already in external-adversary.sh: require the
 # FULL structured grammar (break|hold followed by all five numeric fields), not a bare "break" —
 # free prose ("cerrado en break parcial", "verdict final registrado=break") and the literal
@@ -129,11 +152,59 @@ tx_verdicts = re.findall(verdict_re, tx_text, re.I)
 verdicts = lam_verdicts or tx_verdicts
 last_verdict = verdicts[-1].lower() if verdicts else None
 
+# Convergence floor — see the header for why this counts text occurrences, not rounds, and why it is
+# damped toward under-counting. Note this walks the TURN sequence in chronological order and stops at
+# the first non-break turn; it is deliberately NOT the lam-first/tx-fallback precedence above, which
+# answers a different question (which verdict is operative *now*).
+def turn_verdicts(t):
+    return [(m.group(1).lower(), re.sub(r"\s+", " ", m.group(0)).lower())
+            for m in re.finditer(verdict_re, t, re.I)]
+
+turns = list(tx_turns)
+lam_v = turn_verdicts(lam_text)
+if lam_v:
+    # The current turn may or may not already be flushed to the transcript file (lam never lags; the
+    # file can). If the last recorded turn already carries the verdict of this turn, it IS this turn —
+    # appending it again would count one round twice.
+    tail = re.sub(r"\s+", " ", tx_turns[-1]).lower() if tx_turns else ""
+    if lam_v[-1][1] not in tail:
+        turns.append(lam_text)
+
+streak = 0
+counted = set()
+for t in reversed(turns):
+    vs = turn_verdicts(t)
+    if not vs:
+        continue          # a turn with no verdict neither counts nor interrupts the run
+    if not any(c == "break" for c, _ in vs):
+        break             # a hold-only turn ends the consecutive-break run
+    # A turn quoting BOTH backends (e.g. subagent hold + external break) is ONE break round.
+    key = tuple(sorted(s for _, s in vs))
+    if key in counted:
+        continue          # verbatim re-quote of a round already counted — do not double-count
+    counted.add(key)
+    streak += 1
+
+def remind(detail):
+    print("REMIND|%s|%d" % (detail, streak)); sys.exit(0)
+
+# 5. Validate the completion-review declaration.
+# Operative completion-review = the current-turn declaration if present (last_assistant_message is
+# the reliable current-turn source), else the MOST RECENT one in the transcript. Anchoring on the
+# *last* declaration — never the first re.search match — is what prevents an earlier exploratory or
+# malformed [COMPLETION-REVIEW] from permanently poisoning the check after a correct one is emitted.
+cr_pat = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
+crs = re.findall(cr_pat, lam_text, re.I) or re.findall(cr_pat, tx_text, re.I)
+if not crs:
+    remind("completion-review:absent")
+mode, body = crs[-1]
+mode = mode.lower()
+
 if mode == "adversary":
     if not re.search(r"\[ADVERSARY-VERDICT:", text, re.I):
-        print("REMIND|completion-review:adversary-claimed-but-no-verdict"); sys.exit(0)
+        remind("completion-review:adversary-claimed-but-no-verdict")
     if last_verdict == "break":
-        print("REMIND|completion-review:closed-over-break"); sys.exit(0)
+        remind("completion-review:closed-over-break")
     # model=different asserts the adversary verified you on a DIFFERENT model; its only ground-truth is
     # the adversary own [ADVERSARY-MODEL:] self-report. We deliberately DO NOT parse the claimed id and
     # re-match it against the self-report: five adversarial rounds (a fresh-context subagent + an external
@@ -160,12 +231,12 @@ if mode == "adversary":
                     and bool(re.search(r"[a-z]", cid)) and bool(re.search(r"[0-9.-]", cid)))
         reports = re.findall(r"\[ADVERSARY-MODEL:\s*([^\]]*)\]", text, re.I)
         if not any(has_real_id(r) for r in reports):
-            print("REMIND|completion-review:model-different-needs-nonunknown-self-report"); sys.exit(0)
+            remind("completion-review:model-different-needs-nonunknown-self-report")
 else:  # none
     if not re.search(r"reason=.{20,}", body):
-        print("REMIND|completion-review:none-needs-reason>=20"); sys.exit(0)
+        remind("completion-review:none-needs-reason>=20")
     if last_verdict == "break":
-        print("REMIND|completion-review:none-but-break-recorded"); sys.exit(0)
+        remind("completion-review:none-but-break-recorded")
 
 print("OK")
 ' 2>/dev/null)
@@ -178,7 +249,13 @@ case "$RESULT" in
   *) exit 0 ;;
 esac
 
-DETAIL="${RESULT#REMIND|}"
+# RESULT is REMIND|<detail>|<streak>. No detail token contains "|", so the split is unambiguous;
+# a malformed/absent streak field degrades to 0 (no convergence note) rather than erroring.
+REST="${RESULT#REMIND|}"
+STREAK="${REST##*|}"
+DETAIL="${REST%|*}"
+case "$STREAK" in ''|*[!0-9]*) STREAK=0 ;; esac
+
 case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
     MSG="Goal-spec present but your operative [ADVERSARY-VERDICT: …] is \`break\` (${DETAIL}) — your [COMPLETION-REVIEW: …] cannot close over it as-is. Do NOT reformulate the completion-review to paper over the break. Pick one, honestly: (1) address the confirmed violation(s) and get a fresh \`hold\` from the adversary; (2) if you are stuck (e.g. three consecutive breaks — the design is wrong, not the wording), route to a genuinely different model/vendor and get a hold there; (3) if you've judged the residual break non-actionable, close explicitly with \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) — this is usable by you, the agent, not only a human operator; it is the honest, greppable way to override, unlike a completion-review that quietly disagrees with its own verdict."
@@ -187,6 +264,14 @@ case "$DETAIL" in
     MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
     ;;
 esac
+
+# Convergence floor (see header). Deliberately a claim about TEXT, not about rounds: it is damped
+# toward under-counting, so it tells you to check your own round count instead of asserting one.
+if [ "$STREAK" -ge 3 ]; then
+  MSG="$MSG
+
+Convergence floor: at least ${STREAK} of your most recent verdict-carrying turns each contain a \`break\`, with no \`hold\`-only turn between them — a turn where one backend held and another broke is a break round, not a hold. The convergence guard says that at three consecutive breaks you stop editing — the design is wrong, not the wording. This floor is counted from your own quoted verdicts (one per turn, verbatim re-quotes de-duplicated), so it can under-count and, if you re-quote old rounds in new wordings, over-count — verify your real round count before you act on it. If it genuinely is three: (a) reconsider the approach rather than the wording; (b) route to a genuinely different model or vendor — a same-model adversary keeps validating the frame you are stuck inside, however many rounds you run; or (c) if the residual break is genuinely non-actionable, close in the open with \`[GOAL-CLOSE-WAIVED reason=…]\` rather than patching to green."
+fi
 
 if [ "${GOAL_GATE_ENFORCE:-}" = "1" ]; then
   # Opt-in teeth: block the stop and force completion.
