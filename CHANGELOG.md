@@ -6,6 +6,67 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.17.0] - 2026-07-25
+
+Phase 3 of the graph-vs-loops research: **single-source applied to shared state**. Two places in
+`SKILL.md` told you to keep a fact alive outside your own context, and both created a *second home*
+for that fact — the generator of most defects shipped by this method. They now point at one file.
+
+- **The checkpoint has a name and a shape.** The Execute step said "checkpoint state to disk" with
+  no path, no schema, and no reader, while `hooks/check-usage-budget.sh` already nudged toward it —
+  a live pointer aimed at something each agent had to invent. It now names
+  **`.goalspec/checkpoint.md`**, with its shape in the new `references/durable-artifact.md`.
+  **What this is not:** nothing in the plugin reads that file, and **nothing gates its absence** — a
+  run that never writes one closes exactly as cleanly. It is a named place plus an instruction to
+  fill it, not a guarantee that state survives, and it does **not** close the resume gap (resume is
+  a human CLI action no hook can reach; that is unchanged). The narrow, real gain: the nudge now
+  points somewhere executable.
+- **The instruction to per-entity workers no longer prescribes a re-narrated copy.** The
+  coverage-floor decomposition said to *"relay the few facts that must stay consistent across
+  entities yourself"* — prescribing that the shared fact live in the coordinator's prose and be
+  retold to each worker, where it diverges round by round. It now says to put those facts in the
+  checkpoint and have each worker's brief **point at the path**. This changes what the skill tells
+  you to do; whether workers ever do it is **unobserved**, for the reason given at the end of this
+  entry.
+- **Verb restriction over shared state** (`references/durable-artifact.md`): coordinator is the only
+  writer, rounds append rather than rewrite, and no worker may `git stash` / `git reset` /
+  `git checkout --` shared working state. This is the prior art's best-supported finding — in Bun's
+  multi-agent port, clobbering appeared within ~2 minutes and was fixed by removing destructive
+  verbs, *not* by changing the number of agents.
+- **Two candidate practices not added — with the gap written down instead of papered over.** Each
+  has a near-neighbour already in the method, and in both cases the neighbour is **narrower**, so
+  "already covered" would have been false. *Review the shared artifact before it becomes shared
+  state*: step 6 routes your **outcome** to an adversary at close — it never requires that adversary
+  to open the checkpoint, and it fires **after** workers have read it. *A dedicated pass reconciling
+  contradictions between artifacts*: the rule-surface enumeration greps every carrier of a **rule
+  you changed**, which is not two arbitrary work products that disagree. Both limits are now stated
+  in `references/durable-artifact.md`; **neither is filled.** Restating the neighbours would have
+  given an existing rule a second home — the defect this release is about — but calling them
+  equivalent would have been the overclaim this project ships most often.
+
+**Declared, not validated.** The worker half serves the coverage-floor decomposition (S5c, v0.12.0),
+whose trigger has still never been observed firing on its own. This release's own task could not
+observe it either, and it fails **both** halves of S5c's condition: the task was never long enough to
+risk exhausting one context — the plainer disqualifier, and the one that rules out any short task —
+and its entities were carriers of a single claim, so they *share* state, S5c's stated anti-condition.
+Only the second half is specific to this class of task.
+
+**Was the checkpoint actually useful? Partly, and less than it sounds.** It was dogfooded
+in the session that shipped it, and for its **stated** purpose it was **not needed**: that session hit
+no context limit and no cutoff, so nothing was ever resumed from it. What it was actually used for
+was the carrier table — the running list of which surfaces had been updated. Whether that beat
+keeping the list in context is not something this release measured, so no claim is made either way.
+What *is* observed: the file reproduced the defect it exists to prevent **three times** — twice as a
+copied fact going stale (a word count, then a superseded scope claim), and once as two carriers
+simply disagreeing (its own header contradicted this entry about which items had gone stale). An
+adversary caught all three by re-deriving them; the file caught none. It has since been rewritten to
+carry pointers and status only, which is what `references/durable-artifact.md` tells you to do. One
+session, in which the artifact's own failure mode showed up three times inside the artifact, is not
+evidence that it pays for itself.
+
+`SKILL.md` body: 8,706 → 8,757 words (+51); the new material is in
+`references/`, which loads only on demand.
+
 ## [0.16.0] - 2026-07-25
 
 Phase 2 of the graph-vs-loops research. The phase was a **decision**, and the decision was **not to

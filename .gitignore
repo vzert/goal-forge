@@ -6,3 +6,6 @@
 
 # 3-tier memory — local only; this is a PUBLIC repo, keep session logs/learnings/pendientes private
 /memory/
+
+# goalspec run state — working file, not a deliverable
+/.goalspec/

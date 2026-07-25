@@ -226,7 +226,7 @@ if isinstance(seven_u, (int, float)) and seven_u >= threshold:
 msg = (
     "[USAGE-BUDGET] Your Claude Code 5-hour usage window is at {:.0f}% (resets at {}).{} "
     "This is a real account ceiling, not context — if this task still has several rounds to go, "
-    "checkpoint state to disk now (see SKILL.md Execute step) so a mid-round cutoff loses at most "
+    "checkpoint state to .goalspec/checkpoint.md now (see SKILL.md Execute step) so a mid-round cutoff loses at most "
     "the in-flight round."
 ).format(five_u, resets, seven_note)
 

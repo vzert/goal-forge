@@ -36,7 +36,8 @@ user-global `~/.claude/goal.config.json` — the same per-key fallback `adversar
 3. Reads `five_hour.utilization` (and `seven_day.utilization`) from the response.
 4. If utilization is **below** `warn_threshold` (default `80`): stays silent. No output, no noise.
 5. If **at or above** threshold: prints a single non-blocking advisory nudging you to checkpoint
-   state to disk (SKILL.md's "Execute" step) — never blocks the stop.
+   state to `.goalspec/checkpoint.md` (SKILL.md's "Execute" step, shape in
+   `references/durable-artifact.md`) — never blocks the stop.
 
 ## What it never does
 
