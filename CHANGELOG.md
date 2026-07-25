@@ -6,6 +6,37 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.16.0] - 2026-07-25
+
+Phase 2 of the graph-vs-loops research. The phase was a **decision**, and the decision was **not to
+adopt** the paper's "third independence lever" (make the verifier commit its own answer before
+reading the executor's). What shipped is one small disclosure field.
+
+**Why the lever was not adopted.** The motivating hypothesis was that the subagent backend verifies
+*code* while the external backend verifies *claims*, leaving the zero-config user (default backend =
+`subagent`) unverified on the claim axis. Classifying the existing recorded corpus by axis —
+retroactive and free, since the verdict's five integers were already written down — does not support
+that split. Across 6 confirmed findings (5 claim-axis, 1 coverage-axis), **all 6 came from the
+external backend and the subagent has 0 in either axis**. One of its misses had a fully available
+external error signal (the DoD claimed "committed locally"; `git log` showed HEAD unmoved with 7
+uncommitted files) — a not-checking failure, not an anchoring failure. So a claim-axis-only
+intervention would be narrower than the observed deficit, and the deficit itself is not yet
+characterized well enough (n=3 comparison rows) to design against. Revisit at n≥5.
+
+**Added — `backends=` in the completion-review details.** `backends=both` /
+`backends=subagent-only` / `backends=external-only`, so a single-backend verification is announced
+rather than silent, in the same pattern as `model=same`. Deliberately **not gated**: it is true by
+construction (you know which backends you ran), and the honest mechanical check does not exist —
+two backends routinely return a byte-identical `hold 0/0/0/0/0`, so counting *distinct* verdicts
+would downgrade a genuine dual-backend close, while counting *occurrences* would bless a re-quote of
+one backend. That is the bottomless-proxy pattern the 0.11.1 id-matcher removal already paid for.
+The field asserts nothing about what a second backend would have found.
+
+**Tests** — three cases (21–23) pinning that an extra field inside the completion-review bracket
+does not break a valid close and does not mask the `model=different` self-report check, which
+`cr_pat`'s `[^\]]*` body capture makes a real risk. Gate script unchanged; suite parity holds in
+both default and `GOAL_GATE_ENFORCE=1`.
+
 ## [0.15.0] - 2026-07-25
 
 Phase 1 of the graph-vs-loops research: three places where a written rule had no teeth. All three

@@ -72,6 +72,17 @@ CASES = [
     # the SAME verdict string in three separate turns collapses to 1 — a deliberate under-count
     # (the fail-open direction), never a false "three breaks, stop editing"
     ("20-identical-requotes", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_A, V_BREAK_A]),
+
+    # --- coverage disclosure (0.16.0) ---
+    # `backends=` is an ungated disclosure field, but it lives INSIDE the completion-review bracket,
+    # which cr_pat captures as `[^\]]*`. These pin the two ways that could go wrong: an extra field
+    # must not break a valid close (21/22), and it must not mask the one check that IS gated (23).
+    ("21-backends-both-modeldiff",
+     SPEC + MODEL_REAL + "\n" + V_HOLD + "\n[COMPLETION-REVIEW: adversary model=different (claude-sonnet-5) backends=both]", None),
+    ("22-backends-single-modelsame",
+     SPEC + V_HOLD + "\n[COMPLETION-REVIEW: adversary model=same backends=subagent-only]", None),
+    ("23-backends-does-not-mask-modeldiff",
+     SPEC + V_HOLD + "\n[COMPLETION-REVIEW: adversary model=different (x) backends=both]", None),
 ]
 
 

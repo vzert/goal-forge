@@ -1,6 +1,6 @@
 {
   "name": "goalspec",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Make any agent write its own grounded goal-spec, verify it with an independent adversary, and close through a fail-open completion gate. Hardens the built-in /goal.",
   "author": {
     "name": "vzert"

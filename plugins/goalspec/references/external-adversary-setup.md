@@ -84,6 +84,11 @@ rather than assume**.
 > **model**-correlated; the external partner is the only one that can catch a premise your own model
 > finds plausible. Running both is strictly better than either.
 
+- **One backend → announce it.** When only one of the two actually ran, the completion-review says
+  `backends=subagent-only` or `backends=external-only` (rather than `backends=both`). Nothing gates
+  it — you know what you ran — and it asserts nothing about what a second backend would have found;
+  it just keeps a narrower verification from reading as a full one, the same way `model=same` does.
+
 ## Safety rails
 
 - **Missing binary → fail-open.** If the configured CLI isn't on PATH, the script prints a `hold`
