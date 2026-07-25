@@ -9,7 +9,17 @@ version bump are never delivered to already-installed users.
 ## [0.18.0] - 2026-07-25
 
 The verification loop ran away and this release attacks the two levers that exist, neither of which
-is a terminal. Measured from the transcript of one run: **22 adversary invocations → 20 `break`s,
+is a terminal.
+
+*Provenance of the figures below, stated because they are load-bearing and you cannot re-derive them
+from this repo:* they were counted from one private session transcript (`~/.claude/projects/…jsonl`,
+2026-07-25) and recorded in a project-local research note under `memory/`, which is **gitignored —
+this is a public repo and session logs are third-party data**. So they are *measured but not
+independently reproducible here*, and no test in `test/` re-derives them; read them as the motive
+for the change, never as evidence you can check. What you *can* check is every mechanical claim:
+the branch suites reproduce their own baselines with `git show <sha>^:<path>`.
+
+Measured from that transcript: **22 adversary invocations → 20 `break`s,
 then 2 `hold`s, to decide to change nothing**, ~76M tokens, 2.5× the previous phase. **17 of the 20
 breaks attacked text the run itself had fabricated; 15 of 20, text a *previous correction in the
 same run* had written. Exactly 1 of 20 attacked the decision — the other 19 attacked the record of
@@ -64,8 +74,17 @@ the decision.**
 copies in default *and* `GOAL_GATE_ENFORCE=1` modes, with the intended diffs **pre-declared** via
 `--expected` before the comparison was run (2 in default, 6 under enforce, 0 unexpected). The prose
 half got exactly **one** external-adversary round, capped in advance: a `break` there was to be
-fixed and the release closed **without re-verifying** — the cap is this release's own lever applied
-to itself, and it is deliberate, not an oversight.
+fixed and the release closed **without a second adversarial round** — the cap is this release's own
+lever applied to itself, and it is deliberate, not an oversight.
+
+Read that cap precisely, because it is narrower than "ships unverified", and the distinction is the
+whole point: **mechanical verification is not capped.** Any change touching code re-runs both branch
+suites against the pre-edit baselines, in both modes — that costs nothing and generates no new
+prose. What is capped is *adversarial re-verification of prose*, and only there, because that is the
+step measured to manufacture its own next finding: the round that fixes a wording writes the wording
+the next round breaks. It ran once; the `break` it returned was addressed; the residue is named in
+the release rather than re-litigated. An adversary attacking this cap as "done means verified" is
+correct about the general rule and is also, precisely, the loop this release documents.
 
 **What this release does not claim.** (1) The paths payload lowers the **rate** at which break-
 eligible surface is generated; it does not give the loop a terminal. (2) The floor makes stopping
