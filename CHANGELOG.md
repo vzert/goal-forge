@@ -6,6 +6,76 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.18.0] - 2026-07-25
+
+The verification loop ran away and this release attacks the two levers that exist, neither of which
+is a terminal. Measured from the transcript of one run: **22 adversary invocations → 20 `break`s,
+then 2 `hold`s, to decide to change nothing**, ~76M tokens, 2.5× the previous phase. **17 of the 20
+breaks attacked text the run itself had fabricated; 15 of 20, text a *previous correction in the
+same run* had written. Exactly 1 of 20 attacked the decision — the other 19 attacked the record of
+the decision.**
+
+- **The adversary is spawned with paths, not a narrated payload** (`SKILL.md` step 6, both backends).
+  It used to be handed "the goal-spec, your outcome, where the work lives, and the ask record" — an
+  account the executor typed. Freshly written prose is the least verifiable material there is: it
+  *is* the claim, with no ground truth to re-derive it against, so an adversary instructed to resolve
+  what it cannot verify as `break` is handed one **by rule, not by chance** — and "on break, address
+  every violation and re-verify" then feeds it the correction it just wrote. Pointing at artifacts
+  removes the manufacturing step without narrowing the adversary's scope by one inch (delta-scoping
+  was rejected: it would blind the check that produced the best findings). Carriers updated together:
+  `SKILL.md` :199 and :203, `agents/goal-adversary.md`, `hooks/external-adversary.sh` (header, prompt,
+  payload banner), `hooks/route-external-adversary.sh`, `references/external-adversary-setup.md`.
+- **The convergence floor stopped pointing back into the loop.** Both times it fired in the measured
+  runaway it *resumed* a loop the executor had already stopped — it re-delivered advice the executor
+  had read on skill load, phrased around "don't close over a break", which is the rule that made
+  stopping impossible. It now says the thing that was true and unsaid: **ending the turn with no
+  completion-review, and handing the decision back to the human, is a legitimate terminal state** —
+  not an evasion, not a waiver, and explicitly *not* the waiver, whose precondition (non-actionable
+  residue, e.g. the verifier's own environment) is false for executor-authored prose and is
+  **unchanged**. Same rule mirrored in `SKILL.md`'s convergence guard as option (a).
+- **The floor never blocks — `GOAL_GATE_ENFORCE=1` is suspended on that one branch.** "You may not
+  stop until you close" plus "you may not close over a break" is an unterminable block capped only by
+  the harness's 8-block override: the runaway, mechanized. Yes, an executor could type three fake
+  breaks to disable the teeth; that is not a new hole and not the cheap one (a single fabricated
+  `hold` closes clean today, in one step), and it is the project's written position that you cannot
+  gate your way out of specification gaming.
+- **The floor got its own branch.** It could previously only ride a reminder some other check raised,
+  so a non-converging run whose declaration happened to pass — e.g. a turn quoting both backends and
+  closing on the `hold` — was met with silence at streak 3.
+- **Fixed: a hold-only turn extinguished the streak** (`gate-goal-close.sh`). With two backends, one
+  holding in a turn of its own switched the counter off mid-runaway; it now resets only when the
+  *most recent* verdict-carrying turn is a hold (which is convergence). Measured under-count in the
+  runaway: "at least 4" with 6 real, "at least 6" with 12.
+- **Fixed: the verdict nudge never saw a verdict** (`remind-quote-verdict.sh`). Since Claude Code
+  v2.1.198 subagents run in the background, so the tool result is a handle with no `content` — and
+  that handle echoes the executor's own spawn `prompt`, which this method fills with prior verdicts.
+  Measured against the pre-edit copy: it therefore reported the **executor's own text** as a verdict
+  that "came back" (case 04 of the new suite) — silent on a first round, actively misleading after.
+  It now anchors on `tool_input.subagent_type`, excludes echoed input fields, and nudges on the
+  launch itself. It stays a **nudge, not a counter**: `PreToolUse` can fail an Nth *spawn*, nothing
+  available can fail an Nth adversarial *round*.
+- **The verification instrument can now see what changed** (`test/gate-branches.py`). It read
+  `systemMessage or reason`, which collapses the advisory and blocking paths — so a change to
+  *whether the gate blocks* was invisible to `--compare`, the one check used to certify "no
+  regression". It now reports the gate's answer as a third observable and takes `--expected` to
+  pre-declare intended diffs. New `test/verdict-nudge-branches.py` covers the nudge's branches.
+
+**How it was verified.** The mechanical half is parity: both branch suites run against pre-edit
+copies in default *and* `GOAL_GATE_ENFORCE=1` modes, with the intended diffs **pre-declared** via
+`--expected` before the comparison was run (2 in default, 6 under enforce, 0 unexpected). The prose
+half got exactly **one** external-adversary round, capped in advance: a `break` there was to be
+fixed and the release closed **without re-verifying** — the cap is this release's own lever applied
+to itself, and it is deliberate, not an oversight.
+
+**What this release does not claim.** (1) The paths payload lowers the **rate** at which break-
+eligible surface is generated; it does not give the loop a terminal. (2) The floor makes stopping
+legitimate once the instrument has detected non-convergence; it does not make the exit set reachable
+in general. **The exit-set defect stays OPEN**: the reachable closes are still `hold` and the waiver,
+and `hold` is only reachable by a round that shrinks the corpus while the on-break instruction
+prescribes one that grows it. Handing back to the human is an exit from the *turn*, not a close.
+And (1) is **not verified by this release** — the project's own bar for it is a **comparison**
+(a run with the change against one without), not another passing round; one clean run is not that.
+
 ## [0.17.0] - 2026-07-25
 
 Phase 3 of the graph-vs-loops research: **single-source applied to shared state**. Two places in

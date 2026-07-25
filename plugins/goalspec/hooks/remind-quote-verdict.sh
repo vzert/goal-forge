@@ -32,13 +32,39 @@
 # the identical reminder, to stderr, from the one code path that only runs after it has already
 # validated a real well-formed verdict came back — no guessing from outside required.
 #
-# What it does: only acts when BOTH are true: (a) tool_name is Task or Agent with subagent_type
-# ending in "goal-adversary", AND (b) tool_response actually contains a well-formed
-# [ADVERSARY-VERDICT: ...] block (the SAME structured grammar gate-goal-close.sh itself requires —
-# no looser, no stricter). If both hold, injects a non-blocking reminder to quote the
-# ADVERSARY-MODEL/ADVERSARY-VERDICT lines VERBATIM in the very next assistant message. If a
-# [ADVERSARY-MODEL:] line is present but no well-formed verdict is (a malformed or missing verdict),
-# it says so instead — useful signal either way, still non-blocking.
+# What it does: acts on the ONE structural fact it can trust — tool_name is Task/Agent and
+# subagent_type ends in "goal-adversary" — and then says whatever the response shape supports:
+#   * a well-formed [ADVERSARY-VERDICT: ...] came back (the SAME structured grammar
+#     gate-goal-close.sh requires, no looser, no stricter) -> quote MODEL+VERDICT verbatim, now;
+#   * an [ADVERSARY-MODEL:] line but no well-formed verdict -> malformed/truncated, not a pass;
+#   * no adversary output at all in the result -> the spawn was LAUNCHED and its output will arrive
+#     later; the reminder still fires, because that is the case where forgetting is likeliest.
+#
+# 0.18.0 fixed two ways this was dead or wrong in the default spawn path:
+#   (1) IT NEVER SAW THE VERDICT. Since Claude Code v2.1.198 subagents run in the background by
+#       default, so the tool result is a HANDLE, not the agent's output: `{"isAsync": true, "status":
+#       "async_launched", "agentId": ..., "outputFile": ..., "resolvedModel": ..., "prompt": ...}`
+#       — no `content` field at all. The old shape gate required verdict-shaped text in the response,
+#       so the v0.14.0 feature could not fire on what it was built to catch.
+#   (2) AND WHAT IT DID FIRE ON WAS THE EXECUTOR'S OWN TEXT. That handle echoes the spawn `prompt`,
+#       which this method fills with prior verdicts — so flattening the whole response matches a
+#       verdict the EXECUTOR wrote and announces it as one that "came back". Measured, not reasoned:
+#       test/verdict-nudge-branches.py case 04 against the pre-edit copy takes the `verdict` branch.
+#       So the old behavior was silent on a first round and actively misleading from the second on —
+#       inducing the executor to quote its own prose forward as evidence, the same manufactured-
+#       evidence failure that got the Bash-command detection removed from this hook once already.
+#       Executor-authored echo fields are now excluded before matching.
+#       EVIDENCE STATUS for both: the response SHAPE is observed in the transcript `toolUseResult` of
+#       two real goal-adversary spawns (2026-07-25 21:00:40Z and 21:23:55Z) and the branch behavior is
+#       measured synthetically against the real hook; the harness synthesizes the hook's own
+#       `tool_response` from that object, so that its fields match one-for-one is INFERRED, never
+#       observed live. If `prompt` is in fact stripped there, (2) does not occur and (1) alone does.
+#
+# It stays a NUDGE, not a counter. A round counter anchored here would be evasion-shaped anyway:
+# PreToolUse can fail an Nth *spawn* of goal-adversary, but nothing available can fail an Nth
+# adversarial *round* (spawn `general-purpose` with adversary instructions and the anchor is gone) —
+# the same arms race this file already lost twice. See the convergence floor in gate-goal-close.sh
+# for where bounding actually lives.
 #
 # Fail-open: any parse error, missing field, or non-matching tool -> exit 0, silent. Never blocks
 # (PostToolUse cannot block a completed tool call anyway).
@@ -81,19 +107,24 @@ for k in ("subagent_type", "subagentType", "agent_type", "agentType"):
 if not is_adversary_spawn:
     silent()
 
-# 2. Flatten tool_response to text regardless of shape (string, or structured object/list).
+# 2. Flatten tool_response to text regardless of shape (string, or structured object/list) — minus
+#    the fields that merely echo the executor own spawn input. A backgrounded spawn returns a handle
+#    carrying `prompt` (and `description`), and this method has the executor quote prior verdicts
+#    INTO that payload, so including them would let the hook report the executor own text as output
+#    that "came back". Same lesson as the removed Bash-command detection: a nudge that manufactures
+#    evidence is worse than no nudge.
+ECHOED = ("prompt", "description", "args", "arguments", "input", "tool_input")
+
 def flatten(v):
     if isinstance(v, str):
         return v
     if isinstance(v, dict):
-        return " ".join(flatten(x) for x in v.values())
+        return " ".join(flatten(x) for k, x in v.items() if k.lower() not in ECHOED)
     if isinstance(v, list):
         return " ".join(flatten(x) for x in v)
     return ""
 
 text = flatten(tool_response)
-if not text.strip():
-    silent()
 
 # 3. Same structured grammar gate-goal-close.sh itself requires -- no looser, no stricter.
 verdict_re = (r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+\s+unfalsified=\d+\s+"
@@ -102,9 +133,6 @@ model_re = r"\[ADVERSARY-MODEL:\s*[^\]]*\]"
 
 verdicts = re.findall(verdict_re, text, re.I)
 models = re.findall(model_re, text, re.I)
-
-if not verdicts and not models:
-    silent()  # this spawn did not return recognizable adversary output
 
 if verdicts:
     # Deliberately does NOT assert this verdict is authentic/genuine adversarial work -- a
@@ -127,13 +155,27 @@ if verdicts:
         "assistant-authored text, this run and all prior turns -- so it stays invisible until you "
         "do this, and it is far easier to forget once you move on to other work."
     )
-else:
+elif models:
     msg = (
         "This adversary call returned an [ADVERSARY-MODEL: ...] line but no well-formed "
         "[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> "
         "autonomy-violations=<n> unsafe=<n>] block -- the run may have failed, been truncated, or "
         "returned a bare/malformed verdict. Do not treat this as a pass; re-run it or route to the "
         "other backend before declaring completion-review over it."
+    )
+else:
+    # No adversary output in this result. The normal reason is that the spawn was BACKGROUNDED --
+    # the result is a handle, the verdict arrives later -- which is precisely when the executor is
+    # most likely to move on and never re-type it. Deliberately says nothing about what the verdict
+    # will be, and nothing about round counts: this is a reminder about VISIBILITY, not a bound.
+    msg = (
+        "A goal-adversary spawn just returned no adversary output in its tool result -- normally "
+        "because the subagent runs in the background, so this result is a handle and the verdict "
+        "arrives later. Two things follow. (1) The Stop gate reads ONLY your own assistant-authored "
+        "text, never a tool result: when the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] "
+        "lines come back, quote them VERBATIM in your own next message or they do not exist as far "
+        "as the gate is concerned. (2) Do not declare a completion-review over a verdict you have "
+        "not actually read yet -- a spawn is not a verification."
     )
 
 print(json.dumps({

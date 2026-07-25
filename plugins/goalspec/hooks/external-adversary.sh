@@ -3,9 +3,17 @@
 #
 # Implements the community "partner reviews, never the host" pattern: instead of a same-model
 # subagent (structured self-critique with correlated bias), route the adversarial verification to a
-# DIFFERENT model/CLI for true independence. Reads the goal-spec + outcome + ask record on stdin,
-# pipes them with the adversary prompt to the configured external command, and prints the same
-# [ADVERSARY-VERDICT: ...] block the subagent backend produces.
+# DIFFERENT model/CLI for true independence. Reads the POINTER PAYLOAD on stdin — where the goal-spec
+# and outcome are written, where the work lives, the session transcript path and which decisions to
+# look for in it — pipes it with the adversary prompt to the configured external command, and prints
+# the same [ADVERSARY-VERDICT: ...] block the subagent backend produces.
+#
+# Paths, not prose, and this backend is where it matters most: 0.18.0 replaced the narrated payload
+# (SKILL.md step 6, which is its single home — this file mirrors it, it does not restate it) after a
+# runaway in which the majority of adversary invocations went through THIS path and most confirmed
+# breaks landed on prose the same run had just written. Freshly written narration is the least
+# verifiable material there is: it IS the claim, so an adversary told to resolve what it cannot
+# verify as `break` is handed one by construction, every round, by rule rather than by chance.
 #
 # The dead-handoff check (principle 4) needs the session log. Whether this partner can reach it is a
 # property of the CLI, NOT of "being external": a file-capable partner on the same host (e.g.
@@ -20,7 +28,7 @@
 #   "gemini -p"       (Google Gemini CLI)
 #   "claude -p --model claude-sonnet-5"   (a different Claude model as the partner)
 #
-# Usage:  printf '%s' "$SPEC_OUTCOME_AND_ASK_RECORD" | external-adversary.sh
+# Usage:  printf '%s' "$POINTERS_TO_SPEC_OUTCOME_WORK_AND_TRANSCRIPT" | external-adversary.sh
 # The external command is passed the full prompt on stdin.
 #
 # Anti-recursion: if this backend routes to another Claude that itself has goalspec
@@ -64,6 +72,11 @@ fi
 
 PAYLOAD=$(cat)
 
+# EDITING THE PROMPT BELOW: keep single quotes/apostrophes BALANCED inside this heredoc. It sits in a
+# command substitution, and bash 3.2 (the /bin/bash macOS still ships) pairs quotes while scanning for
+# the closing paren, so one stray apostrophe in prose makes the whole file a syntax error — a hook
+# that dies at parse time, silently, on the platform this is most used on. Caught by `bash -n` in the
+# 0.18.0 edit; prefer rewording ("the account the executor typed") over adding a second apostrophe.
 PROMPT=$(cat <<EOF
 You are an INDEPENDENT adversarial verifier. You did not do the work. Your job is to try to BREAK
 the claimed outcome against this 5-principle constitution — not to approve it:
@@ -81,8 +94,9 @@ the claimed outcome against this 5-principle constitution — not to approve it:
   4. Autonomy — two opposite failures, both count: nothing an agent could execute should be handed to
      a human; AND no decision assigned to the human may go unasked. A decision narrated in prose ("two
      decisions are yours", in any language) with no question ever raised is a DEAD HANDOFF — the human
-     cannot answer a paragraph. Judge the act, not a phrase list. The ASK RECORD in the payload is a
-     claim the executor authored — a POINTER, never evidence. TEST YOUR REACH FIRST: if you can read
+     cannot answer a paragraph. Judge the act, not a phrase list. The payload gives you POINTERS, not
+     the account the executor typed: the decisions their Q5 assigned to the human, and where the session log
+     is. Anything narrated in it is a claim the executor authored — a pointer, never evidence. TEST YOUR REACH FIRST: if you can read
      files on this host, go verify the ask yourself in the session log (Claude Code: the top-level
      <session-id>.jsonl under ~/.claude/projects/<cwd, every non-alphanumeric mapped to a dash>; read
      the parent file, never a subagents/ child, never newest-mtime; never exclude a file because it
@@ -113,7 +127,11 @@ just laziness). Then output EXACTLY ONE line, and nothing after it:
 Use 'break' if any confirmed count is >=1, else 'hold'. Above that line, list each confirmed
 violation with the ground-truth that proves it.
 
-=== GOAL-SPEC + OUTCOME + ASK RECORD UNDER REVIEW ===
+=== POINTERS TO WHAT IS UNDER REVIEW (paths, not a narrated account — go read them) ===
+Anything below that reads as narration rather than a location is text the executor typed: treat it
+as a claim to check against the artifact, never as the outcome itself, and never as attack surface
+in its own right. If a pointer names a file that does not exist, THAT is the finding.
+
 $PAYLOAD
 EOF
 )

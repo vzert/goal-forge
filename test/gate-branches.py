@@ -8,12 +8,25 @@ acid-test in CLAUDE.md: it drives the Stop gate across every branch it can take,
 
     python3 test/gate-branches.py                              # run against the repo's gate
     python3 test/gate-branches.py --compare <other-gate.sh>    # regression parity vs another copy
+    python3 test/gate-branches.py --compare <g> --expected 16-hold-resets,26-...   # pre-declared diffs
     GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py ...      # same suite through the blocking path
 
 The parity mode is the one that matters when editing the gate: copy the pre-edit script somewhere,
-then `--compare` it. Exit code is non-zero if any detail code differs, so it works in a pipeline.
+then `--compare` it. Exit code is non-zero if any observed cell differs, so it works in a pipeline.
 
-Columns: case | detail code the gate reported | CONV if the convergence floor fired.
+Columns: case | detail code the gate reported | CONV if the convergence floor fired | how the gate
+ANSWERED (`block` under GOAL_GATE_ENFORCE=1, `advisory` otherwise, `silent` when it emitted nothing).
+
+That third observable is not decoration. Until 0.18.0 this harness read `systemMessage or reason`,
+which collapses the advisory and blocking paths into one string — so a change to *whether the gate
+blocks* was invisible to `--compare`, the one instrument used to certify "no regression" when
+editing the gate. Teeth are only teeth if the instrument can see them; that applies to the
+verification instrument as much as to the gate it verifies.
+
+`--expected` is the pre-commitment channel: name the cases you INTEND to change before you run the
+comparison, and the run separates them from regressions instead of leaving you to rationalize a
+non-zero exit after the fact. It takes case-name prefixes, is never persisted in this file (a stale
+expected-diff list is just a muted alarm), and unexpected diffs still exit non-zero.
 """
 import argparse, json, os, re, subprocess, sys, tempfile
 
@@ -83,6 +96,20 @@ CASES = [
      SPEC + V_HOLD + "\n[COMPLETION-REVIEW: adversary model=same backends=subagent-only]", None),
     ("23-backends-does-not-mask-modeldiff",
      SPEC + V_HOLD + "\n[COMPLETION-REVIEW: adversary model=different (x) backends=both]", None),
+
+    # --- hold-only reset + floor-as-its-own-branch (0.18.0) ---
+    # The bound on the walk: a hold-only turn still ends the run when it is the MOST RECENT
+    # verdict-carrying turn — that is convergence, and a floor there would be noise.
+    ("24-hold-latest-no-floor", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C, V_HOLD]),
+    # ...but an EARLIER hold-only turn no longer extinguishes the count (16-hold-resets is the same
+    # rule seen from the other side). This case pins that skipping it does not over-count into a
+    # false floor: two break rounds around one hold is still 2, not 3.
+    ("25-hold-inside-run-still-2", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_HOLD, V_BREAK_B]),
+    # The floor must be able to fire on a path where the gate has NO completion-review complaint —
+    # a turn quoting both backends closes on the hold (operative verdict = hold, gate says OK) while
+    # the break-round count behind it is 3. Before 0.18.0 the floor could only ride an existing
+    # reminder, so this run got silence at streak 3.
+    ("26-floor-on-ok-close", V_BREAK_C + "\n" + V_HOLD + "\n" + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B]),
 ]
 
 
@@ -96,20 +123,24 @@ def transcript(turns, name):
 
 
 def run(gate, name, lam, turns):
+    """-> (detail, conv, decision). `decision` is what the gate ANSWERED, read from the JSON shape
+    itself and not from the message text: `{"decision":"block"}` is the enforce path, a
+    `systemMessage`/`additionalContext` payload is the advisory path, no output at all is silent."""
     payload = {"last_assistant_message": lam}
     if turns is not None:
         payload["transcript_path"] = transcript(turns, name)
     out = subprocess.run(["bash", gate], input=json.dumps(payload),
                          capture_output=True, text=True).stdout.strip()
     if not out:
-        return "SILENT", "-"
+        return "SILENT", "-", "silent"
     try:
         d = json.loads(out)
         msg = d.get("systemMessage") or d.get("reason") or ""
     except Exception:
-        return "UNPARSEABLE", "-"
-    m = re.search(r"\((completion-review:[^)]+)\)", msg)
-    return (m.group(1) if m else "NO-DETAIL"), ("CONV" if "Convergence floor" in msg else "-")
+        return "UNPARSEABLE", "-", "unparseable"
+    decision = "block" if d.get("decision") == "block" else "advisory"
+    m = re.search(r"\((completion-review:[^)]+|convergence-floor-only)\)", msg)
+    return (m.group(1) if m else "NO-DETAIL"), ("CONV" if "Convergence floor" in msg else "-"), decision
 
 
 def suite(gate):
@@ -120,23 +151,32 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("gate", nargs="?", default=DEFAULT_GATE)
     ap.add_argument("--compare", metavar="OTHER_GATE",
-                    help="a second gate script; fails if any detail code differs")
+                    help="a second gate script; fails if any observed cell differs")
+    ap.add_argument("--expected", default="",
+                    help="comma-separated case-name prefixes whose diff is INTENDED (declare them "
+                         "before running the comparison, not after reading it)")
     a = ap.parse_args()
 
+    expected = [s.strip() for s in a.expected.split(",") if s.strip()]
     rows = suite(a.gate)
     other = suite(a.compare) if a.compare else None
-    for i, (name, detail, conv) in enumerate(rows):
+    for i, (name, detail, conv, decision) in enumerate(rows):
         flag = ""
-        if other and other[i][1] != detail:
-            flag = "   <-- DIFFERS: %s" % other[i][1]
-        print("%-26s %-56s %s%s" % (name, detail, conv, flag))
+        if other and other[i][1:] != (detail, conv, decision):
+            tag = "EXPECTED-DIFF" if any(name.startswith(p) for p in expected) else "DIFFERS"
+            flag = "   <-- %s: %s" % (tag, " ".join(other[i][1:]))
+        print("%-26s %-46s %-5s %-9s%s" % (name, detail, conv, decision, flag))
 
     if other:
-        diffs = [r[0] for r, o in zip(rows, other) if r[1] != o[1]]
+        diffs = [r[0] for r, o in zip(rows, other) if r[1:] != o[1:]]
+        unexpected = [d for d in diffs if not any(d.startswith(p) for p in expected)]
         if diffs:
-            print("\nREGRESSION: %d branch(es) changed: %s" % (len(diffs), ", ".join(diffs)))
+            print("\n%d branch(es) changed: %s" % (len(diffs), ", ".join(diffs)))
+        if unexpected:
+            print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
             return 1
-        print("\nparity OK — %d branches identical to %s" % (len(rows), a.compare))
+        print("\nparity OK — %d branches, %d intended change(s), 0 unexpected (vs %s)"
+              % (len(rows), len(diffs), a.compare))
     return 0
 
 

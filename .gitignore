@@ -9,3 +9,8 @@
 
 # goalspec run state — working file, not a deliverable
 /.goalspec/
+
+# Session transcripts / audit scratch — third-party plugin-user data must never land here
+*.jsonl
+*.zip
+scratch_audit/

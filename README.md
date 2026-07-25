@@ -271,10 +271,12 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.15.0** closed three places
-where a written rule had no teeth — the ratify gate now says where all four of its answers lead,
-the Stop gate counts the convergence guard instead of leaving it to the agent's memory, and the
-adversary is explicitly spawned isolated (never as a teammate with a channel back to the executor).
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.18.0** attacks a measured
+runaway — 22 adversary invocations to decide to change nothing, 19 of the 20 breaks landing on the
+*record* of the decision rather than the decision. The adversary is now spawned with **paths, not a
+narrated payload** (so each round stops manufacturing the surface that breaks the next), and the
+convergence floor stops pointing back into the loop: it says stopping and handing back to the human
+is legitimate, and never blocks it. The exit-set defect itself stays open.
 
 ## The completion gate
 
@@ -285,12 +287,16 @@ turn end (fail-open). Set `GOAL_GATE_ENFORCE=1` to make it blocking instead. Stu
 break you've judged non-actionable? `[GOAL-CLOSE-WAIVED reason=<≥20 chars>]` is the honest close —
 usable by the agent itself, not only a human operator.
 
-The reminder also carries a **convergence floor**: when at least three of the agent's most recent
-verdict-carrying turns each contain a `break`, with no `hold`-only turn between them, it says so and
-points at the guard ("at three consecutive breaks the design is wrong, not the wording"). It is a
-claim about turns, not a round count — damped toward under-counting on purpose, because a false alarm at round 2 would push toward
-a premature waiver. The half that isn't mechanizable stays with the agent: the verdict's five
-integers are cardinalities, not severities.
+The gate also carries a **convergence floor**: when at least three verdict-carrying turns each
+contain a `break` and the most recent one is among them, it says so — on its own branch if nothing
+else objected — and tells the agent that **stopping is legitimate**: end the turn with no
+completion-review, say what is unresolved and how many rounds it ran, and hand the decision back to
+you. It never blocks that, not even under `GOAL_GATE_ENFORCE=1`, which is suspended on this one
+branch: "you may not stop until you close" plus "you may not close over a break" is an unterminable
+loop, and mechanizing it was the failure this floor exists to end. It does not point at the waiver
+(whose precondition — non-actionable residue — is false for exactly the prose a runaway produces),
+and it is a claim about turns, not a round count. The half that isn't mechanizable stays with the
+agent: the verdict's five integers are cardinalities, not severities.
 
 Why fail-open? You cannot gate your way out of specification gaming — a blocking marker just
 relocates the gaming. The real levers are measurable criteria up front and an independent adversary.

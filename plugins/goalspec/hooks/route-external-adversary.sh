@@ -78,8 +78,10 @@ root = os.environ.get("PLUGIN_ROOT") or ""
 hook_path = os.path.join(root, "hooks", "external-adversary.sh") if root else "hooks/external-adversary.sh"
 
 msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). Route this "
-       "goal-adversary verification through the external backend — pipe the goal-spec + outcome + ask "
-       "record to `" + hook_path + "` (it runs `" + ext_cmd + "`, a different vendor) and read its "
+       "goal-adversary verification through the external backend — pipe the same pointer payload the "
+       "subagent spawn takes (paths to where the goal-spec/outcome are written, where the work lives, "
+       "and the session transcript; not a narrated account) to `" + hook_path + "` "
+       "(it runs `" + ext_cmd + "`, a different vendor) and read its "
        "[ADVERSARY-VERDICT:]/[ADVERSARY-MODEL:] from there. Running the subagent too is fine (both "
        "backends is stronger); routing to ONLY the subagent silently skips the independence you "
        "configured. If the external binary is unreachable it fails open to an UNVERIFIED hold — not a block.")

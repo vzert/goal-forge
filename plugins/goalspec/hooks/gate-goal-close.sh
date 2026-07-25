@@ -23,7 +23,8 @@
 #     completion-review check can (you cannot gate your way out of specification gaming — see
 #     references/outcome-loop-beats-gates.md); it catches the honest-but-mistaken close, same as the
 #     model=different check below.
-#   * Convergence FLOOR (advisory text only, never its own branch): SKILL.md's convergence guard
+#   * Convergence FLOOR (advisory text; since 0.18.0 also its own branch, and never blocking):
+#     SKILL.md's convergence guard
 #     ("at three consecutive breaks, stop editing — the design is wrong, not the wording") was until
 #     0.15.0 observed by nothing but the agent's memory. The gate now counts, and the claim it makes
 #     is deliberately weak, and phrased to say exactly what the walk below checks and no more: "at
@@ -34,14 +35,23 @@
 #     inside the counted run. The counter was right; the sentence was claiming more than it checked.) It cannot be a round count: the
 #     skill instructs the agent to quote every verdict verbatim in its own turn, so a multi-round loop
 #     naturally re-quotes earlier rounds when summarizing, and a transcript-wide tally inflates in
-#     exactly the scenario the guard exists for. A false "three breaks, stop editing" at round 2 would
-#     push toward a premature waiver — worse than not counting. So the count is damped: at most ONE
-#     round per assistant turn, identical verdict sets de-duplicated within the trailing run (which
-#     under-counts identical consecutive breaks — the fail-open direction), and the message tells the
-#     agent to verify its real round count rather than asserting one. Consumer: the message branches
-#     below (and the `block` reason under GOAL_GATE_ENFORCE=1) — it adds no new marker and nothing
-#     else reads it. Like every other check here it is an internal-consistency signal over the agent's
-#     own self-reports, not a lie detector.
+#     exactly the scenario the guard exists for. So the count is damped: at most ONE round per
+#     assistant turn, identical verdict sets de-duplicated within the trailing run (which under-counts
+#     identical consecutive breaks — the fail-open direction), and the message tells the agent to
+#     verify its real round count rather than asserting one. Consumer: the message branches below —
+#     it adds no new marker and nothing else reads it. Like every other check here it is an
+#     internal-consistency signal over the agent's own self-reports, not a lie detector.
+#     0.18.0 changed three things about it, and the third is why the first two are safe:
+#       (a) an earlier hold-only turn no longer extinguishes the run (only a hold in the most recent
+#           verdict-carrying turn does) — running two backends, one holding in a turn of its own,
+#           was measured silencing the counter in exactly the runs it exists for;
+#       (b) it can now fire on its own branch, so a non-converging run whose declaration happens to
+#           pass every check is no longer met with silence;
+#       (c) it never blocks, and its message routes to "stop and hand back to the human" instead of
+#           to the waiver. The original damping rationale — "a false three-breaks would push toward a
+#           premature waiver, worse than not counting" — is retired with (c): over-counting now costs
+#           an unnecessary suggestion to stop and ask, which is cheap, so (a) and (b) trade in the
+#           direction the old rationale forbade only because the old message pointed somewhere worse.
 #   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block (agent must complete the
 #     declaration before stopping).
 #   * Explicit close-over-break escape, usable by you (the agent) or a human operator alike —
@@ -177,7 +187,14 @@ for t in reversed(turns):
     if not vs:
         continue          # a turn with no verdict neither counts nor interrupts the run
     if not any(c == "break" for c, _ in vs):
-        break             # a hold-only turn ends the consecutive-break run
+        # A hold-only turn ends the run ONLY when it is the MOST RECENT verdict-carrying turn
+        # (streak still 0): that is convergence, and a floor there would be noise. An EARLIER
+        # hold-only turn is skipped, not fatal — running two backends, one holding in its own turn
+        # while the other keeps breaking is one unconverged loop, not a reset, and treating it as a
+        # reset was measured under-counting the very runs the floor exists for (0.18.0).
+        if streak == 0:
+            break
+        continue
     # A turn quoting BOTH backends (e.g. subagent hold + external break) is ONE break round.
     key = tuple(sorted(s for _, s in vs))
     if key in counted:
@@ -238,6 +255,14 @@ else:  # none
     if last_verdict == "break":
         remind("completion-review:none-but-break-recorded")
 
+# 6. Floor as its own branch (0.18.0). Until now the floor could only be APPENDED to a reminder some
+#    other check had already raised, so a run that is not converging but has nothing wrong with its
+#    declaration got silence — e.g. a turn quoting both backends closes on the hold (operative
+#    verdict = hold, every check passes) while the break-round count behind it is 3. The floor is
+#    advisory text either way; this only gives it a path to be said at all.
+if streak >= 3:
+    remind("convergence-floor-only")
+
 print("OK")
 ' 2>/dev/null)
 
@@ -260,6 +285,9 @@ case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
     MSG="Goal-spec present but your operative [ADVERSARY-VERDICT: …] is \`break\` (${DETAIL}) — your [COMPLETION-REVIEW: …] cannot close over it as-is. Do NOT reformulate the completion-review to paper over the break. Pick one, honestly: (1) address the confirmed violation(s) and get a fresh \`hold\` from the adversary; (2) if you are stuck (e.g. three consecutive breaks — the design is wrong, not the wording), route to a genuinely different model/vendor and get a hold there; (3) if you've judged the residual break non-actionable, close explicitly with \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) — this is usable by you, the agent, not only a human operator; it is the honest, greppable way to override, unlike a completion-review that quietly disagrees with its own verdict."
     ;;
+  convergence-floor-only)
+    MSG="Nothing objects to how you closed (${DETAIL}) — the declaration checks all pass. This is the convergence counter speaking on its own branch, because the count behind a clean-looking close is what the loop looks like from outside."
+    ;;
   *)
     MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
     ;;
@@ -267,14 +295,43 @@ esac
 
 # Convergence floor (see header). Deliberately a claim about TEXT, not about rounds: it is damped
 # toward under-counting, so it tells you to check your own round count instead of asserting one.
+# 0.18.0 rewrote what it SAYS. The old text re-offered the three options of SKILL.md's convergence
+# guard, two of which re-enter the loop and the third of which (the waiver) has a precondition that
+# is false for exactly the residue a runaway produces — executor-authored prose is an actionable
+# defect, not a verifier-environment limitation. Measured: both times this floor fired in the worst
+# recorded runaway, it RESUMED a loop the executor had already stopped by itself. An instrument that
+# detects non-convergence and then re-states the rule that makes stopping illegal is worse than
+# silent. What it must do at that moment is make STOPPING legitimate — without widening the waiver,
+# which stays exactly as narrow as it was.
 if [ "$STREAK" -ge 3 ]; then
   MSG="$MSG
 
-Convergence floor: at least ${STREAK} of your most recent verdict-carrying turns each contain a \`break\`, with no \`hold\`-only turn between them — a turn where one backend held and another broke is a break round, not a hold. The convergence guard says that at three consecutive breaks you stop editing — the design is wrong, not the wording. This floor is counted from your own quoted verdicts (one per turn, verbatim re-quotes de-duplicated), so it can under-count and, if you re-quote old rounds in new wordings, over-count — verify your real round count before you act on it. If it genuinely is three: (a) reconsider the approach rather than the wording; (b) route to a genuinely different model or vendor — a same-model adversary keeps validating the frame you are stuck inside, however many rounds you run; or (c) if the residual break is genuinely non-actionable, close in the open with \`[GOAL-CLOSE-WAIVED reason=…]\` rather than patching to green."
+Convergence floor — read this INSTEAD of the reminder above, not in addition to it.
+
+At least ${STREAK} verdict-carrying turns in this session each contain a \`break\`, and your most recent verdict-carrying turn is one of them. An earlier turn where one backend held does not reset that count (two backends disagreeing is one unconverged loop, not convergence); a hold in your LATEST verdict-carrying turn does, and would have silenced this. Verbatim re-quotes of one round are de-duplicated, so this can under-count; re-wording an old round can make it over-count. It is a floor, not your round count.
+
+STOPPING HERE IS A LEGITIMATE OUTCOME OF THIS METHOD, AND THIS FLOOR NEVER BLOCKS IT — not even under GOAL_GATE_ENFORCE=1, which is suspended for this branch precisely so that a loop that cannot converge is never mechanically forced to continue. Ending your turn WITHOUT a completion-review is a valid terminal state: say plainly what is unresolved, how many rounds you actually ran, and what you would do next, then hand the decision back to the human. That is not an evasion and not a waiver — you are not closing over the \`break\`, you are declining to keep going alone. The human is the exit the loop does not have.
+
+Why this, rather than \"address it and re-verify\": every corrective round rewrites the outcome, and freshly-written prose is the least verifiable material that exists — it IS the claim, with no ground truth to re-derive it against — so an adversary that resolves what it cannot verify as \`break\` is handed a new break by construction. Past three rounds the next break is likelier to be about your RECORD of the decision than about the decision. Re-verifying an outcome you just rewrote is not converging.
+
+If you do continue, continue on the design, not the wording: a genuinely different approach, or a genuinely different model/vendor, can be worth one more round; a round that only re-words is patching to green. And do not reach for \`[GOAL-CLOSE-WAIVED reason=…]\` as a way out of this — its precondition is unchanged and narrow (a residual break you have verified to be non-actionable, e.g. a limitation of the adversary's own environment rather than a defect in the outcome). If the break is actionable and you still cannot resolve it, the honest exit is the one above: stop, report, hand back."
 fi
 
-if [ "${GOAL_GATE_ENFORCE:-}" = "1" ]; then
-  # Opt-in teeth: block the stop and force completion.
+# Opt-in teeth: block the stop and force completion — EXCEPT on the convergence floor, where the
+# teeth would bite in the wrong direction. At streak>=3 with an unresolved break, "you may not stop
+# until you close" plus "you may not close over a break" is an unterminable block, capped only by
+# the harness's 8-consecutive-block override; that combination is the runaway, mechanized. Suspending
+# the block IS the mechanical half of the message above — otherwise the gate says stopping is
+# legitimate while refusing to let it happen.
+#
+# Yes, this is gameable: the gate reads executor-authored text, so an executor who wanted to disable
+# the teeth could type three fabricated \`break\` verdicts. That is not a new hole and it is not the
+# cheap one — today a single fabricated \`hold\` closes cleanly and gets you the same place in one
+# step. Every check here is an internal-consistency signal over self-reports, never a lie detector;
+# you cannot gate your way out of specification gaming (references/outcome-loop-beats-gates.md), and
+# hardening this branch against a self-report you already trust everywhere else would buy nothing
+# while re-arming the loop this release exists to end.
+if [ "${GOAL_GATE_ENFORCE:-}" = "1" ] && [ "$STREAK" -lt 3 ]; then
   MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["MSG"]}))'
   exit 0
 fi

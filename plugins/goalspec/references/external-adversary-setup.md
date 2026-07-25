@@ -43,14 +43,17 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
    adversary. Both surfaces use this same per-key fallback — `/goalspec` step 6 reads `adversary.backend`,
    `external-adversary.sh` reads `external_cmd` — so the routing decision and the command invoked are
    drawn from the same resolution and never disagree.
-3. `/goalspec` step 6 will then run `hooks/external-adversary.sh`, which pipes the goal-spec +
-   outcome + ask record + the adversary prompt to that command on stdin and expects the standard
+3. `/goalspec` step 6 will then run `hooks/external-adversary.sh`, which pipes the pointer payload +
+   the adversary prompt to that command on stdin and expects the standard
    `[ADVERSARY-VERDICT: ...]` block back.
 
 ## Contract
 
-`external-adversary.sh` reads the goal-spec + outcome + ask record on stdin and prints exactly the
-same verdict grammar the subagent produces — including the model self-report that opens it:
+`external-adversary.sh` reads a **pointer payload** on stdin — where the goal-spec and outcome are
+written, where the work lives, the session transcript path and which decisions to look for in it —
+and prints exactly the same verdict grammar the subagent produces, including the model self-report
+that opens it. Paths, not narration: the rule and the reason live in `/goalspec` step 6 (both
+backends take the same payload), and this file does not restate them.
 
 ```
 [ADVERSARY-MODEL: <name> / <exact id, or UNKNOWN>]
