@@ -21,7 +21,10 @@ external backend and the subagent has 0 in either axis**. One of its misses had 
 external error signal (the DoD claimed "committed locally"; `git log` showed HEAD unmoved with 7
 uncommitted files) — a not-checking failure, not an anchoring failure. So a claim-axis-only
 intervention would be narrower than the observed deficit, and the deficit itself is not yet
-characterized well enough (n=3 comparison rows) to design against. Revisit at n≥5.
+characterized well enough (n=3 comparison rows) to design against. Revisit at **n≥5 rows independent
+of this decision** — the two rows added during this release are the verification of the decision
+itself, and letting a decision's own verification satisfy the threshold that gates revisiting it is
+circular. On that count the corpus is still at 3.
 
 **Added — `backends=` in the completion-review details.** `backends=both` /
 `backends=subagent-only` / `backends=external-only`: a place for a single-backend verification to
