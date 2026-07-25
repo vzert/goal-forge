@@ -16,15 +16,24 @@ reading the executor's). What shipped is one small disclosure field.
 *code* while the external backend verifies *claims*, leaving the zero-config user (default backend =
 `subagent`) unverified on the claim axis. Classifying the existing recorded corpus by axis —
 retroactive and free, since the verdict's five integers were already written down — does not support
-that split. Across 6 confirmed findings (5 claim-axis, 1 coverage-axis), **all 6 came from the
-external backend and the subagent has 0 in either axis**. One of its misses had a fully available
-external error signal (the DoD claimed "committed locally"; `git log` showed HEAD unmoved with 7
-uncommitted files) — a not-checking failure, not an anchoring failure. So a claim-axis-only
-intervention would be narrower than the observed deficit, and the deficit itself is not yet
-characterized well enough (n=3 comparison rows) to design against. Revisit at **n≥5 rows independent
-of this decision** — the two rows added during this release are the verification of the decision
-itself, and letting a decision's own verification satisfy the threshold that gates revisiting it is
-circular. On that count the corpus is still at 3.
+that split. Across the 6 findings confirmed **in the corpus as it stood when this was decided**
+(5 claim-axis, 1 coverage-axis), all 6 came from the external backend and the subagent had 0 in
+either axis. One of its misses had a fully available external error signal (the DoD claimed
+"committed locally"; `git log` showed HEAD unmoved with 7 uncommitted files) — a not-checking
+failure, not an anchoring failure. So a claim-axis-only intervention would be narrower than the
+observed deficit, and the deficit itself is not yet characterized well enough (n=3 comparison rows)
+to design against.
+
+**That "subagent has 0" figure is a snapshot, not a property** — and this release's own verification
+falsified it within hours: the subagent backend went on to return real findings in both axes over
+several rounds, including the sharpest one of the release (a sibling overclaim about `model=` sitting
+in the README). What survives the larger corpus is narrower: the subagent has not yet caught anything
+the external did not.
+
+Revisit at **n≥5 comparison rows independent of this decision**. The rows added during this release —
+five of them, all of them this release's own verification rounds — do not count: letting a decision's
+own verification satisfy the threshold that gates revisiting it is circular. Counted that way the
+corpus is still at 3, where it was when the call was made.
 
 **Added — `backends=` in the completion-review details.** `backends=both` /
 `backends=subagent-only` / `backends=external-only`: a place for a single-backend verification to
