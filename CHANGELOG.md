@@ -42,6 +42,14 @@ truth). Not done here: the ratified scope for this release was explicitly zero c
 `gate-goal-close.sh`, and gating presence changes the outcome for every existing close that omits
 the field. Left as a named follow-up.
 
+**Fixed — the same overclaim about `model=`, found by round 2 of this release's own verification.**
+`README.md` described a same-model fallback as "announced, **never silent**". It is the identical
+claim just retracted for `backends=`, one field over: `gate-goal-close.sh` only checks a body that
+*contains* `model=different`, so a close omitting `model=` entirely passes clean. The README now
+says what the gate does — it can reject an unsupported `model=different` claim, not a close that
+omits the field. Earlier CHANGELOG entries carry the old wording too; those are left as the
+historical record of what was claimed at the time, and this entry is the correction.
+
 **Tests** — three cases (21–23) pinning that an extra field inside the completion-review bracket
 does not break a valid close and does not mask the `model=different` self-report check, which
 `cr_pat`'s `[^\]]*` body capture makes a real risk. Gate script unchanged; suite parity holds in

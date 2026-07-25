@@ -65,8 +65,10 @@ on any domain with **zero configuration** — no control plane, no fleet, no han
    reply to. A decision it never asked is a decision you never made.
 3. **Red-teams itself, then routes to an independent adversary** for terminal/irreversible decisions
    — a fresh-context subagent spawned on a **different model tier** than the executor (automatic,
-   zero-config; the adversary self-attests where it ran, and a same-model fallback is announced,
-   never silent), or a different vendor's model/CLI for maximum decorrelation.
+   zero-config; the adversary self-attests where it ran, and the method's rule is that a same-model
+   fallback gets announced rather than passed off as independent — a rule the skill states and the
+   gate only half-enforces, since it can reject an unsupported `model=different` claim but not a
+   close that omits the field), or a different vendor's model/CLI for maximum decorrelation.
 4. **Closes through a completion gate** — a Stop hook that requires a `[COMPLETION-REVIEW: …]`
    declaration. Fail-open/advisory by default; opt-in blocking with `GOAL_GATE_ENFORCE=1`.
 
