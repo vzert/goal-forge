@@ -52,6 +52,12 @@ declare the degradation, and the gate can reject an unsupported `model=different
 that omits the field. Earlier CHANGELOG entries carry the old wording too; those are left as the
 historical record of what was claimed at the time, and this entry is the correction.
 
+**Size** — `SKILL.md` 8,543 → 8,706 words (+163), measured. Most of that is not the feature: the
+feature itself was a few sentences, and the rest is the five verification rounds' corrections, which
+replaced short absolute claims ("announced, never silent", "never silently skipped") with longer
+accurate ones. This file is the single place that figure is recorded, deliberately — a duplicated
+copy in the plan file went stale twice during this release.
+
 **Tests** — three cases (21–23) pinning that an extra field inside the completion-review bracket
 does not break a valid close and does not mask the `model=different` self-report check, which
 `cr_pat`'s `[^\]]*` body capture makes a real risk. Gate script unchanged; suite parity holds in
