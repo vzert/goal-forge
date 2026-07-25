@@ -25,10 +25,18 @@ observed deficit, and the deficit itself is not yet characterized well enough (n
 to design against.
 
 **That "subagent has 0" figure is a snapshot, not a property** — and this release's own verification
-falsified it within hours: the subagent backend went on to return real findings in both axes over
+falsified it within hours. The subagent backend went on to return real findings in both axes over
 several rounds, including the sharpest one of the release (a sibling overclaim about `model=` sitting
-in the README). What survives the larger corpus is narrower: the subagent has not yet caught anything
-the external did not.
+in the README).
+
+It went further than that, and this is the release's most useful result. In one round **each backend
+caught a defect the other missed**: the subagent alone found a threshold contradiction between two
+carriers, the external alone found a stale carrier in a third. That is the first *observational*
+support this project has for `SKILL.md`'s standing claim that "running both backends is strictly
+better than either" — which until now rested on OR-aggregation logic, not evidence. Note how it was
+found: an earlier draft of this entry asserted the opposite ("the subagent has not yet caught
+anything the external did not"), and both adversaries falsified it from the transcripts. The claim
+the verification pass killed was the one that would have thrown away the finding.
 
 Revisit at **n≥5 comparison rows independent of this decision**. The rows added during this release —
 five of them, all of them this release's own verification rounds — do not count: letting a decision's
