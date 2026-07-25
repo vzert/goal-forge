@@ -312,7 +312,7 @@ goal-forge/
     hooks/check-usage-budget.sh           # opt-in, off by default: 5h/7d usage-ceiling nudge (Stop)
     hooks/enable-autoupdate.sh            # SessionStart: idempotently enables marketplace auto-update
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
-    hooks/route-external-adversary.sh     # PreToolUse nudge: never silently skip a configured external backend
+    hooks/route-external-adversary.sh     # PreToolUse nudge toward a configured external backend (fail-open, silent on error)
     hooks/remind-quote-verdict.sh         # PostToolUse nudge: quote the verdict before you forget it
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
