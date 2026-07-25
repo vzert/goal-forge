@@ -7,7 +7,7 @@ a fail-open completion gate. Genericized from a validated fleet pilot; zero-conf
 built-in `/goal`.
 
 Layout: `plugins/goalspec/` (skill + agent + hooks + config), `.claude-plugin/marketplace.json`,
-`README.md`, `CHANGELOG.md`, `test/` (acid-test fixture).
+`README.md`, `CHANGELOG.md`, `test/` (Stop-gate branch suite + the manual acid test).
 
 ## Release discipline (hard-won — do not skip)
 - **Bump `plugins/goalspec/.claude-plugin/plugin.json` `version` on every release.** The install cache
@@ -30,9 +30,10 @@ No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Unit-test the Stop gate by piping synthetic `{"last_assistant_message": …}` JSON to
-   `hooks/gate-goal-close.sh` across its branches (no-spec → silent; spec-no-review → advisory;
-   valid `[COMPLETION-REVIEW: none reason=…]` → pass).
+3. Run the Stop-gate branch suite: `python3 test/gate-branches.py`. **When editing the gate, copy the
+   pre-edit script somewhere and `--compare` against it afterwards, in both default and
+   `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed, which turns "no
+   regression" from an eyeball into a measurement. See `test/README.md`.
 
 ## Memory System
 This project uses the 3-tier memory plugin. Operational indexes live in `memory/`:
