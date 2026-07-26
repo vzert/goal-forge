@@ -6,6 +6,63 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.20.1] - 2026-07-26
+
+**A reported regression turned out not to be one — the fix proposed for it was measured and
+rejected a second time, for the same reason 0.19.1 rejected it the first time.** A live session had
+bolded its own `[ADVERSARY-MODEL: …]` line when "quoting it verbatim" to close, and a second form
+(a marker followed by plain trailing text) does the same thing — both silently degrade a genuine
+`model=different` claim to `model=same`. The proposed repair — drop `gate-goal-close.sh:301`'s
+`\s*$` anchor so the already-greedy `.*` runs to the last `]` on the line — is the exact "obvious
+repair" 0.19.1's own code comment already documents as "WRITTEN, MEASURED AND REJECTED": re-tested
+against `test/gate-branches.py` case `34-trailing-cite-after-marker` (already in the suite, from
+0.19.1), it reopens that case — a same-line citation containing its own `]` gets sliced into a
+whitespace-free, letter+digit token that `has_real_id` accepts as genuine. **The two failure
+directions are not symmetric**: the anchor's false negative costs an honest degrade to
+`model=same`; removing it buys a false positive — a fabricated id read as proof of independence,
+the one claim this check exists to make honestly. Frequent-but-safe beats rare-but-unsafe; no
+formatting convenience justifies inverting which direction the check fails open in. **Rejected
+before touching the regex** — a fix proposed and measured broken costs a paragraph, not a shipped
+defect.
+
+- **The real defect was the gate's own message, not its regex.** `gate-goal-close.sh`'s generic
+  advisory text asked for a real, non-`UNKNOWN` `[ADVERSARY-MODEL: …]` self-report but never stated
+  the grammar the anchor actually enforces — that the marker must stand alone on its own line, in
+  plain text, with nothing before or after its closing `]`. An executor told to "quote it verbatim"
+  reasonably read that as reproduce the exact characters, not as reproduce it unformatted — and
+  bolding it for emphasis is a natural way to do that. Fixed with a dedicated `DETAIL` branch
+  (`model-different-needs-nonunknown-self-report`) that spells out both possible causes (a genuine
+  same-model self-report vs. a marker that fails the grammar) instead of falling through to the
+  generic fallback message.
+- **Same rule-surface gap, enumerated and fixed across every carrier that instructs the executor or
+  the adversary to "quote verbatim"**: `SKILL.md`'s completion-review section, `goal-adversary.md`'s
+  own-emission instruction, and both user-facing nudge messages in `remind-quote-verdict.sh` (the
+  sync-verdict and the backgrounded-handle branches) now all state the grammar explicitly — own
+  line, unformatted, nothing appended — instead of leaving it implied. `external-adversary.sh`'s
+  **matcher** was correctly re-checked and needed no change (its `[^]<>]+` capture already stops at
+  the first `]` and is presence-only) — but its own closing reminder line (`:219`, "quote the
+  markers VERBATIM in your very next assistant turn") is a *separate*, user-facing carrier of the
+  same instruction gap, and was missed on the first pass: confirmed and fixed only after the
+  external adversary (a genuinely different vendor, `codex exec` / GPT-5, routed per this repo's
+  configured `adversary.backend: external`) caught it and returned `break incomplete=1` on exactly
+  this omission. The distinction the first draft of this entry blurred — "matcher needs no change"
+  vs. "the file has no gap at all" — is not the same claim, and only the first one was true.
+- **`gate-goal-close.sh:301`'s comment now documents the second rejection in place**, so a third
+  attempt at "just drop the anchor" has the asymmetric-harm argument and the pointer to case 34
+  in front of it before it starts, rather than having to re-derive both from scratch.
+- **`test/gate-branches.py`: 6 new cases (35-40) from the marker-form sweep this fix requested.**
+  Beyond the two reported forms (bold-wrapped, plain trailing text), the sweep found two more that
+  degrade the same way — a trailing period, and a marker wrapped in an inline code span — and two
+  working forms worth a positive control — a leading list-item dash, and leading indentation.
+  Cases 35-38 pin the four degrading forms as **intentional** (`advisory-or-block`, not silent) so
+  a future loosening of the pattern shows red instead of shipping silently; 39-40 pin that the two
+  working forms keep working. All six were checked against the running gate before being written
+  down, not asserted from reading the regex.
+- **Regression parity: 40 branches, 0 intended changes, 0 unexpected, in BOTH modes**, `--compare`
+  against a pre-edit copy of `gate-goal-close.sh`. Zero intended changes is correct, not
+  suspicious: the regex is byte-identical to 0.19.1's; only the message text and four other files'
+  prose changed, none of which the branch table's detail/CONV/answered columns can see.
+
 ## [0.20.0] - 2026-07-26
 
 The waiver's precondition (`SKILL.md:139`) never covered the state a pre-agreed one-round cap

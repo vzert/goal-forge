@@ -59,6 +59,19 @@ MODEL_BRACKET_UNKNOWN = "[ADVERSARY-MODEL: Claude Opus 5 [1M context] / UNKNOWN]
 # mistakes for the id. See case 34.
 MODEL_TRAILING_CITE = ("[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5] "
                        "(see plugins/goalspec/hooks/gate-goal-close.sh[283] for the matcher)")
+# Forms an agent plausibly writes when quoting the marker "verbatim" but not literally: markdown
+# emphasis, or trailing prose with no bracket of its own (unlike MODEL_TRAILING_CITE above, whose
+# own "]" is what makes the naive fix unsafe — see cases 35-38). All are DEGRADE-not-MATCH by
+# design (2026-07-26): the anchor's false-negative direction is the safe one, so these stay pinned
+# as advisory, not "fixed" to silent. See the case-34 comment and the code comment above the regex.
+MODEL_BOLD = "**[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]**"
+MODEL_TRAILING_PLAIN = "[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5] (verified twice)"
+MODEL_TRAILING_PERIOD = "[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]."
+MODEL_CODE_SPAN = "`[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]`"
+# Working forms found by the same sweep — pinned as positive controls so a future edit that
+# tightens the pattern cannot silently start rejecting an ordinary quoted-bullet or indented reply.
+MODEL_LIST_PREFIX = "- [ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
+MODEL_INDENTED = "    [ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
 
 # (name, last_assistant_message, transcript turns or None[, opts])
 # opts is an optional dict:
@@ -179,6 +192,32 @@ CASES = [
     ("34-trailing-cite-after-marker",
      SPEC + MODEL_TRAILING_CITE + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
      {"expect": "advisory-or-block"}),
+
+    # --- marker-form sweep (2026-07-26) ---
+    # Reported live: a session quoted its own [ADVERSARY-MODEL:] "verbatim" by wrapping it in
+    # markdown bold, and a second form (trailing prose, no bracket of its own) does the same thing.
+    # A fix removing the end-of-line anchor was proposed to recover both — MEASURED to also recover
+    # case 34's citation-garbage id as a false "real" id (re.findall confirmed: cid becomes a
+    # whitespace-free, letter+digit token sliced out of the citation). Rejected: the anchor's
+    # failure direction is an honest degrade to model=same; the unanchored direction is a
+    # fabricated proof of independence, and no formatting convenience buys back that asymmetry.
+    # These four therefore pin the CURRENT, intentional behavior (degrade, not match) so a third
+    # attempt at loosening the pattern has a red test instead of a silent regression.
+    ("35-bold-wrapped-marker", SPEC + MODEL_BOLD + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "advisory-or-block"}),
+    ("36-trailing-plain-text", SPEC + MODEL_TRAILING_PLAIN + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "advisory-or-block"}),
+    ("37-trailing-period", SPEC + MODEL_TRAILING_PERIOD + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "advisory-or-block"}),
+    ("38-inline-code-span", SPEC + MODEL_CODE_SPAN + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "advisory-or-block"}),
+    # Positive controls from the same sweep: a leading list marker or indentation is NOT trailing
+    # content, and must keep matching — a future tightening of the pattern (e.g. requiring the "["
+    # to open the line) would silently break an ordinary quoted-bullet reply.
+    ("39-list-prefixed-marker", SPEC + MODEL_LIST_PREFIX + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "silent"}),
+    ("40-indented-marker", SPEC + MODEL_INDENTED + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "silent"}),
 ]
 
 

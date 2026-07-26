@@ -298,6 +298,22 @@ if mode == "adversary":
         # marker as its own line; you quote that line verbatim). Anything appended after the marker
         # means no match at all -> no real id -> degrade to model=same. Fail-safe by construction,
         # and a leading "- " or "> " still matches, so a quoted bullet is unaffected.
+        #
+        # Proposed a SECOND time and re-rejected (2026-07-26, by the human operator, after a session
+        # hit the same degrade on a bold-wrapped marker it had bolded itself when quoting): dropping
+        # \s*$ so the greedy .* runs to the last closing bracket on the line is the exact repair the
+        # comment above already tried and measured broken -- case 34 in test/gate-branches.py exists
+        # specifically to pin it. The two failure directions are NOT symmetric: anchored fails closed
+        # (a genuine different-model claim degrades to the honest, sayable model=same -- an
+        # under-claim); unanchored fails open (a citation with its own closing bracket on the same
+        # line, e.g. claude-sonnet-5 followed by a parenthetical citing file.sh line 283 in brackets,
+        # gets sliced into a whitespace-free, letter+digit token that has_real_id accepts as a real id
+        # -- a fabricated proof of independence). A false negative here costs an honest degrade; a
+        # false positive costs the one guarantee this check exists to make. No formatting convenience
+        # justifies inverting that. If you are reading this because you are about to try a third
+        # variant: the fix is not in this expression -- see the DETAIL case in the bash MSG mapping
+        # below for model-different-needs-nonunknown-self-report, which spells out the grammar (own
+        # line, plain text, nothing appended) instead of silently requiring it.
         reports = re.findall(r"\[ADVERSARY-MODEL:\s*(.*)\]\s*$", text, re.I | re.M)
         if not any(has_real_id(r) for r in reports):
             remind("completion-review:model-different-needs-nonunknown-self-report")
@@ -339,6 +355,9 @@ case "$DETAIL" in
     ;;
   convergence-floor-only)
     MSG="Nothing objects to how you closed (${DETAIL}) — the declaration checks all pass. This is the convergence counter speaking on its own branch, because the count behind a clean-looking close is what the loop looks like from outside."
+    ;;
+  completion-review:model-different-needs-nonunknown-self-report)
+    MSG="Goal-spec present but your model=different claim isn't backed by a matching [ADVERSARY-MODEL: …] line (${DETAIL}). Two distinct causes need two different responses: (1) the adversary genuinely self-reported UNKNOWN or the same model as yours — say model=same, that is the honest degrade, not a defect; or (2) the marker line doesn't match the grammar this gate reads — it must be its OWN line, in PLAIN TEXT: no bold/markdown wrapping (\`**[ADVERSARY-MODEL: …]**\` does not match) and nothing appended after the closing \`]\` on that same line (a trailing citation or comment breaks the match too, even a real one). Re-quote the adversary's [ADVERSARY-MODEL: …] line verbatim, alone and unformatted, on its own line — then this check passes."
     ;;
   *)
     MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."

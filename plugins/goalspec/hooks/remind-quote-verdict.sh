@@ -166,7 +166,11 @@ if verdicts:
         "no evidence above it is UNVERIFIED, not a pass; treat it the same way regardless of this "
         "nudge). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and "
         "[ADVERSARY-VERDICT: ...] lines VERBATIM in your very next assistant message (not a "
-        "paraphrase). The Stop gate cannot see this tool result directly -- it only reads your own "
+        "paraphrase) -- each on its OWN line, in plain text, nothing before it and nothing after "
+        "the closing bracket on that same line: no bold or code-span wrapping, no trailing "
+        "citation. The gate matches the marker only when its line ends at that bracket, so "
+        "decorating it while quoting degrades a genuine model=different to model=same, silently. "
+        "The Stop gate cannot see this tool result directly -- it only reads your own "
         "assistant-authored text, this run and all prior turns -- so it stays invisible until you "
         "do this, and it is far easier to forget once you move on to other work."
     )
@@ -188,9 +192,10 @@ else:
         "because the subagent runs in the background, so this result is a handle and the verdict "
         "arrives later. Two things follow. (1) The Stop gate reads ONLY your own assistant-authored "
         "text, never a tool result: when the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] "
-        "lines come back, quote them VERBATIM in your own next message or they do not exist as far "
-        "as the gate is concerned. (2) Do not declare a completion-review over a verdict you have "
-        "not actually read yet -- a spawn is not a verification."
+        "lines come back, quote them VERBATIM in your own next message, each alone on its own "
+        "line and unformatted (no bold, no trailing text after the marker), or they do not exist "
+        "as far as the gate is concerned. (2) Do not declare a completion-review over a verdict "
+        "you have not actually read yet -- a spawn is not a verification."
     )
 
 print(json.dumps({
