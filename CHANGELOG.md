@@ -29,9 +29,18 @@ own text declares. Bounded re-asking is not the deliverable; ending that inversi
 - **Re-entrant Stops are now silent** (`gate-goal-close.sh` step 0, `check-usage-budget.sh` step 0).
   If the harness sets `stop_hook_active`, both Stop hooks emit nothing, in **both** modes — the
   guard runs ahead of the `GOAL_GATE_ENFORCE=1` branch, because "you may not stop until you close"
-  re-asked on its own output is the runaway with teeth on. Ceiling is now one re-ask per turn:
-  reminder, reply, silence. Obeying the floor terminates the turn instead of accumulating toward a
-  cap.
+  re-asked on its own output is the runaway with teeth on. Ceiling is now one re-ask per **user
+  prompt**, then silence: measured, not assumed — two separate probe chains each recorded
+  `stop_hook_active` false on the first Stop and true on the next, under two different `prompt_id`
+  values, so the next thing you say re-arms it. Per-prompt, not per-session. Obeying the floor now
+  terminates the turn instead of accumulating toward a cap.
+- **⚠️ Behavior change if you set `GOAL_GATE_ENFORCE=1`: the teeth are weaker on purpose.** Because
+  the guard precedes the enforce branch, a block is followed by a Stop that carries
+  `stop_hook_active` and is answered with silence. So enforce mode is now **at most one block per
+  user prompt** — one hard, unignorable interruption that costs the agent a turn — and no longer
+  "may not stop until the declaration is complete". Two comments in the gate still claimed the old
+  semantics and were corrected with this release. The unbounded version was not enforcement: it was
+  the runaway, and it fell hardest on the agent that complied.
 - **`additionalContext` is kept, and that is a measured decision, not an omission.** `stop_hook_active`
   was verified to arrive on this harness — `false` on a first Stop, `true` on the next — *including*
   when the continuation came from a purely advisory payload with no block anywhere, which is the

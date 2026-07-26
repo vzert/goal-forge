@@ -52,8 +52,12 @@
 #           premature waiver, worse than not counting" — is retired with (c): over-counting now costs
 #           an unnecessary suggestion to stop and ask, which is cheap, so (a) and (b) trade in the
 #           direction the old rationale forbade only because the old message pointed somewhere worse.
-#   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block (agent must complete the
-#     declaration before stopping).
+#   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block. Since 0.18.1 that means
+#     AT MOST ONE block per user prompt, not "may not stop until the declaration is complete":
+#     the re-entrant guard at step 0 runs ahead of this branch, so the Stop that follows a block
+#     passes. Say what it is — one hard interruption that costs the agent a turn and cannot be
+#     ignored — and not what it is not. Unbounded teeth were never the design; they were the
+#     runaway, and re-asking your own output until the harness cuts you off is not enforcement.
 #   * Explicit close-over-break escape, usable by you (the agent) or a human operator alike —
 #     it is not gated to either: [GOAL-CLOSE-WAIVED reason=<>=20 chars>] anywhere in the turn. Use it
 #     when you've judged a residual break non-actionable and are stuck (e.g. the three-consecutive-
@@ -106,6 +110,10 @@ except Exception:
 #    one block. Re-asking here is how one reminder became nine, twice, until the consecutive-stop
 #    cap of the harness ended it. The reminder has already been delivered and read; repeating it
 #    to a turn that was produced BY it is the loop, not the message.
+#    Scope, also measured: the flag resets per USER PROMPT, not per session — two separate probe
+#    chains each recorded false on the first Stop and true on the next, under two different
+#    prompt_id values. So this is one re-ask per prompt, then silence; the next thing the user says
+#    re-arms it. A guard that fired once per session would be a different and much worse trade.
 if data.get("stop_hook_active"):
     fail_open()
 
@@ -345,12 +353,20 @@ Why this, rather than \"address it and re-verify\": every corrective round rewri
 If you do continue, continue on the design, not the wording: a genuinely different approach, or a genuinely different model/vendor, can be worth one more round; a round that only re-words is patching to green. And do not reach for \`[GOAL-CLOSE-WAIVED reason=…]\` as a way out of this — its precondition is unchanged and narrow (a residual break you have verified to be non-actionable, e.g. a limitation of the adversary's own environment rather than a defect in the outcome). If the break is actionable and you still cannot resolve it, the honest exit is the one above: stop, report, hand back."
 fi
 
-# Opt-in teeth: block the stop and force completion — EXCEPT on the convergence floor, where the
+# Opt-in teeth: block the stop ONCE per user prompt — EXCEPT on the convergence floor, where the
 # teeth would bite in the wrong direction. At streak>=3 with an unresolved break, "you may not stop
 # until you close" plus "you may not close over a break" is an unterminable block, capped only by
 # the harness's 8-consecutive-block override; that combination is the runaway, mechanized. Suspending
 # the block IS the mechanical half of the message above — otherwise the gate says stopping is
 # legitimate while refusing to let it happen.
+#
+# 0.18.1 bounds the teeth everywhere else too, via step 0: the Stop that FOLLOWS a block carries
+# stop_hook_active and is answered with silence, so the block costs the agent one turn and then
+# lets go. This branch stays because the floor case must not spend even that one turn — at
+# streak>=3 a single block still pushes toward exactly the loop the floor exists to end. Note what
+# the pairing means for a user who sets GOAL_GATE_ENFORCE=1: teeth are one hard, unignorable
+# interruption per prompt, not a hold-until-closed. Weaker on purpose. The unbounded version was
+# never enforcement — it was the runaway, and it punished the agent that obeyed.
 #
 # Yes, this is gameable: the gate reads executor-authored text, so an executor who wanted to disable
 # the teeth could type three fabricated \`break\` verdicts. That is not a new hole and it is not the
