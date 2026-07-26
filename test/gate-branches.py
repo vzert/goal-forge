@@ -23,6 +23,11 @@ blocks* was invisible to `--compare`, the one instrument used to certify "no reg
 editing the gate. Teeth are only teeth if the instrument can see them; that applies to the
 verification instrument as much as to the gate it verifies.
 
+A case may also declare `expect` (see CASES), asserted on EVERY run rather than only under
+`--compare`. Parity-against-a-copy cannot express "this branch must emit nothing at all", because
+the copy is precisely the thing being changed; the 0.18.1 re-entrant-Stop guard needed a test that
+failed before the fix, and that is the shape of it.
+
 `--expected` is the pre-commitment channel: name the cases you INTEND to change before you run the
 comparison, and the run separates them from regressions instead of leaving you to rationalize a
 non-zero exit after the fact. It takes case-name prefixes, is never persisted in this file (a stale
@@ -47,7 +52,13 @@ WAIVER = "[GOAL-CLOSE-WAIVED reason=adversary sandbox limitation, not a defect i
 MODEL_REAL = "[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
 MODEL_UNKNOWN = "[ADVERSARY-MODEL: UNKNOWN / UNKNOWN]"
 
-# (name, last_assistant_message, transcript turns or None)
+# (name, last_assistant_message, transcript turns or None[, opts])
+# opts is an optional dict:
+#   "payload" -> extra keys merged into the hook's stdin (e.g. {"stop_hook_active": True})
+#   "expect"  -> the `decision` cell this case MUST produce, in BOTH modes. Cases that declare it
+#                are asserted on every run, not only under --compare: a guard whose whole job is to
+#                emit nothing needs a test that fails when it emits something, and parity-vs-a-copy
+#                cannot express that (the copy is the thing being changed).
 CASES = [
     # --- the branches that predate the convergence floor ---
     ("01-no-goalspec", "just some text, no spec here", None),
@@ -110,6 +121,28 @@ CASES = [
     # the break-round count behind it is 3. Before 0.18.0 the floor could only ride an existing
     # reminder, so this run got silence at streak 3.
     ("26-floor-on-ok-close", V_BREAK_C + "\n" + V_HOLD + "\n" + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B]),
+
+    # --- re-entrant Stop guard (0.18.1) ---
+    # `stop_hook_active` is the harness telling the hook "this Stop is itself the product of a
+    # previous Stop hook's output". MEASURED, not assumed: it arrives `false` on a first Stop and
+    # `true` on the following one — including when the continuation was caused by a purely advisory
+    # payload with no `decision:block` anywhere, which is the exact path the worst recorded runaway
+    # took (31 Stop records, preventedContinuation:false, zero blocks). Re-asking on that Stop is
+    # how one reminder became nine. The guard must therefore precede EVERY branch, teeth included.
+    ("27-stop-hook-active-true", SPEC + "I did the work.", None,
+     {"payload": {"stop_hook_active": True}, "expect": "silent"}),
+    # ...and the control: the same payload without the flag is the ordinary first Stop — the 99%
+    # case — and must be untouched. A guard that silences this is a worse defect than the one fixed.
+    ("28-stop-hook-active-absent", SPEC + "I did the work.", None,
+     {"expect": "advisory-or-block"}),
+    # explicit false must behave exactly like absent, not like "key present -> skip"
+    ("29-stop-hook-active-false", SPEC + "I did the work.", None,
+     {"payload": {"stop_hook_active": False}, "expect": "advisory-or-block"}),
+    # the guard runs ahead of the convergence floor too: on a re-entrant Stop the floor has already
+    # been said once, and saying it again is the loop it exists to stop.
+    ("30-stop-hook-active-true-with-floor", SPEC + "still working on it.",
+     [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C],
+     {"payload": {"stop_hook_active": True}, "expect": "silent"}),
 ]
 
 
@@ -122,13 +155,21 @@ def transcript(turns, name):
     return p
 
 
-def run(gate, name, lam, turns):
+def run(gate, name, lam, turns, extra=None):
     """-> (detail, conv, decision). `decision` is what the gate ANSWERED, read from the JSON shape
     itself and not from the message text: `{"decision":"block"}` is the enforce path, a
-    `systemMessage`/`additionalContext` payload is the advisory path, no output at all is silent."""
+    `systemMessage`/`additionalContext` payload is the advisory path, no output at all is silent.
+
+    `conv` separates CONV (the floor rode along on a reminder some other check raised) from CONV!
+    (the floor IS the message). That distinction is not cosmetic: 0.18.0 shipped the floor as its
+    own branch but `remind()` returns before it on every path where a declaration check already
+    fired, so the floor was still being appended under the reminder it says to read INSTEAD of —
+    a message that opens with "run the sweep + red-team" at the moment the method says to stop.
+    Without this column `--compare` cannot see that fix at all."""
     payload = {"last_assistant_message": lam}
     if turns is not None:
         payload["transcript_path"] = transcript(turns, name)
+    payload.update(extra or {})
     out = subprocess.run(["bash", gate], input=json.dumps(payload),
                          capture_output=True, text=True).stdout.strip()
     if not out:
@@ -140,11 +181,19 @@ def run(gate, name, lam, turns):
         return "UNPARSEABLE", "-", "unparseable"
     decision = "block" if d.get("decision") == "block" else "advisory"
     m = re.search(r"\((completion-review:[^)]+|convergence-floor-only)\)", msg)
-    return (m.group(1) if m else "NO-DETAIL"), ("CONV" if "Convergence floor" in msg else "-"), decision
+    if "Convergence floor" not in msg:
+        conv = "-"
+    else:
+        conv = "CONV!" if msg.lstrip().startswith("Convergence floor") else "CONV"
+    return (m.group(1) if m else "NO-DETAIL"), conv, decision
+
+
+def opts_of(case):
+    return case[3] if len(case) > 3 else {}
 
 
 def suite(gate):
-    return [(n,) + run(gate, n, lam, turns) for n, lam, turns in CASES]
+    return [(c[0],) + run(gate, c[0], c[1], c[2], opts_of(c).get("payload")) for c in CASES]
 
 
 def main():
@@ -160,12 +209,18 @@ def main():
     expected = [s.strip() for s in a.expected.split(",") if s.strip()]
     rows = suite(a.gate)
     other = suite(a.compare) if a.compare else None
+    failures = []
     for i, (name, detail, conv, decision) in enumerate(rows):
         flag = ""
+        want = opts_of(CASES[i]).get("expect")
+        if want and not (decision == want or
+                         (want == "advisory-or-block" and decision in ("advisory", "block"))):
+            failures.append("%s: want %s, got %s" % (name, want, decision))
+            flag = "   <-- FAILS ASSERTION (want %s)" % want
         if other and other[i][1:] != (detail, conv, decision):
             tag = "EXPECTED-DIFF" if any(name.startswith(p) for p in expected) else "DIFFERS"
-            flag = "   <-- %s: %s" % (tag, " ".join(other[i][1:]))
-        print("%-26s %-46s %-5s %-9s%s" % (name, detail, conv, decision, flag))
+            flag += "   <-- %s: %s" % (tag, " ".join(other[i][1:]))
+        print("%-32s %-46s %-5s %-9s%s" % (name, detail, conv, decision, flag))
 
     if other:
         diffs = [r[0] for r, o in zip(rows, other) if r[1:] != o[1:]]
@@ -177,6 +232,10 @@ def main():
             return 1
         print("\nparity OK — %d branches, %d intended change(s), 0 unexpected (vs %s)"
               % (len(rows), len(diffs), a.compare))
+
+    if failures:
+        print("\nASSERTION FAILURES: %d\n  %s" % (len(failures), "\n  ".join(failures)))
+        return 1
     return 0
 
 

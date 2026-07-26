@@ -27,7 +27,10 @@
 #     this is a nudge for the rare case that matters, not a persistent status readout (that's what
 #     your own statusline is for).
 #   * Never blocks. Always exit 0. This is advisory only, in the same spirit as every hook in this
-#     plugin — see references/outcome-loop-beats-gates.md.
+#     plugin — see references/outcome-loop-beats-gates.md. Read that exactly: never blocking is not
+#     never re-asking. The advisory payload re-enters the turn by design (that is what gives the
+#     nudge an agent-facing consumer); what keeps it bounded is the re-entrant guard at step 0.
+#   * Silent on a re-entrant Stop (`stop_hook_active`) — step 0.
 #
 # Registered as a Stop hook by hooks/hooks.json. See references/usage-budget-setup.md for the full
 # security model and setup.
@@ -48,6 +51,14 @@ def silent():
 try:
     data = json.load(sys.stdin)
 except Exception:
+    silent()
+
+# 0. Re-entrant Stop: say nothing (0.18.1, mirrors step 0 of gate-goal-close.sh). This hook is
+#    advisory and never blocks, but "advisory" is not "inert": its payload carries
+#    hookSpecificOutput.additionalContext, which the harness feeds back to the model, so the turn is
+#    re-entered even though the stop was never prevented. Both Stop hooks in this plugin emit that
+#    shape, so guarding only the gate would leave the budget nudge able to re-ask on its own.
+if data.get("stop_hook_active"):
     silent()
 
 # 1. Only within a goalspec-tracked session (mirrors gate-goal-close.sh conditionality).

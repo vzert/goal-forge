@@ -59,8 +59,17 @@
 #     when you've judged a residual break non-actionable and are stuck (e.g. the three-consecutive-
 #     breaks convergence limit) rather than reformulating the completion-review to paper over it —
 #     the waiver is greppable and honest; a disguised close is neither.
+#   * Re-entrant Stop -> silence (0.18.1). If `stop_hook_active` is true, this hook says nothing at
+#     all, in either mode. See step 0 for the measurement behind it.
 #   * Any parse error / missing input -> exit 0 (fail-open). Read the scope of that promise exactly:
-#     it is about the EXIT CODE, and about the DEFAULT advisory mode, which never blocks. A
+#     it is about the EXIT CODE, and about the DEFAULT advisory mode, which never emits
+#     `decision:block`. "Never blocks" is NOT "never re-enters the turn", and until 0.18.1 this
+#     header traded on the two being the same thing. Measured: the advisory payload carries
+#     `hookSpecificOutput.additionalContext`, which the harness feeds back into the model — the
+#     stop is not prevented, and the model is asked again anyway. That is the intended mechanism
+#     (the reminder has an agent-facing consumer; a `systemMessage` the agent never sees could not
+#     do the job), and it is safe only because step 0 bounds it: one re-ask per turn, then silence.
+#     Unbounded, it was the runaway. A
 #     transcript_path that cannot be opened or parsed is swallowed and the checks proceed on
 #     last_assistant_message alone — so under the opt-in GOAL_GATE_ENFORCE=1 an unreadable transcript
 #     can still end in a `block`. That is what opting into teeth means, not a fail-open violation
@@ -86,6 +95,18 @@ def fail_open():
 try:
     data = json.load(sys.stdin)
 except Exception:
+    fail_open()
+
+# 0. Re-entrant Stop: say nothing. This runs AHEAD of every branch, teeth included — see the
+#    header. `stop_hook_active` is the harness telling the hook "the turn you are about to inspect
+#    exists BECAUSE a Stop hook spoke last time". Measured on this harness, not assumed: `false` on
+#    a first Stop, `true` on the next one — and true even when the continuation came from a purely
+#    advisory payload with no `decision:block` anywhere, which is the case that matters, because
+#    the worst recorded runaway contained 31 Stop records, all preventedContinuation:false, and not
+#    one block. Re-asking here is how one reminder became nine, twice, until the consecutive-stop
+#    cap of the harness ended it. The reminder has already been delivered and read; repeating it
+#    to a turn that was produced BY it is the loop, not the message.
+if data.get("stop_hook_active"):
     fail_open()
 
 # 1. Gather the assistant text for this turn.
@@ -303,10 +324,17 @@ esac
 # detects non-convergence and then re-states the rule that makes stopping illegal is worse than
 # silent. What it must do at that moment is make STOPPING legitimate — without widening the waiver,
 # which stays exactly as narrow as it was.
+#
+# 0.18.1: it REPLACES the reminder instead of being appended to it. 0.18.0 gave the floor its own
+# branch (step 6) but `remind()` exits before step 6 on every path where a declaration check has
+# already fired — so on the path that actually matters, an agent mid-loop with no completion-review
+# yet, the floor was still glued under the reminder, and the message opened with "run the sweep +
+# red-team" at the exact moment its own next paragraph says to stop. That branch shipped dead; the
+# old text apologised for it in prose ("read this INSTEAD of the reminder above, not in addition to
+# it") rather than fixing the control flow. The detail code is carried into the floor's first line
+# so the reminder it replaces stays greppable and the branch suite keeps its detail column.
 if [ "$STREAK" -ge 3 ]; then
-  MSG="$MSG
-
-Convergence floor — read this INSTEAD of the reminder above, not in addition to it.
+  MSG="Convergence floor (${DETAIL}).
 
 At least ${STREAK} verdict-carrying turns in this session each contain a \`break\`, and your most recent verdict-carrying turn is one of them. An earlier turn where one backend held does not reset that count (two backends disagreeing is one unconverged loop, not convergence); a hold in your LATEST verdict-carrying turn does, and would have silenced this. Verbatim re-quotes of one round are de-duplicated, so this can under-count; re-wording an old round can make it over-count. It is a floor, not your round count.
 

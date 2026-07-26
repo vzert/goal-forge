@@ -6,6 +6,58 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.18.1] - 2026-07-25
+
+Fix. 0.18.0 rewrote what the Stop gate *says* when a run will not converge. It did not touch the
+mechanism that made the gate able to say it nine times in a row.
+
+**The runaway was not the teeth.** In the affected session all 31 Stop records carried
+`preventedContinuation:false` and not one emitted `decision:block` — `GOAL_GATE_ENFORCE` was never
+set. The re-asking came from the *advisory* path: a Stop hook payload with
+`hookSpecificOutput.additionalContext` is fed back into the model, so the turn is re-entered even
+though the stop was never prevented. The header claimed the default mode "never blocks" and traded
+on that meaning "never re-enters the turn". Those are different properties and only the first was
+true.
+
+**The inversion that made it dangerous.** A tool call resets the harness's consecutive-stop counter;
+text-only turns accumulate toward it. The agent in that session did exactly what the convergence
+floor asked — zero tool calls, no fabricated close, no waiver — and that is *why* it hit the cap
+nine times, twice. Running another adversary round would have reset the counter. The mechanism
+punished obeying and rewarded staying in the loop, which is the precise opposite of what the floor's
+own text declares. Bounded re-asking is not the deliverable; ending that inversion is.
+
+- **Re-entrant Stops are now silent** (`gate-goal-close.sh` step 0, `check-usage-budget.sh` step 0).
+  If the harness sets `stop_hook_active`, both Stop hooks emit nothing, in **both** modes — the
+  guard runs ahead of the `GOAL_GATE_ENFORCE=1` branch, because "you may not stop until you close"
+  re-asked on its own output is the runaway with teeth on. Ceiling is now one re-ask per turn:
+  reminder, reply, silence. Obeying the floor terminates the turn instead of accumulating toward a
+  cap.
+- **`additionalContext` is kept, and that is a measured decision, not an omission.** `stop_hook_active`
+  was verified to arrive on this harness — `false` on a first Stop, `true` on the next — *including*
+  when the continuation came from a purely advisory payload with no block anywhere, which is the
+  path the runaway actually took. Since the flag arrives, the guard alone bounds the loop, and the
+  nudge keeps the agent-facing consumer that is its entire reason to exist. Had the flag *not*
+  arrived, the guard would have been dead code and removing `additionalContext` would have been the
+  only real fix.
+- **The convergence floor now REPLACES the reminder instead of being appended to it.** 0.18.0 gave
+  the floor its own branch, but `remind()` returns before it on every path where a declaration check
+  already fired — so for an agent mid-loop with no completion-review yet, the floor was still glued
+  underneath, and the message opened with "run the sweep + red-team" at the moment its own next
+  paragraph says to stop. That branch shipped dead. The prose that apologised for it ("read this
+  INSTEAD of the reminder above") is gone with the bug.
+- **`test/gate-branches.py`**: four cases for the re-entrant guard (`true` → silent; absent and
+  explicit `false` → unchanged, as controls), per-case assertions so "this fails today" is
+  mechanical rather than eyeballed, and a `CONV!` column that separates a floor that replaced the
+  reminder from one that rode along on it — without it, `--compare` could not see the floor fix at
+  all.
+
+*What is verified and what is not*: the branch suite reads the hook's stdout, so it certifies the
+payload and the guard, in both modes, against a pre-edit copy with the intended diffs declared
+first (8 changed, 0 unexpected). That the harness stops re-asking is established by direct
+measurement of a live Stop payload, not by the suite. The `check-usage-budget.sh` guard is verified
+by placement and syntax only — that hook cannot emit anything without real credentials, so no
+offline test discriminates.
+
 ## [0.18.0] - 2026-07-25
 
 The verification loop ran away and this release attacks the two levers that exist, neither of which

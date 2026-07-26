@@ -50,6 +50,19 @@ go wrong quietly:
   every declaration check passes, so before 0.18.0 the floor had no message to ride and the run got
   silence at streak 3. This is the case the floor's own branch exists for.
 
+Cases **27–30** cover the re-entrant-Stop guard (0.18.1). **27** and **30** are the ones that failed
+before the fix; **28** (flag absent) and **29** (flag explicitly `false`) are controls — they are the
+ordinary first Stop, the overwhelmingly common case, and a guard that silences *them* would be a
+worse defect than the one it fixes. Run 27 under `GOAL_GATE_ENFORCE=1` too: before the fix it
+answered `block`, which is what proves the guard has to sit ahead of the teeth branch and not merely
+ahead of the advisory one.
+
+Two smaller instrument changes came with them. Cases may carry an `expect` for the `decision` cell,
+asserted on every run and not only under `--compare` — parity-against-a-copy cannot express "this
+must emit nothing", because the copy is the thing being changed. And `CONV!` distinguishes a
+convergence floor that **replaced** the reminder from a `CONV` that was appended to one; without that
+column the 0.18.1 floor fix is invisible to `--compare`, since detail and decision both stay put.
+
 ## `verdict-nudge-branches.py` — PostToolUse verdict-nudge suite
 
 Same shape, for `hooks/remind-quote-verdict.sh`. The two payload **shapes** are the point: a
