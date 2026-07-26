@@ -313,8 +313,13 @@ else objected — and tells the agent that **stopping is legitimate**: end the t
 completion-review, say what is unresolved and how many rounds it ran, and hand the decision back to
 you. It never blocks that, not even under `GOAL_GATE_ENFORCE=1`, which is suspended on this one
 branch: "you may not stop until you close" plus "you may not close over a break" is an unterminable
-loop, and mechanizing it was the failure this floor exists to end. It does not point at the waiver
-(whose precondition — non-actionable residue — is false for exactly the prose a runaway produces),
+loop, and mechanizing it was the failure this floor exists to end. **v0.20.0** gave the agent a
+second, non-mechanical way to reach that same exit — a round cap *you* fix in writing before it
+starts, your cost call, not a judgment it makes mid-run — but the gate itself still only counts the
+break-streak: under a cap short of three breaks, expect its normal advisory, or one block under
+`GOAL_GATE_ENFORCE=1`. It does not point at the waiver
+(whose precondition — non-actionable residue — is false for exactly the prose a runaway produces,
+and a cap alone never satisfies it either),
 and it is a claim about turns, not a round count. The half that isn't mechanizable stays with the
 agent: the verdict's five integers are cardinalities, not severities.
 

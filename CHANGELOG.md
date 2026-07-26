@@ -6,6 +6,44 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.20.0] - 2026-07-26
+
+The waiver's precondition (`SKILL.md:139`) never covered the state a pre-agreed one-round cap
+produces — an actioned fix with re-verification forbidden by prior agreement, not a judged
+non-actionable residue. Two prior sessions (v0.18.0, v0.18.1) misused `GOAL-CLOSE-WAIVED` there
+because no other exit fit; this was P03, open since v0.19.0.
+
+- **`SKILL.md`'s convergence-guard bullet rewritten** (not appended — first pass was net -2 words
+  on the whole file) so the honest exit, option (a) ("stop and hand it back to the human, no
+  completion-review"), is reachable under **two** triggers instead of one: the existing
+  three-consecutive-break floor, or a **round cap the human fixed in writing before the run
+  started**. The second trigger is deliberately narrow — a cap invented by the executor mid-run,
+  after seeing a break, is explicitly named as the cost-based evasion this method already
+  rejected; only who-decided-and-when makes it legitimate, not the round count. The waiver's own
+  precondition is unchanged, but the text now says plainly why a cap never satisfies it:
+  `GOAL-CLOSE-WAIVED` asserts a judgment ("I closed — I judged this non-actionable"); a cap without
+  re-verification only supports "I stopped — I don't know what the residue is." Only option (a)
+  states that truthfully.
+- **A real defect surfaced by both adversary backends independently** (Sonnet subagent,
+  `codex exec`/GPT-5 — genuinely decorrelated, neither saw the other's output): the first draft of
+  the rewrite claimed `GOAL_GATE_ENFORCE=1` suspends "under either trigger." It does not —
+  `gate-goal-close.sh:315,420` suspend enforcement only at `streak >= 3`; there is no code path
+  that recognizes a human-declared cap, and none was added (a mechanical cap-detector would need
+  either a new governance marker, which `SKILL.md:185` already forecloses, or heuristic parsing of
+  self-reported text, which this file's own comments already reject as a pattern). The fix is
+  textual, not mechanical: the shipped text now states the suspension is real only at the
+  break-floor, and that a capped stop short of it may still draw the gate's normal advisory or, under
+  `GOAL_GATE_ENFORCE=1`, one block — a tooling limit to expect, not a reason to fake a `waived` or
+  `adversary` close instead. This is the same defect class as three prior releases (comment
+  asserting behavior the control flow doesn't implement); this time it was caught before ship.
+  **Net effect on the word-budget goal**: the corrected text could not stay net-zero — final delta
+  is 9241 → 9279 (+38 words) on top of the first pass's -2, because shipping an accurate claim
+  about tooling limits costs more than the false claim it replaced would have.
+- No new governance marker, no change to `gate-goal-close.sh`, no code-level cap detection — all
+  three were considered and rejected in favor of an honest, narrower textual claim.
+- `test/gate-branches.py`, `test/verdict-nudge-branches.py`, `test/usage-budget-branches.py` all
+  exit 0 with zero diff (expected: no hook script logic was touched, only `SKILL.md` prose).
+
 ## [0.19.1] - 2026-07-25
 
 Three fixes found by triaging the backlog rather than by working it. Two of the three pendientes
