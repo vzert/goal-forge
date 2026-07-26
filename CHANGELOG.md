@@ -6,6 +6,59 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.19.0] - 2026-07-25
+
+`GOAL_GATE_ENFORCE=1` gets a measured definition instead of an adjective, and stops being strictly
+worse than the default it opts out of.
+
+0.18.1 weakened the flag on purpose (the re-entrant guard runs ahead of the teeth) and said so. What
+nobody checked is whether what remained still buys anything. Read from source, both branches emit
+the **same `$MSG`**, and both re-enter the turn **once per user prompt** — the default via
+`hookSpecificOutput.additionalContext`, which the harness feeds back to the model. So the wording
+this file and two comments in `gate-goal-close.sh` carried — *"one hard, unignorable interruption
+that costs the agent a turn"* — described the **default** just as accurately and was never a
+description of the teeth. **Third occurrence** of the defect `353557c` fixed: a comment asserting
+teeth semantics the file's own control flow had already falsified.
+
+- **The block payload now also sets `systemMessage`** (`gate-goal-close.sh`, teeth branch). It
+  carried only `decision` + `reason`, while the advisory payload sets `systemMessage` — so opting
+  into teeth *removed* a user-facing field. That was the only respect in which ENFORCE was worse
+  than the default, and it is the whole code change: two identical strings in one payload.
+- **`GOAL_GATE_ENFORCE=1` is now documented as containment, not as teeth.** The measured delta is
+  exactly two things: the Stop record carries `preventedContinuation:true` instead of `false`, and
+  the payload shape above. It is not "may not stop until you close" and it is **not the answer to
+  what teeth should be** — it is the honest description of what this harness will let the flag be.
+  Carriers audited against that, not merely grepped: the two false comments in `gate-goal-close.sh`,
+  `README.md` (feature list + gate section), `references/outcome-loop-beats-gates.md`. Explicitly
+  **exempt, unchanged**: `SKILL.md` (its two mentions — advisory-unless-ENFORCE, and the floor
+  suspension — are both still true, and the skill is not growing more prose for this), the floor
+  message in the gate and its README paragraph (the suspension claim is unaffected), `test/` (both
+  modes still run), and the historical 0.18.0/0.18.1 entries below (superseded here, not rewritten).
+- **Found and deliberately NOT shipped: `continue:false` + `stopReason`.** The structural hypothesis
+  that a wall and non-looping are mutually exclusive on this harness is **sound for every mechanism
+  that continues the conversation** (`decision:block`, exit 2, `additionalContext` — all re-enter
+  the turn, and re-entry is the runaway) and **refuted as a claim about teeth in general**: the
+  documented universal field `continue:false` takes precedence over event-specific decision fields,
+  halts processing entirely, and shows `stopReason` **to the user, not to Claude**. Those are teeth
+  that cannot loop by construction — but they **halt** rather than hold, which is a different
+  promise, so it does not ship on a hypothesis.
+  **Evidence bar it must clear first, written here so the next session cannot ship it on suite
+  evidence alone** (that is what made 0.18.1 an emergency): (1) `continue:false` observed **live**
+  at a real `Stop`, not only in `test/gate-branches.py` — including what the user actually sees and
+  whether the turn is recoverable; and (2) its **interaction with the second Stop hook in the same
+  array** (`check-usage-budget.sh`) established — merge/precedence when one hook halts and the other
+  returns `additionalContext` is currently unknown. Neither was obtainable in the session that found
+  it: `GOAL_GATE_ENFORCE` was unset in the harness environment and cannot be injected into the real
+  Stop hook from inside a session.
+- **Regression parity: 30 branches, 0 diffs, 0 unexpected, in BOTH modes**, against a pre-edit copy
+  via `test/gate-branches.py --compare`. Zero was **pre-declared before comparing**, with a
+  falsifiable reason: the suite classifies by the `decision` field (`:182`), not by which message
+  field is present, and derives its detail from `systemMessage or reason` (`:179`) — both the same
+  `$MSG` after this change. A diff would have meant the reading was wrong.
+
+Not touched: the exit-set defect stays **open**. The step-0 re-entrant guard and the floor's
+`GOAL_GATE_ENFORCE=1` suspension are unchanged.
+
 ## [0.18.1] - 2026-07-25
 
 Fix. 0.18.0 rewrote what the Stop gate *says* when a run will not converge. It did not touch the

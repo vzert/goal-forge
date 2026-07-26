@@ -55,9 +55,17 @@
 #   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block. Since 0.18.1 that means
 #     AT MOST ONE block per user prompt, not "may not stop until the declaration is complete":
 #     the re-entrant guard at step 0 runs ahead of this branch, so the Stop that follows a block
-#     passes. Say what it is — one hard interruption that costs the agent a turn and cannot be
-#     ignored — and not what it is not. Unbounded teeth were never the design; they were the
-#     runaway, and re-asking your own output until the harness cuts you off is not enforcement.
+#     passes. Unbounded teeth were never the design; they were the runaway, and re-asking your own
+#     output until the harness cuts you off is not enforcement.
+#     0.19.0 measured what that left and states it without the adjective: BOTH branches send the
+#     same $MSG and BOTH re-enter the turn once per prompt (the default via additionalContext), so
+#     "one hard interruption that costs the agent a turn and cannot be ignored" — the wording here
+#     until 0.19.0 — described the default equally well and was not a description of the teeth.
+#     The whole measured delta is preventedContinuation:true instead of false, plus a systemMessage
+#     field the block payload used to omit and now sets. ENFORCE=1 is CONTAINMENT of a promise this
+#     harness cannot keep, not the answer to what teeth should be; the non-re-entrant shape
+#     (`continue:false`) is named, unshipped, and gated behind a written evidence bar. See the
+#     teeth branch near the end of this file and CHANGELOG 0.19.0.
 #   * Explicit close-over-break escape, usable by you (the agent) or a human operator alike —
 #     it is not gated to either: [GOAL-CLOSE-WAIVED reason=<>=20 chars>] anywhere in the turn. Use it
 #     when you've judged a residual break non-actionable and are stuck (e.g. the three-consecutive-
@@ -363,10 +371,29 @@ fi
 # 0.18.1 bounds the teeth everywhere else too, via step 0: the Stop that FOLLOWS a block carries
 # stop_hook_active and is answered with silence, so the block costs the agent one turn and then
 # lets go. This branch stays because the floor case must not spend even that one turn — at
-# streak>=3 a single block still pushes toward exactly the loop the floor exists to end. Note what
-# the pairing means for a user who sets GOAL_GATE_ENFORCE=1: teeth are one hard, unignorable
-# interruption per prompt, not a hold-until-closed. Weaker on purpose. The unbounded version was
-# never enforcement — it was the runaway, and it punished the agent that obeyed.
+# streak>=3 a single block still pushes toward exactly the loop the floor exists to end.
+#
+# 0.19.0 measured what the pairing actually left, and it is LESS than the previous wording claimed.
+# Compare the two payloads below, not their adjectives: both carry the SAME $MSG, and both re-enter
+# the turn exactly once per user prompt (the default via hookSpecificOutput.additionalContext, which
+# the harness feeds back to the model — "the conversation continues so Claude can act on the
+# feedback"). So "one hard, unignorable interruption that costs the agent a turn" was never a
+# description of the ENFORCE branch: it describes the DEFAULT branch just as accurately. What is
+# actually different is two things, and only two: the Stop record carries preventedContinuation:true
+# instead of false, and — until this release — the block payload OMITTED the systemMessage field the
+# advisory payload sets, making the opt-in strictly worse than the default in one user-facing field.
+# That omission is fixed below. Do not restate the old predicate anywhere: this is the third time a
+# comment in this file asserted teeth semantics that the file's own control flow had falsified.
+#
+# So say what ENFORCE=1 buys, exactly: the same reminder, delivered as a formal block rather than as
+# advisory context, once per user prompt. That is CONTAINMENT of a promise the harness cannot keep —
+# it is not "hold until closed", and it is not the answer to what teeth should be. Every mechanism
+# this harness offers that CONTINUES the conversation (decision:block, exit 2, additionalContext)
+# re-enters the turn, and re-entry is the runaway; the one shape that has teeth without re-entry is
+# `continue:false` + `stopReason`, which HALTS instead of holding. That is a real option and it is
+# deliberately NOT taken here — see CHANGELOG 0.19.0 for the evidence bar it must clear first
+# (live observation, plus its interaction with the second Stop hook in this array). Shipping it on
+# suite evidence alone is the pattern that made 0.18.1 an emergency.
 #
 # Yes, this is gameable: the gate reads executor-authored text, so an executor who wanted to disable
 # the teeth could type three fabricated \`break\` verdicts. That is not a new hole and it is not the
@@ -376,7 +403,13 @@ fi
 # hardening this branch against a self-report you already trust everywhere else would buy nothing
 # while re-arming the loop this release exists to end.
 if [ "${GOAL_GATE_ENFORCE:-}" = "1" ] && [ "$STREAK" -lt 3 ]; then
-  MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["MSG"]}))'
+  # `reason` is the block explanation; `systemMessage` is the user-facing warning the advisory path
+  # already sets. Emitting BOTH is the whole 0.19.0 code change: it removes the one respect in which
+  # opting into teeth was strictly worse than not opting in. The suite classifies by the `decision`
+  # field (test/gate-branches.py:182), not by which message field is present, and derives its detail
+  # from `systemMessage or reason` (:179) — both are the same $MSG here — so this is behaviourally
+  # inert to all 30 branches in both modes by construction, which is the claim --compare checks.
+  MSG="$MSG" "$PY" -c 'import json,os; m=os.environ["MSG"]; print(json.dumps({"decision":"block","reason":m,"systemMessage":m}))'
   exit 0
 fi
 

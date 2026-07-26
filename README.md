@@ -70,7 +70,9 @@ on any domain with **zero configuration** — no control plane, no fleet, no han
    gate only half-enforces, since it can reject an unsupported `model=different` claim but not a
    close that omits the field), or a different vendor's model/CLI for maximum decorrelation.
 4. **Closes through a completion gate** — a Stop hook that requires a `[COMPLETION-REVIEW: …]`
-   declaration. Fail-open/advisory by default; opt-in blocking with `GOAL_GATE_ENFORCE=1`.
+   declaration. Fail-open/advisory by default; opt-in blocking with `GOAL_GATE_ENFORCE=1` — which,
+   measured, buys one formal block per user prompt carrying the same text the advisory already
+   sends, not a hold-until-closed (see the gate section below).
 
 ## Why not just use the built-in `/goal`?
 
@@ -283,9 +285,27 @@ is legitimate, and never blocks it. The exit-set defect itself stays open.
 The Stop hook enforces only when a session produced a `## Goal-spec`. If one exists but no valid
 `[COMPLETION-REVIEW: …]` was declared — or the declared one closes over your operative
 `[ADVERSARY-VERDICT: break …]` instead of a `hold` — it posts an **advisory reminder** and lets the
-turn end (fail-open). Set `GOAL_GATE_ENFORCE=1` to make it blocking instead. Stuck on a residual
-break you've judged non-actionable? `[GOAL-CLOSE-WAIVED reason=<≥20 chars>]` is the honest close —
-usable by the agent itself, not only a human operator.
+turn end (fail-open). Stuck on a residual break you've judged non-actionable?
+`[GOAL-CLOSE-WAIVED reason=<≥20 chars>]` is the honest close — usable by the agent itself, not only
+a human operator.
+
+**What `GOAL_GATE_ENFORCE=1` actually buys (measured, 0.19.0).** It sends the *same reminder* as a
+formal block rather than as advisory context, **at most once per user prompt** — the re-entrant
+guard added in 0.18.1 runs ahead of the teeth, so the Stop that follows a block passes. It is not
+"you may not stop until you close." Read the two payloads, not their adjectives: the default emits
+`systemMessage` + `hookSpecificOutput.additionalContext`, and the harness feeds that context back to
+the model, so **the default also re-enters the turn exactly once, with the same text**. The entire
+measured delta is that the Stop record carries `preventedContinuation:true` instead of `false`, and
+that the block payload now also sets `systemMessage` (until 0.19.0 it omitted that field, which made
+opting into teeth strictly *worse* than the default in one user-facing respect).
+
+So the flag is **containment of a promise this harness cannot keep, not the answer to what teeth
+should be** — set it if you want the stronger signal in the Stop record and are content with one
+formal interruption per prompt; skip it and you lose almost nothing. Every mechanism Claude Code
+offers that *continues* the conversation (`decision:block`, exit 2, `additionalContext`) re-enters
+the turn, and re-entry is what produced the 0.18.1 runaway. The one shape with teeth that cannot
+loop is `continue:false` + `stopReason`, which **halts** rather than holds; it is deliberately not
+shipped — see the 0.19.0 CHANGELOG entry for the evidence bar it has to clear first.
 
 The gate also carries a **convergence floor**: when at least three verdict-carrying turns each
 contain a `break` and the most recent one is among them, it says so — on its own branch if nothing

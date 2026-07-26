@@ -42,8 +42,25 @@ the old gamed gate reincarnated). The only real levers are:
 
 This is Constitutional AI applied to operations. It is **why this plugin's Stop gate is deliberately
 fail-open/advisory** rather than a blocking wall: a blocking marker just relocates the gaming. The
-gate reminds; the constitution and the adversary do the actual work. (`GOAL_GATE_ENFORCE=1` exists
-for those who explicitly want teeth, with eyes open to the tradeoff.)
+gate reminds; the constitution and the adversary do the actual work.
+
+`GOAL_GATE_ENFORCE=1` exists for those who explicitly want teeth — and 0.19.0 measured what the
+harness will actually let it be, because "with eyes open to the tradeoff" was too vague to name one.
+The tradeoff is this: every mechanism that *continues* the conversation (`decision:block`, exit 2,
+`hookSpecificOutput.additionalContext`) re-enters the turn, and unbounded re-entry is not
+enforcement — it is the 0.18.1 runaway, which punished the agent that obeyed. Bounding it to one
+re-entry per user prompt is what makes it safe, and it also makes the enforce branch send the *same
+text, once*, that the advisory branch already sends: the measured delta is `preventedContinuation`
+in the Stop record, plus a `systemMessage` field the block payload used to omit. That is
+**containment**, not teeth — the flag is honest about being a weaker signal, not a wall.
+
+Which is the principle above arriving at its own tooling: you cannot gate your way out of
+specification gaming, and this is what it looks like when you try anyway and measure the result.
+There *is* one shape with teeth that cannot loop — `continue:false` + `stopReason`, which halts the
+session and addresses the user instead of re-asking the model — so the impossibility is not
+absolute, only the *hold* is. It is unshipped behind a written evidence bar (CHANGELOG 0.19.0),
+because a wall that terminates is a different promise from a wall that holds, and shipping it on
+unobserved evidence would repeat the failure that produced 0.18.1.
 
 ## Supporting work
 
