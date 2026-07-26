@@ -283,7 +283,22 @@ if mode == "adversary":
             # an executor could type to fake a self-report — without re-entering the id-*matching* proxy.
             return (len(cid) >= 2 and not re.search(r"\s", cid) and cid != "unknown"
                     and bool(re.search(r"[a-z]", cid)) and bool(re.search(r"[0-9.-]", cid)))
-        reports = re.findall(r"\[ADVERSARY-MODEL:\s*([^\]]*)\]", text, re.I)
+        # The marker must END ITS LINE. A real production id can contain brackets --
+        # claude-opus-5[1m], the 1M-context variant -- and the old [^\]]* stopped at the FIRST "]",
+        # so with brackets in the name field too the capture was cut before the "/" and a genuine
+        # different-model close was told to degrade. The obvious repair (greedy to the last "]" on
+        # the line) was WRITTEN, MEASURED AND REJECTED: an adversary showed it accepts a garbage
+        # token sliced out of trailing prose -- a citation like
+        # "…/ claude-sonnet-5] (see plugins/goalspec/hooks/gate-goal-close.sh[283])" yields
+        # cid="gate-goal-close.sh[283", which is whitespace-free and carries a letter and a digit,
+        # so has_real_id says True for the wrong reason. That fails OPEN in the direction that
+        # matters, which is worse than the truncation it replaced.
+        # Anchoring to end-of-line is the fix that stays positional instead of getting clever: it
+        # encodes the grammar the agent def and this skill already state (the adversary emits the
+        # marker as its own line; you quote that line verbatim). Anything appended after the marker
+        # means no match at all -> no real id -> degrade to model=same. Fail-safe by construction,
+        # and a leading "- " or "> " still matches, so a quoted bullet is unaffected.
+        reports = re.findall(r"\[ADVERSARY-MODEL:\s*(.*)\]\s*$", text, re.I | re.M)
         if not any(has_real_id(r) for r in reports):
             remind("completion-review:model-different-needs-nonunknown-self-report")
 else:  # none

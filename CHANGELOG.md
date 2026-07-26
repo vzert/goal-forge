@@ -6,6 +6,91 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.19.1] - 2026-07-25
+
+Three fixes found by triaging the backlog rather than by working it. Two of the three pendientes
+were **wrong about themselves** — a defect class this project keeps paying for, because the record
+of a decision degrades faster than the decision, and nobody re-derives a note that has sat unread.
+
+- **The `[ADVERSARY-MODEL: …]` marker must now end its line** (`gate-goal-close.sh`). A real
+  production id can contain brackets — `claude-opus-5[1m]`, the 1M-context variant, and the
+  executor's own id in the session that found this — while `[^\]]*` stopped at the first `]`.
+  **Read the severity honestly**: the realistic shape (brackets in the id only) *passed anyway*,
+  by accident, because the truncated tail still carries a letter, a digit and no whitespace. The
+  case that actually fails needs brackets in the **name** field too, where truncation cuts before
+  the `/` and the gate tells a genuinely different-model close to degrade. A fragility fix with one
+  constructed failing case, not a live outage.
+  **The obvious repair was written, measured, and rejected by an adversary — that is the part worth
+  reading.** Going greedy to the last `]` on the line looked like the same positional parse the
+  block already commits to, and the comment shipped with it claimed over-capture was fail-safe. It
+  is not: a same-line citation such as `… / claude-sonnet-5] (see plugins/goalspec/hooks/gate-goal-close.sh[283])`
+  yields `cid="gate-goal-close.sh[283"` — whitespace-free, with a letter and a digit — so
+  `has_real_id` returns True *for the wrong reason*, granting a `model=different` claim on a token
+  sliced out of prose. That fails **open** on the one assertion this check exists to make, which is
+  worse than the truncation it replaced (0.19.0 accepted that same line, but by finding the real
+  id). Anchoring to end-of-line encodes the grammar the agent def and `SKILL.md` already state —
+  the adversary emits the marker as its own line and you quote that line verbatim — so anything
+  appended after it matches nothing and the claim degrades to `model=same`. Fail-safe by
+  construction; a leading `- ` or `> ` still matches, so a quoted bullet is unaffected.
+  **Three carriers, and the other two are exempt with the reason written down** rather than left
+  silent: `remind-quote-verdict.sh` and `external-adversary.sh` both match this marker, but neither
+  *captures* — their only consumers are presence tests, and a truncated match is still a match. In
+  `external-adversary.sh` the `[^]<>]` class additionally rejects the prompt's own `<model name>`
+  template.
+- **`test/usage-budget-branches.py` — the opt-in usage-budget Stop hook finally has a suite, and
+  the belief that blocked it was false.** 0.18.1 shipped that hook's re-entrant-Stop guard verified
+  "by placement and syntax only", on the stated reasoning that the hook "cannot emit anything
+  without real credentials" and would exit silently with `stop_hook_active` `true` and `false`
+  alike. The seam was in the hook's own ordering all along: **step 4 serves from its local cache
+  before step 5 resolves any credential**, and `GOAL_CONFIG_PATH` / `CLAUDE_CONFIG_DIR` / `HOME`
+  are environment-overridable. A seeded cache drives it to a real emission with no credential read
+  and no network call. Six cases; three are the discrimination (identical input, only the flag
+  differs) and three are controls proving the silence comes from the guard rather than from a hook
+  that never emits. **Verified by removing the guard from a copy: exactly one case flips.**
+  Registered in `CLAUDE.md` step 3 and `test/README.md` — an instrument nobody is told to run is
+  the orphan-consumer defect `references/instrument-validity-own-tools.md` catalogues, and creating
+  one while fixing an instrument that could not discriminate would have been a poor trade.
+  **Declared limits, so a green run does not imply more**: the credential path is never exercised
+  (a stale-cache case would fall through to a real Keychain lookup and possibly a live API call
+  with the user's token), and seeding 95% proves the threshold comparison and the payload shape,
+  **not** a real account crossing 80%. That observation stays open.
+- **The `prompt`-echo evidence note is narrowed, and its provenance is now stated**
+  (`remind-quote-verdict.sh`). It said the harness-synthesized `tool_response` matching the
+  transcript object was "INFERRED, never observed live". A real PostToolUse payload dump has since
+  shown `prompt` present in both the sync and async shapes, so the **load-bearing half** is
+  observed. But **both adversaries caught the same thing**: that dump was made in an *earlier*
+  session via a temporary sentinel wrapper, its raw output lives outside this repo, and this
+  release did **not** re-derive it — while the same release's own pre-mortem said not to inherit a
+  pendiente's self-claim. What *was* re-derived here is only the carrier count. So the comment now
+  reads **observed-by-report, not reproducible from anything committed**, and the wider one-for-one
+  claim stays INFERRED. Writing a flat `OBSERVED` would have been a stronger claim than the
+  evidence supports.
+- **Regression parity: 34 branches, 2 intended changes, 0 unexpected, in BOTH modes**, against the
+  released `892a45f` gate via `test/gate-branches.py --compare`. Both diffs were **pre-declared
+  before comparing**: `32-bracketed-id-and-name` (reminder → silent, the fix) and
+  `34-trailing-cite-after-marker` (silent → reminder, the fail-safe tightening the adversary
+  forced). The prediction that cases 31 and 33 — the controls — must **not** move was pre-declared
+  too: 31 is the accidental pass that must stay passing, 33 is the `UNKNOWN` rejection the fix must
+  not loosen. Both held, in both modes.
+
+**Verification, and what was rejected.** Both backends ran from the repo root with `TMPDIR`
+exported (fresh-context Sonnet subagent; `codex exec` / GPT-5). Both returned `break`, and the
+strongest finding of the round was the subagent's — it attacked the **fix itself**, not the record
+of it, which is the inverse of this project's usual ratio and is why the greedy capture above never
+shipped. Two findings were **rejected with evidence**: (1) the external backend could not re-run
+the suites (`couldn't create cache file '/tmp/…' (errno=Operation not permitted)`) and counted that
+as ungrounded parity — a limitation of its own sandbox, and the subagent independently re-ran both
+modes and the guard-removal mutation test; (2) it counted the `~/.ssh/id_rsa` security question as
+a dead handoff, where the subagent read the user's own turn instructing *report it, do not touch
+it* — the human pre-decided it, so reporting without asking is compliance. The two backends
+disagreed on that fact and the subagent was right, which is the second recorded instance of them
+splitting on a verifiable point.
+
+Not touched, and each for a stated reason: the exit-set defect and `continue:false` (their evidence
+bar is written and unmet); the waiver precondition (a decision, not an implementation); the
+`external-adversary.sh` cwd/`TMPDIR` degradation — small, but it is the instrument that verified
+this release, and changing it mid-verification would have destroyed its independence.
+
 ## [0.19.0] - 2026-07-25
 
 `GOAL_GATE_ENFORCE=1` gets a measured definition instead of an adjective, and stops being strictly

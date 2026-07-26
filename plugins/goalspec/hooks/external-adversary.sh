@@ -162,6 +162,12 @@ VERDICT=$(printf '%s' "$OUT" | grep -Eo "$VERDICT_RE" | tail -1 || true)
 # The model self-report is requested by the prompt, so requesting it is not enforcing it (two
 # different-model reviews confirmed this gap by reading this very file). Extract it mechanically;
 # reject the prompt's own literal template (`<model name>`) the same way VERDICT_RE rejects `<n>`.
+# Deliberately EXEMPT from the greedy-to-last-"]" fix 0.19.1 applied to gate-goal-close.sh, for two
+# reasons, both checked rather than assumed: (1) MODEL_LINE's only consumer is the emptiness test
+# below -- it is never printed, and stdout carries the partner's raw $OUT, so a truncated capture
+# cannot reach any reader; (2) the `<>` exclusion is what rejects the prompt's own `<model name>`
+# template, and going greedy to end-of-line would give that up. Truncation here costs nothing that
+# is read; there it cost a real id its has_real_id check.
 MODEL_LINE=$(printf '%s' "$OUT" | grep -Eo '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 || true)
 set -e
 

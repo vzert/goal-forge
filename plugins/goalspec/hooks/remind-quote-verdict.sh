@@ -56,9 +56,17 @@
 #       Executor-authored echo fields are now excluded before matching.
 #       EVIDENCE STATUS for both: the response SHAPE is observed in the transcript `toolUseResult` of
 #       two real goal-adversary spawns (2026-07-25 21:00:40Z and 21:23:55Z) and the branch behavior is
-#       measured synthetically against the real hook; the harness synthesizes the hook's own
-#       `tool_response` from that object, so that its fields match one-for-one is INFERRED, never
-#       observed live. If `prompt` is in fact stripped there, (2) does not occur and (1) alone does.
+#       measured synthetically against the real hook. UPDATED 0.19.1, and read the PROVENANCE before
+#       leaning on it: a dump of a REAL PostToolUse payload showed `prompt` present in the hook's own
+#       `tool_response`, in both the sync and the async shape -- so branch (2) does occur and the
+#       ECHOED exclusion below is load-bearing rather than defensive. But that measurement was made
+#       in an EARLIER session (2026-07-25, temporary sentinel wrapper over the cached hook, since
+#       removed and verified restored), its raw dump lives OUTSIDE this repo, and the release that
+#       wrote this line did NOT re-derive it -- both adversaries caught exactly that. So this is
+#       observed-BY-REPORT, not reproducible from anything committed here; re-capture the payload if
+#       you need it firsthand. The WIDER claim -- every field of the harness-synthesized
+#       `tool_response` matching the transcript object one-for-one -- stays INFERRED, and nothing in
+#       this hook depends on it.
 #
 # It stays a NUDGE, not a counter. A round counter anchored here would be evasion-shaped anyway:
 # PreToolUse can fail an Nth *spawn* of goal-adversary, but nothing available can fail an Nth
@@ -126,9 +134,16 @@ def flatten(v):
 
 text = flatten(tool_response)
 
-# 3. Same structured grammar gate-goal-close.sh itself requires -- no looser, no stricter.
+# 3. The verdict grammar is the same one gate-goal-close.sh itself requires -- no looser, no stricter.
 verdict_re = (r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+\s+unfalsified=\d+\s+"
               r"incomplete=\d+\s+autonomy-violations=\d+\s+unsafe=\d+\s*\]")
+# The model pattern is deliberately EXEMPT from the greedy-to-last-"]" fix 0.19.1 applied to
+# gate-goal-close.sh, and the exemption is the point of saying so rather than leaving it silent.
+# That fix exists so an id containing brackets (claude-opus-5[1m]) survives CAPTURE and reaches
+# has_real_id. This pattern captures nothing: its only consumer is the truthiness of `models`
+# below -- presence, for the "model line but no well-formed verdict" branch. A truncated match is
+# still a match, so presence detection is unaffected by the truncation, and the narrower class
+# keeps this from swallowing a whole line of prose after the marker.
 model_re = r"\[ADVERSARY-MODEL:\s*[^\]]*\]"
 
 verdicts = re.findall(verdict_re, text, re.I)

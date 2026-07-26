@@ -14,3 +14,4 @@
 *.jsonl
 *.zip
 scratch_audit/
+__pycache__/

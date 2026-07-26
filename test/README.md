@@ -1,6 +1,6 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. Two checks, one mechanical and one by hand.
+No CI — the plugin is a skill + hooks + docs. Three mechanical suites and one check by hand.
 
 ## `gate-branches.py` — Stop-gate branch suite
 
@@ -57,6 +57,18 @@ worse defect than the one it fixes. Run 27 under `GOAL_GATE_ENFORCE=1` too: befo
 answered `block`, which is what proves the guard has to sit ahead of the teeth branch and not merely
 ahead of the advisory one.
 
+Cases **31–34** cover bracketed model ids (0.19.1). **32** is the regression test — a real id whose
+*name* field also carries brackets was truncated before the `/` and wrongly told to degrade to
+`model=same`. **31** and **33** are controls: 31 is the realistic shape that passed *by accident*
+before the fix and must keep passing, 33 is the `UNKNOWN` rejection the fix must not loosen.
+**34 exists because an adversary broke the first attempt at this fix.** Capturing greedily to the
+last `]` on the line accepted a garbage token sliced out of a trailing citation
+(`… / claude-sonnet-5] (see plugins/goalspec/hooks/gate-goal-close.sh[283])` → `cid` =
+`gate-goal-close.sh[283`, whitespace-free with a letter and a digit), granting `model=different` on
+non-evidence — failing **open** on the one assertion the check exists to make. The shipped fix
+anchors the marker to end-of-line instead, so anything appended after it matches nothing. Case 34
+carries an `expect` so it can never go silent again.
+
 Two smaller instrument changes came with them. Cases may carry an `expect` for the `decision` cell,
 asserted on every run and not only under `--compare` — parity-against-a-copy cannot express "this
 must emit nothing", because the copy is the thing being changed. And `CONV!` distinguishes a
@@ -70,6 +82,29 @@ backgrounded spawn (the default since Claude Code v2.1.198) returns a handle wit
 that handle echoes the executor's own spawn `prompt`. Case **04** pins both halves — the nudge must
 fire on the handle (it used to require verdict text that is never there), and it must **not** read
 the echoed prompt as a verdict that "came back" (against the pre-edit hook, it did).
+
+## `usage-budget-branches.py` — opt-in usage-budget Stop-hook suite
+
+Same shape, for `hooks/check-usage-budget.sh` (0.19.1). Until then that hook's re-entrant-Stop guard
+was verified **by placement and syntax only**, on the belief that it "cannot emit anything without
+real credentials" and would therefore exit silently with the flag `true` and `false` alike.
+
+That belief was wrong, and the seam is the hook's own ordering: **step 4 serves from its local cache
+before step 5 resolves any credential**, and `GOAL_CONFIG_PATH` / `CLAUDE_CONFIG_DIR` / `HOME` are
+all environment-overridable. A seeded cache with a fresh `_fetched_at` therefore drives the hook to
+a real emission with **no credential read and no network call**. Cases **01/02/03** are the
+discrimination (identical input, only the flag differs); **04–06** are controls proving 01's silence
+comes from the guard rather than from a hook that never emits.
+
+```sh
+python3 test/usage-budget-branches.py
+```
+
+**What it does not cover, stated so a green run does not imply more**: the credential path (Keychain
+/ `.credentials.json`) is never exercised — a stale-cache case would fall through to a real Keychain
+lookup and possibly a live API call with the user's own token, which a test must not do. And seeding
+95% proves the threshold comparison and the payload shape, **not** a real account crossing 80%; that
+observation is still open.
 
 ## Acid test (manual)
 

@@ -51,6 +51,14 @@ CR_NONE_SHORT = "[COMPLETION-REVIEW: none reason=short]"
 WAIVER = "[GOAL-CLOSE-WAIVED reason=adversary sandbox limitation, not a defect in the outcome]"
 MODEL_REAL = "[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
 MODEL_UNKNOWN = "[ADVERSARY-MODEL: UNKNOWN / UNKNOWN]"
+# Real ids can contain brackets (the 1M-context variants). See cases 31-33.
+MODEL_BRACKET_ID = "[ADVERSARY-MODEL: Claude Opus 5 / claude-opus-5[1m]]"
+MODEL_BRACKET_BOTH = "[ADVERSARY-MODEL: Claude Opus 5 [1M context] / claude-opus-5[1m]]"
+MODEL_BRACKET_UNKNOWN = "[ADVERSARY-MODEL: Claude Opus 5 [1M context] / UNKNOWN]"
+# A real id followed by a same-line citation. The path's own bracket is what a greedy capture
+# mistakes for the id. See case 34.
+MODEL_TRAILING_CITE = ("[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5] "
+                       "(see plugins/goalspec/hooks/gate-goal-close.sh[283] for the matcher)")
 
 # (name, last_assistant_message, transcript turns or None[, opts])
 # opts is an optional dict:
@@ -143,6 +151,34 @@ CASES = [
     ("30-stop-hook-active-true-with-floor", SPEC + "still working on it.",
      [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C],
      {"payload": {"stop_hook_active": True}, "expect": "silent"}),
+
+    # --- bracketed model ids (0.19.1) ---
+    # A real production id can contain brackets: `claude-opus-5[1m]` is the 1M-context variant, and
+    # it was the executor's own id in the session that found this. The old `[^\]]*` capture stopped
+    # at the FIRST "]", so the field the gate handed to has_real_id was truncated.
+    # 31 is the realistic shape and is a CONTROL, not a regression test: pre-fix it passed by
+    # accident (the truncated tail `claude-opus-5[1m` still carries a letter and a digit and no
+    # whitespace), so it must stay passing — the fix must not turn an accidental pass into a fail.
+    ("31-bracketed-id-only", SPEC + MODEL_BRACKET_ID + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None),
+    # 32 is the one that discriminates. With brackets in the NAME field too, truncation cuts before
+    # the "/", so rsplit("/") returns the whole name, whitespace fails has_real_id, and the gate
+    # wrongly told a genuinely different-model close to degrade to model=same. `expect` is asserted
+    # on every run, not only under --compare: this case fails against the pre-fix gate.
+    ("32-bracketed-id-and-name", SPEC + MODEL_BRACKET_BOTH + "\n" + V_HOLD + "\n" + CR_ADV_DIFF,
+     None, {"expect": "silent"}),
+    # 33 pins that the fix does not LOOSEN the one assertion this check makes honestly: a fallback
+    # self-report is still rejected when the name happens to carry brackets. Same cell before and
+    # after — greedy capture must not turn "UNKNOWN" into a real id.
+    ("33-bracketed-name-unknown-id", SPEC + MODEL_BRACKET_UNKNOWN + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None),
+    # 34 came from an adversary breaking the FIRST attempt at 31-33. Going greedy to the last "]" on
+    # the line accepted a garbage token sliced out of a trailing citation: cid="gate-goal-close.sh[283"
+    # is whitespace-free with a letter and a digit, so has_real_id said True for the wrong reason —
+    # failing open on the one assertion this check exists to make. Anchoring the marker to
+    # end-of-line means anything appended after it matches nothing and the claim degrades to
+    # model=same. `expect` is asserted every run: this case must never go silent.
+    ("34-trailing-cite-after-marker",
+     SPEC + MODEL_TRAILING_CITE + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "advisory-or-block"}),
 ]
 
 

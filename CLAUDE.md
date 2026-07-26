@@ -30,8 +30,10 @@ No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run the branch suites: `python3 test/gate-branches.py` (Stop gate) and
-   `python3 test/verdict-nudge-branches.py` (PostToolUse verdict nudge). **When editing the gate, copy the
+3. Run **all three** branch suites: `python3 test/gate-branches.py` (Stop gate),
+   `python3 test/verdict-nudge-branches.py` (PostToolUse verdict nudge), and
+   `python3 test/usage-budget-branches.py` (opt-in usage-budget Stop hook — hermetic, no credential
+   and no network; it drives the hook through its cache seam). **When editing the gate, copy the
    pre-edit script somewhere and `--compare` against it afterwards, in both default and
    `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed, which turns "no
    regression" from an eyeball into a measurement. See `test/README.md`.
