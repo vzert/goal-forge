@@ -93,6 +93,26 @@ rather than assume**.
   absence either** — omitting the field passes just as omitting `model=` does, so it gives a
   narrower verification a place to say so; it does not make saying so unavoidable.
 
+- **`backends=both` claims the same tree, twice.** It is true only when both backends verified the
+  *same commit* — a subagent `hold` from before a fix and an external `hold` from after it are two
+  single-backed holds over two different objects, not one dual-backed hold over one. If the tree
+  changed between them, re-run the stale side (or say `backends=…` for whichever one actually
+  covers the tree you're closing) before writing `both`.
+- **A spawned verifier still in flight is not a reason to take the terminal action anyway.**
+  Publishing before a backend you dispatched has returned is worse than either waiting for it or not
+  spawning it at all — it claims the coverage of a check that never finished. Observed in 0.20.1: a
+  release closed `backends=external-only` while the **subagent** round was still running, so the
+  release shipped with **no** `model=different` accreditation at all — the one backend that could
+  attest a different model (the subagent, spawned on a different tier) hadn't come back yet; the
+  external partner had already returned (that's why the close read `external-only`) but its own
+  self-report was `UNKNOWN`, so it couldn't carry that accreditation either. The completion-review
+  said so honestly without noticing that "honest" and "sufficient" had come apart. When you spawn a
+  backend for a terminal decision, wait for it; running both in parallel is fine, closing before the
+  slower one answers is not. **Neither of these is something any check catches** — a still-running
+  spawn leaves no marker, and the tree each backend actually verified isn't recorded anywhere either
+  — so, like the bullet above, both are instruction, not mechanism: nothing here gates on the field's
+  presence, and this doesn't decide whether it should.
+
 ## Safety rails
 
 - **Missing binary → fail-open.** If the configured CLI isn't on PATH, the script prints a `hold`

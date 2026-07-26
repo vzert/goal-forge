@@ -6,6 +6,43 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.21.0] - 2026-07-26
+
+**Two rules that only ever lived in the operator's private memory, shipped to the plugin itself.**
+Both were learned the hard way and neither had reached `references/external-adversary-setup.md` —
+the file that already carries the neighboring `backends=` guidance — until now.
+
+- **`backends=both` claims the same tree, twice.** A subagent `hold` from before a fix and an
+  external `hold` from after it are two single-backed holds over two different commits, not one
+  dual-backed hold over one — `backends=both` is only honest when both backends actually reviewed
+  the same tree you're closing.
+- **A spawned verifier still in flight is not a reason to take the terminal action anyway.**
+  Observed directly in 0.20.1: that release closed `backends=external-only` while the **subagent**
+  round was still running, so it shipped with no `model=different` accreditation at all — the one
+  backend able to attest a different model (the subagent) hadn't come back; the external partner had
+  already returned but self-reported `UNKNOWN`, so it couldn't carry that accreditation either.
+  Spawning a backend for a terminal decision and not waiting for it is worse than either waiting or
+  not spawning it.
+- Both go in as **instruction, not mechanism** — a still-running spawn leaves no marker, and the
+  tree each backend verified isn't recorded anywhere either, so neither is something any check could
+  catch. Written in the same non-obligatory register as the neighboring bullet ("nothing gates it,
+  and nothing notices its absence either"): this release does not decide whether presence of
+  `backends=`/`model=` should be gated — that stays a separate, open decision.
+- **Minor, not patch**: this adds new operational guidance to a `references/` file the skill already
+  points at (`SKILL.md:111`), the same shape as 0.17.0's `durable-artifact.md` addition — not a
+  wording/regex fix to something already shipped (the pattern behind 0.19.1 and 0.20.1's patches).
+  `gate-goal-close.sh` is byte-for-byte unchanged. `SKILL.md` body picked up one line-127 edit in a
+  second round (below) — a rule-surface enumeration found it citing `backends=both` as "true by
+  construction" without the same-tree/in-flight constraint this release adds; scoped that claim and
+  pointed to the `references/` file rather than restating the rule in full (+22 words, 9,394 →
+  9,416 — a small, targeted correctness fix, not the kind of open-ended growth the adjacent
+  "reduce SKILL.md's floor" pendiente is about).
+- **Round 2** (same version, before first publish): both adversary backends broke the first pass on
+  3 defects — an internally-incoherent worked example (three carriers named external where the
+  incident was actually the subagent still in flight), the stale `SKILL.md:127` above (missed
+  because the first rule-surface sweep only grepped `hooks/*.sh`), and a spawn payload that
+  asserted a transcript was unavailable when it wasn't. All three fixed before publish.
+
 ## [0.20.1] - 2026-07-26
 
 **A reported regression turned out not to be one — the fix proposed for it was measured and
