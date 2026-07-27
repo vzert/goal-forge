@@ -15,8 +15,12 @@ The two 0.21.1 fixes are the point of this file:
   pre-fix hook counted that noise as evidence, so the bare-verdict floor never fired and an empty
   hold read as a verified one (observed live 2026-07-26). Case 03 is the control the old code also
   caught; 01/04 prove real bullets still pass; 05 pins the no-self-report fallback window.
-* P25 sandbox rails — cases 08/09: the partner must see a writable TMPDIR and run from the repo
-  root, because both sandbox failures come back disguised as ungrounded/UNVERIFIED findings.
+* P25 sandbox rails — cases 08/09/11: the partner gets a TMPDIR the hook's own process can write
+  to (08) and runs from the repo root when the invocation cwd is inside one (09); both sandbox
+  failures had come back disguised as ungrounded/UNVERIFIED findings. Host-side only: outside any
+  git repo there is no root to resolve, so that branch warns on stderr instead of relocating (11),
+  and a partner sandbox denying writes the hook's process can make (the v0.19.1 contra-dato) is
+  out of the hook's reach entirely.
 
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11
