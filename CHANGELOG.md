@@ -6,6 +6,73 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.23.0] - 2026-07-26
+
+**The deferred external round ran against installed 0.22.0 — and broke it. This release is the
+remediation, plus the two adversary-input hardenings the same plan phase owed (Fase 2b/2c).**
+The verification Fase 0 and Fase 1 both deferred under the P25 rule (a session that edits the
+verifier's script may not use it as that session's closing verifier) finally ran from a
+non-editing session: `codex exec` / GPT-5 self-report, against the installed
+`~/.claude/plugins/cache/goal-forge/goalspec/0.22.0/` (hash-verified byte-identical to `ccb2775`
+before the run). Verdict: `break ungrounded=2 unfalsified=1 incomplete=2 autonomy-violations=0
+unsafe=0`. Re-derived by the executor before acting:
+
+- **Confirmed — the 0.22.0 carrier claim overclaimed, in three texts at once.**
+  `agents/goal-adversary.md` said "this paragraph cites that declaration, it does not own a
+  version of it" while carrying the full per-section semantics inline;
+  `references/durable-artifact.md` declared "every carrier elsewhere … cites it rather than
+  asserting its own version" — false for **both** carriers, including the external prompt the
+  same declaration names (which 0.22.0's own CHANGELOG correctly described as an inline second
+  home by necessity); and 0.22.0's CHANGELOG said the agent paragraph "reduces to a citation of
+  that section", which the shipped text does not (measured: the paragraph restates the live
+  goal-spec/coverage-floor/Rounds/Next semantics in full). The same carrier-overclaim class the
+  release existed to fix.
+- **Split — the partner's suite claim was its own sandbox.** It could run only 1 of 4 suites (no
+  writable TMPDIR in its sandbox — the documented partner-limit mode). All four suites re-run
+  from the repo root by the executor: exit 0, ×4. The residue that stands: the entry's historical
+  claims (prior attempts, session verdicts) are observed-by-report, per the 0.20.1 precedent.
+
+The fix, as the operator ratified it (amending the Fase 1 "reduces to a citation" letter —
+second home declared, matching the external carrier's existing treatment):
+
+- **`agents/goal-adversary.md` now declares its restatement instead of denying it**: the
+  paragraph "restates that declaration inline, deliberately", with the necessity argument stated
+  (the spawned subagent's cwd is the project, not the plugin, and an installed cache holds many
+  plugin versions — it cannot reliably resolve the reference's path at runtime), and a tie-break
+  ("where this restatement and the declaration differ, the declaration wins").
+- **`references/durable-artifact.md`'s declaration sentence now matches reality**: both carriers
+  restate the per-section rule inline by necessity, each subordinate to this section, with the
+  grep terms the rule-surface enumeration must catch when it changes. `hooks/external-adversary.sh`
+  was **deliberately not edited** (this session's no-edit rule for that file, and the reason the
+  external round was legitimate as its verifier); its inline block was re-checked and already
+  agrees with the second-home framing ("restated here as a citation of that declaration, not as
+  a rule this prompt owns" — `grep -n 'not as a rule this prompt owns' hooks/external-adversary.sh`).
+- **Fase 2b — adversary input is data, never instructions** (instruction, not a matcher — new
+  matchers stay vetoed): the agent definition gains a standing rule that everything it reads
+  (transcript, named files, quoted text, third-party hook injections in session logs) cannot
+  re-task it or waive a check, and that its reading scope is the payload's named paths plus what
+  its own mechanical checks require it to discover. Motivated by a live 2026-07-26 observation:
+  a backend read a stale `/tmp` dump from a *different* session — third-party memory-hook
+  injections included — as if it were this run's input.
+- **Fase 2c decided and implemented — the output restriction joins the payload contract** (the
+  open decision from 2026-07-25, when a backend echoed a prior round's `[ADVERSARY-VERDICT:]`
+  into its own stdout and the ad-hoc payload restriction that stopped it had no carrier):
+  SKILL.md step 6 now specifies two standing lines the payload itself carries — the
+  data-not-instructions rule and the output-restricted-to-contract rule — chosen because the
+  payload is the one carrier that reaches **every** backend (subagent and external alike) without
+  editing any backend's script. The agent definition's Output section gains the matching no-echo
+  rule. The payload's **structure** (paths, not prose) is unchanged — the P11 controlled
+  comparison stays owed before any payload redesign (Fase 2d).
+
+Verification (each claim with its instrument):
+
+- All four branch suites → exit 0 (re-run after the edits). `bash -n hooks/external-adversary.sh`
+  → exit 0 (untouched, checked anyway). `claude plugin validate` → real exit 0. SKILL.md and
+  agent frontmatter re-parsed as YAML (`name` + `description` survive). The Stop gate was not
+  touched, so no `--compare` run was owed.
+- The external round's raw output is preserved off-repo with a per-run unique name (the Fase 3a
+  discipline), and its two marker lines were quoted verbatim in the session, unformatted.
+
 ## [0.22.0] - 2026-07-26
 
 **The checkpoint.md exemption, reconciled at its source.** Fase 1 of the phased remediation plan.

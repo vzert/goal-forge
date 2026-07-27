@@ -48,8 +48,15 @@ hypothetical, it is the failure mode that produced multiple shipped defects in t
 ## Who reads which section — and which sections carry authority
 
 The four sections do not share a reader or a standing, and this section is the **declaration of
-both** — every carrier elsewhere (the adversary's definition, the external backend's inline
-prompt) cites it rather than asserting its own version:
+both** — the single source every carrier elsewhere is subordinate to. Both carriers restate the
+per-section rule inline **by necessity** rather than pointing here and stopping: the external
+backend's prompt because the partner cannot read files on this host, and the adversary's
+definition because the spawned subagent cannot reliably resolve this reference's path at runtime
+(its cwd is the project, the installed cache holds many plugin versions, and other harnesses
+relocate the plugin root). Each declares itself a citation of this section, never an owner: where
+a carrier's restatement and this section differ, this section wins, and the rule-surface
+enumeration must catch both carriers when it changes (grep terms: checkpoint, coverage-floor,
+Rounds):
 
 - **The live goal-spec and the coverage-floor table are the authoritative current state.** They
   are structured claims about the run and its entities. Their readers are whoever must trust the
