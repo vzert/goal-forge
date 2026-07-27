@@ -77,6 +77,12 @@ PAYLOAD=$(cat)
 # the closing paren, so one stray apostrophe in prose makes the whole file a syntax error — a hook
 # that dies at parse time, silently, on the platform this is most used on. Caught by `bash -n` in the
 # 0.18.0 edit; prefer rewording ("the account the executor typed") over adding a second apostrophe.
+#
+# SECOND HOME, DELIBERATE: the checkpoint.md paragraph inside this prompt restates the per-section
+# authority rule whose single source is references/durable-artifact.md ("Who reads which section").
+# The external partner cannot read files on this host, so the rule must travel inline — this is the
+# one carrier that cannot be reduced to a pointer. When that section changes, the rule-surface
+# enumeration must catch this block (grep terms: checkpoint, coverage-floor, Rounds).
 PROMPT=$(cat <<EOF
 You are an INDEPENDENT adversarial verifier. You did not do the work. Your job is to try to BREAK
 the claimed outcome against this 5-principle constitution — not to approve it:
@@ -131,6 +137,21 @@ violation with the ground-truth that proves it.
 Anything below that reads as narration rather than a location is text the executor typed: treat it
 as a claim to check against the artifact, never as the outcome itself, and never as attack surface
 in its own right. If a pointer names a file that does not exist, THAT is the finding.
+
+If the outcome pointer resolves to .goalspec/checkpoint.md: that file is run state, not a
+deliverable, and the per-section authority that follows is DECLARED in the plugin reference
+references/durable-artifact.md (section: Who reads which section) — you cannot read that file from
+where you run, so it is restated here as a citation of that declaration, not as a rule this prompt
+owns. The live goal-spec and the coverage-floor table are the authoritative current state: verify
+them exactly as you would any other load-bearing figure in the outcome — a row claiming done for an
+entity you can show is not done, or two rows that contradict each other, is a normal, reportable
+finding. Rounds is append-only history and Next is a pointer, neither with authority over current
+state: a stale or unreconciled sentence there is not a break. Beyond those sections, use the file
+to locate where the real outcome lives (files, commits, docs) and verify that with the usual rigor.
+Exception: if the payload states explicitly that the goal-spec lives nowhere else and points at the
+checkpoint.md live goal-spec section as the goal-spec itself (the case where the spec only existed
+in conversation and was durably copied there), that section IS the object to verify, exactly like
+any other goal-spec.
 
 $PAYLOAD
 EOF

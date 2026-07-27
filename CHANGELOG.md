@@ -6,6 +6,70 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.22.0] - 2026-07-26
+
+**The checkpoint.md exemption, reconciled at its source.** Fase 1 of the phased remediation plan.
+The two 2026-07-26 attempts of this work failed for the same root cause: `references/durable-artifact.md`
+— the definitional document — never declared who reads Rounds/Next or which sections carry
+authority (a measured NOT-FOUND), so each attempt drew the exemption line somewhere the source did
+not back, and the closing adversary broke it both times, from opposite sides.
+
+- **`references/durable-artifact.md` gains the missing declaration** ("Who reads which section —
+  and which sections carry authority"): the live goal-spec and the coverage-floor table are the
+  **authoritative current state** — load-bearing for every reader, verified like any other figure;
+  **Rounds is append-only history with no authority over current state** (its declared reader is
+  the resuming agent reconstructing the run — the ground the exemption now stands on, instead of an
+  unevidenced "executor talking to itself"); **Next is a pointer**, never a claim the action
+  happened. The one new reading path — the adversary, when and only when the step-6 payload points
+  at the file — is added where the old text was in tension with it ("The reader is a resuming agent
+  or a human" §What-this-is-not; "never requires that adversary to open it" §adjacent-practices).
+- **Carriers cite the declaration instead of owning a version of it.** The checkpoint paragraph in
+  `agents/goal-adversary.md` reduces to a citation of that section. The external prompt in
+  `hooks/external-adversary.sh` inlines the same semantics **by necessity** — the partner cannot
+  read files on this host — a deliberate second home, declared as such in a comment above the
+  heredoc naming it a carrier the rule-surface enumeration must catch. `SKILL.md` step 5's
+  "Nothing reads it but the next agent or you" now names the third, conditional reader and points
+  at the reference; step 6's spawn-payload parenthetical carries over from the preserved WIP.
+- **Selective cherry-pick, measured**: from `wip/checkpoint-exemption` only the three carrier hunks
+  (`git apply --3way` → "Applied … cleanly" ×3); the WIP's +67-line CHANGELOG entry (contains the
+  claims its own closing rounds refuted) and its version bumps were discarded, and 0.22.0 was
+  computed fresh.
+
+Verification (each claim with its instrument):
+
+- `bash -n hooks/external-adversary.sh` → exit 0. All four branch suites → exit 0. The Stop gate
+  was not touched, so no `--compare` run was owed.
+- **Acid test, external route** — the edited hook as test SUBJECT under a real `codex exec` / GPT-5
+  run (legitimate: the P25 rule bars this backend as the editing session's closing *verifier*, not
+  as a subject): fixture A (coverage-floor row claims `gamma.conf` done; ground truth
+  `grep mode gamma.conf` → `mode=OLD_MARK`) → `break ungrounded=1 unfalsified=1 incomplete=1` with
+  three grounded bullets, no bare-verdict warning. Fixture B (accurate table, contradiction only in
+  the Rounds log) → `hold 0/0/0/0/0` **with reasoning** that itself applies the new semantics
+  ("the contradictory Rounds entry is non-authoritative history") — the first branch of the
+  ratified disjunction (reasoned hold), so no re-run was owed; had it come back naked, the 0.21.1
+  `EVIDENCE_LINES` scoping now flags exactly that case UNVERIFIED, which is what made this acid
+  test decidable at all.
+- **Acid test, subagent route** — fresh-context agents instructed to read and adopt the edited
+  `agents/goal-adversary.md` **verbatim from disk** (byte-identical by construction, never
+  abbreviated): fixture A → `break ungrounded=2 unfalsified=1 incomplete=1` citing the table row
+  against ground truth. Fixture B *as inherited from the WIP* → `break autonomy-violations=1`: the
+  deep reader **correctly exempted** the Rounds contradiction ("an unreconciled sentence there is
+  not a break") but read the fixture's "operator said proceed/hold" prose as an **unverifiable
+  authorization claim** — an ask record does not go stale, so an operator invented by the fixture's
+  narrative while the payload declares "no decisions assigned to the human" is a fixture defect,
+  not a semantics defect (the open design question — should the declaration name that carve-out —
+  is registered in `memory/_pendientes.md`, not improvised here). Fixture B′ — the contradiction
+  the criterion actually describes: pure bookkeeping ("converted in R1, not R2"), no operator, a
+  realistic two-commit history — → `hold 0/0/0/0/0` with the contradiction verified against git
+  and reasoned as exempt bookkeeping drift, in the declaration's own terms. **Scope honesty**:
+  this exercises the def *text*, not a genuine cache-resolved `goal-adversary` spawn — a named Task spawn resolves
+  from the installed cache, whose *agent def* contains zero mentions of "checkpoint"
+  (`grep -c checkpoint agents/goal-adversary.md` → 0 in the 0.20.1, 0.21.0 and 0.21.1 caches). The
+  WIP entry's broader phrasing ("zero mentions across all 21 cached versions") was true only under
+  that agent-def scope — plugin-wide, `grep -ril checkpoint` hits 4 files per cached version
+  (durable-artifact.md, usage-budget-setup.md, check-usage-budget.sh, SKILL.md) — and is corrected
+  here rather than repeated.
+
 ## [0.21.1] - 2026-07-26
 
 **Instrument repair, and only that: two known defects in `hooks/external-adversary.sh`, each pinned

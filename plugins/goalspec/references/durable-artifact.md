@@ -7,7 +7,10 @@ fact a single home.
 
 **What this is not.** Nothing in the plugin reads the checkpoint. `gate-goal-close.sh` never
 opens it; no hook parses it; **nothing gates its absence** — a run that never writes one closes
-exactly as cleanly as a run that does. The reader is a *resuming agent or a human*, not code.
+exactly as cleanly as a run that does. The reader is a *resuming agent or a human*, not code —
+with one narrow addition: the independent adversary reads it **when and only when** the
+executor's step-6 payload points at this file as where the goal-spec or outcome is written
+(see "Who reads which section" below for what that reader may and may not treat as a claim).
 This is a named place with a shape and an instruction to fill it, not a guarantee that state
 survives. Treat a claim that it "closes the resume gap" as unsupported: the resume mechanism
 itself is a human CLI action this harness gives no agent any hook into, and that has not changed.
@@ -41,6 +44,31 @@ Four things, and nothing that already lives somewhere better:
 Anything already recorded in ground truth — commit messages, the CHANGELOG, the test output —
 gets **pointed at, not copied**. A derived figure with two homes goes stale; that is not a
 hypothetical, it is the failure mode that produced multiple shipped defects in this method.
+
+## Who reads which section — and which sections carry authority
+
+The four sections do not share a reader or a standing, and this section is the **declaration of
+both** — every carrier elsewhere (the adversary's definition, the external backend's inline
+prompt) cites it rather than asserting its own version:
+
+- **The live goal-spec and the coverage-floor table are the authoritative current state.** They
+  are structured claims about the run and its entities. Their readers are whoever must trust the
+  run's state without re-deriving it: the resuming agent, a human, and — in the pointed-at case
+  above — the adversary. For every such reader these sections are load-bearing: a row claiming
+  "done" for an entity that is not done, or two rows that contradict each other, is a real,
+  reportable defect, exactly like any other load-bearing figure in an outcome.
+- **Rounds is append-only history with no authority over current state.** Its reader is the
+  resuming agent reconstructing how the run got here; it is the executor's own process log,
+  written for itself and its successor. Where a Rounds line disagrees with the table, the table
+  is the current state and the Rounds line is history — the stale line is not, by itself, a
+  reportable contradiction. This is the declaration the adversary's exemption cites: narrative
+  in this file is exempt from falsification scrutiny *because its declared reader and standing
+  are historical*, not because prose is unimportant.
+- **Next is a pointer** to the single next action — read by the resuming agent, never a claim
+  that the action happened.
+
+The file as a whole remains "run state, not a deliverable" (see "Where it lives" above); nothing
+in this section changes who may write it (see "Verbs").
 
 ## Verbs — who may do what to it
 
@@ -78,9 +106,10 @@ already in this method — and in both cases the neighbour is **narrower**, so "
 would be false. What is stated here is the gap, not a claim to have closed it:
 
 - *Review the shared artifact adversarially before it becomes shared state.* Step 6 routes your
-  **outcome** to an independent adversary at close. It never requires that adversary to open
-  `.goalspec/checkpoint.md`, and it fires **after** workers have already read the file. The gap is
-  timing: nothing verifies the shared facts before they are consumed.
+  **outcome** to an independent adversary at close. It never *requires* that adversary to open
+  `.goalspec/checkpoint.md` — the adversary reads it only in the pointed-at case, and then under
+  the per-section authority above — and it fires **after** workers have already read the file.
+  The gap is timing: nothing verifies the shared facts before they are consumed.
 - *A dedicated pass reconciling contradictions between artifacts.* The rule-surface enumeration
   greps every carrier of a **rule you changed** and updates or exempts each one. That catches a
   rule left stale in a second carrier — it is not a pass over two arbitrary work products (say a
