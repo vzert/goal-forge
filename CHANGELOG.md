@@ -6,6 +6,50 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.21.1] - 2026-07-26
+
+**Instrument repair, and only that: two known defects in `hooks/external-adversary.sh`, each pinned
+by a new hermetic branch suite before shipping.** No behavior of the skill, the gate, or the agent
+def changes. (The checkpoint.md exemption work observed failing twice on 2026-07-26 is deliberately
+NOT in this release — this is Fase 0 of the phased remediation plan, which repairs the instruments
+that work needs before it is re-attempted.)
+
+- **The bare-verdict floor could not see a naked verdict.** `EVIDENCE_LINES` counted non-blank
+  lines over ALL of `$OUT` — but `$OUT` is the partner CLI's whole run transcript (banner,
+  reasoning traces, exec calls, echoed prompt template and fixture text), so nearly any non-trivial
+  run counted `> 0` and the "bare verdict with no evidence" warning never fired. Observed live
+  2026-07-26: a codex run with `reasoning effort: none` returned a `hold` with **zero** bullets
+  between `[ADVERSARY-MODEL:]` and the verdict, no warning was emitted, and the surrounding echoed
+  text was mistaken for reasoning by a human reader too. The count is now scoped to the partner's
+  answer block — between the LAST real `[ADVERSARY-MODEL:]` line and the final verdict — with a
+  12-line fallback window above the verdict when there is no self-report to anchor on.
+- **P25, previously deferred with reason, now done in a session that does not use this hook as its
+  verifier** (closure below is subagent-only): the partner now runs from the repo root
+  (`git rev-parse --show-toplevel`) with a `TMPDIR` this hook's process can write to (replaced via
+  `mktemp -d` when unset or unwritable). Both sandbox failures had been observed across two
+  consecutive phases coming back disguised as ungrounded/UNVERIFIED findings — a broken instrument
+  fabricating findings. **Scope, stated against the recorded contra-dato rather than this fix's
+  own hopes** (the first draft of this entry claimed "removing the two known environment
+  failures"; the closing adversary round broke it on exactly that): this is the host-side half
+  only. The v0.19.1 measurement — repo root, `TMPDIR=/tmp` exported, codex still
+  `errno=Operation not permitted` creating its cache file, a full `ungrounded` finding still
+  spent — was the partner's OWN sandbox denying writes the hook's process could make, and the
+  writability test runs in the hook's process, so that observed mode survives this fix. What is
+  removed is the never-configured half (hook-side `TMPDIR` unset/unwritable, cwd outside the
+  repo); the partner-side denial remains a property of the backend to weigh when reading its
+  counts. Deliberately NOT paired with any `/tmp` cleanup: the script writes nothing to `/tmp`,
+  and deleting files it does not own is a remove-verb on artifacts that are not its own.
+- **New suite: `test/external-adversary-branches.py`** (the fourth; `test/README.md` and
+  `CLAUDE.md` updated from "three"). Hermetic via a `GOAL_ADVERSARY_CMD` stub — no real CLI, no
+  credential, no network. Measured against the pre-edit hook with intended diffs declared in
+  advance: `--compare BASELINE --expected 02,05,08,09` exits 0 with exactly those 4 branches
+  changed and 6 unchanged (02 `pass → bare-unverified` is the live bug; 05 is the no-self-report
+  fallback window, a naked verdict the old whole-`$OUT` count also let through; 08/09 are the P25
+  rails; 01/03/04/06/07/10 hold as controls — real bullets still pass, the echoed-template
+  rejection and recursion guard are untouched).
+- All four suites exit 0 (`gate=0 nudge=0 budget=0` plus the new suite), `bash -n` clean, both
+  manifests validated with the real exit code.
+
 ## [0.21.0] - 2026-07-26
 
 **Two rules that only ever lived in the operator's private memory, shipped to the plugin itself.**

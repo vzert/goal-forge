@@ -1,6 +1,6 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. Three mechanical suites and one check by hand.
+No CI — the plugin is a skill + hooks + docs. Four mechanical suites and one check by hand.
 
 ## `gate-branches.py` — Stop-gate branch suite
 
@@ -105,6 +105,32 @@ python3 test/usage-budget-branches.py
 lookup and possibly a live API call with the user's own token, which a test must not do. And seeding
 95% proves the threshold comparison and the payload shape, **not** a real account crossing 80%; that
 observation is still open.
+
+## `external-adversary-branches.py` — external-partner backend suite
+
+Same shape, for `hooks/external-adversary.sh` (0.21.1). Hermetic: the partner is a stub selected
+through `GOAL_ADVERSARY_CMD` (env outranks config), so no real CLI, no credential, no network.
+
+Case **02** is the regression case: a codex-style run transcript (banner, reasoning traces, echoed
+prompt template and fixture text) around a **naked** final `hold`. `EVIDENCE_LINES` used to count
+over ALL of `$OUT`, so that noise read as evidence and the bare-verdict floor never fired — an
+empty hold sailed through as a verified one, observed live 2026-07-26 (and the echoed text was
+mistaken for reasoning by a human reader too, until the bullets between `[ADVERSARY-MODEL:]` and
+the verdict were actually counted). The fix scopes the count to the partner's answer block; **03**
+is the only shape the old floor caught (control), **01/04** prove real bullets still pass, **05**
+pins the no-self-report fallback window.
+
+Cases **08/09** pin the P25 sandbox rails: the partner must see a writable `TMPDIR` and run from
+the repo root, because both sandbox failures come back disguised as ungrounded/UNVERIFIED
+findings — a broken instrument fabricating findings, observed across two consecutive phases.
+
+```sh
+python3 test/external-adversary-branches.py
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09
+```
+
+Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
+baseline copy; `--compare` works like the gate suite's when the hook is edited again.
 
 ## Acid test (manual)
 

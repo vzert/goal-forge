@@ -136,6 +136,21 @@ $PAYLOAD
 EOF
 )
 
+# Partners burn findings on the limits of their own sandbox, systematically (two consecutive
+# phases observed it): an unwritable TMPDIR fails their suite runs, a cwd outside the repo hides
+# the work — and both come back as ungrounded/UNVERIFIED counts, a broken instrument fabricating
+# findings (principle 1 turned on this script). So run the partner from the repo root with a
+# TMPDIR this process can write to. That is the HOST-side half only, and the claim must not grow
+# past it: the writability test below runs in THIS hook, and the recorded v0.19.1 contra-dato
+# (repo root, TMPDIR=/tmp exported, codex still denied the write: errno=Operation not permitted)
+# was the partner OWN sandbox refusing writes this process could make — a mode this fix does not
+# and cannot remove. Weigh that when reading a partner ungrounded count.
+# Deliberately NOT paired with any /tmp cleanup: this script writes nothing to /tmp, and deleting
+# files it does not own is a remove-verb on artifacts that are not its own.
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -n "$REPO_ROOT" ]; then cd "$REPO_ROOT"; fi
+if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || echo /tmp); export TMPDIR; fi
+
 # Pipe the prompt to the external CLI on stdin. Some CLIs accept a prompt on stdin (codex exec,
 # claude -p); others want it as an argument (gemini -p) — wrap those in a small adapter.
 #
@@ -192,7 +207,23 @@ fi
 # all its work) is not a pass. This is a FLOOR, not proof of diligence — filler lines can game it
 # (you cannot gate your way out of specification gaming; the lever is the executor treating
 # UNVERIFIED as UNVERIFIED) — but it catches the lazy-partner case that actually happened.
-EVIDENCE_LINES=$(printf '%s' "$OUT" | grep -vE '^\s*$|\[ADVERSARY-VERDICT:|\[ADVERSARY-MODEL:' | grep -c . || true)
+#
+# Count ONLY between the LAST real [ADVERSARY-MODEL:] line and the final verdict — the answer
+# block, where the prompt places the violation list. Counting over ALL of $OUT (the original
+# implementation) made this floor blind: $OUT is the partner CLI's whole run transcript (banners,
+# reasoning traces, its file reads echoing the fixture and this very prompt), so nearly any
+# non-trivial run counted >0 and a truly naked hold sailed through unwarned — observed live
+# 2026-07-26, where the echoed text also read as "reasoning" to a human until counted. With no
+# self-report line to anchor on, fall back to the 12 lines above the verdict (a heuristic window;
+# the missing-self-report warning above already fired on that path).
+VLINE=$(printf '%s\n' "$OUT" | grep -nE "$VERDICT_RE" | tail -1 | cut -d: -f1 || true)
+MLINE=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 | cut -d: -f1 || true)
+if [ -z "$VLINE" ] || [ "$VLINE" -le 1 ]; then
+  EVIDENCE_LINES=0
+else
+  if [ -n "$MLINE" ] && [ "$MLINE" -lt "$VLINE" ]; then WSTART=$((MLINE + 1)); else WSTART=$((VLINE > 12 ? VLINE - 12 : 1)); fi
+  EVIDENCE_LINES=$(printf '%s\n' "$OUT" | sed -n "${WSTART},$((VLINE - 1))p" | grep -vE '^[[:space:]]*$|\[ADVERSARY-VERDICT:|\[ADVERSARY-MODEL:' | grep -c . || true)
+fi
 if [ "$EVIDENCE_LINES" -eq 0 ]; then
   echo "external-adversary: partner returned a bare verdict with no evidence of work (no bullets/ground-truth above it) — treat it as UNVERIFIED, not a pass; re-run or route to the other backend." >&2
 fi
