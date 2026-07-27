@@ -6,6 +6,64 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.26.0] - 2026-07-27
+
+**Guided interview command — `/goalspec:interview`.** User-reported failure mode upstream of the
+whole method: when the initial description is too thin, the loop's clarify step — one batched
+modal over the forks the agent can already *name* — produces a spec that is grounded, falsifiable,
+and aimed at the wrong objective, because with structurally underspecified intent the load-bearing
+forks only become visible as earlier answers land. Prior art studied before building:
+mattpocock/skills' grilling family (`grilling` / `grill-me` / `batch-grill-me`); **adapted, not
+adopted** — what survived is the decision-tree-walked-in-dependency-order interview and the
+facts-vs-decisions split (which the constitution's Autonomy principle already carried); what was
+deliberately left behind is one-question-at-a-time conversational mode (frontier rounds map
+better to `AskUserQuestion` and converge faster), ADR/glossary capture (repo-centric; the
+goal-spec is already the durable record), their PRD template (the 6-question scaffold is
+stronger), and question caps (rejected there for reasons that hold here). Shipped as a third
+**thin** skill (`skills/interview/SKILL.md`) plus **one routing addition to the main skill's
+clarify step** (its home, echoed once in runbook step 2): structural can't-articulate ambiguity
+escalates to the interview instead of stretching the single batched modal — added because the
+trigger acid test showed the main skill's own description winning the turn-1 skill-selection race
+on exactly the utterances this command exists for, so without a yield clause at that junction the
+interview would systematically never fire. Hooks, gate, and the `goal-adversary` definition
+untouched:
+
+- **What it does**: frames the ask as a decision tree and interviews in **rounds of one
+  `AskUserQuestion` modal each**, carrying only the current **frontier** — decisions whose
+  prerequisites are already settled (≤4 questions, most load-bearing first). Facts are never
+  asked: anything lookable is resolved by the agent, sized exactly as the grounding step sizes
+  acquisitions; an in-flight lookup only holds back its downstream questions. Every question is
+  a load-bearing fork (plausible answers → genuinely different work) with a "(Recommended)"
+  option first — the batching/default rules' home stays the main skill's clarify section,
+  referenced rather than restated. An "Other" free-text answer is treated as evidence the fork's
+  framing is wrong, not as a fifth option.
+- **Termination without a cap**: done when the frontier is empty. Two guards instead of a
+  counter: once objective-level forks settle, an explicit "Proceed with what we have" option
+  makes continuing the user's choice (whatever is unsettled travels into the spec's Assumptions
+  line, not into silence); and a frontier that *grows* round over round is surfaced as a fork
+  (narrow to one branch vs. scope the effort first), never ground through.
+- **Handoff with mechanical teeth**: the settled understanding is the input to the full loop —
+  the clarify step should find nothing left to ask, and the spec must **visibly reflect** the
+  interview (if the spec that comes out is the one you'd have written anyway, the ask was never
+  underspecified). The interview itself is stateless; the `## Goal-spec` that follows is the
+  durable record.
+- **Gate deliberately unarmed, ratify untouched**: the command emits no `## Goal-spec`, adds no
+  markers/gates/matchers, and explicitly does not replace step 4b — settling *intent* upstream
+  is not approving *the spec that intent becomes*, so the ratify gate still fires on blast
+  radius later. Headless/`-p`: an interview is interactive by definition — the skill states it
+  does not apply and falls back to the loop's normal headless path.
+- **Trigger, acid-tested three ways** (headless `claude -p` runs in throwaway dirs, byte-identical
+  skill copy, invocation read from the stream-json transcript): a clear terse request does **not**
+  invoke the interview (2/2 runs, zero false positives); an explicit **"interview me about it"**
+  invokes it directly as the first tool of the turn (1/1); a plain **"I don't know how to explain
+  what I need"** loses the turn-1 skill-selection race to the main goalspec skill's own description
+  (2/2, measured before and after adding a precedence clause to the interview description — the
+  clause alone does not win) and is exactly why the clarify-step routing sentence exists: on 0.26.0
+  that utterance reaches the interview *through the loop* (goalspec triggers → clarify escalates,
+  interactive sessions only). The escalation branch runs from the installed skill body and is
+  interactive by definition, so it is not headless-measurable — stated here rather than claimed
+  tested.
+
 ## [0.25.0] - 2026-07-27
 
 **The claim-naming vs. narration boundary, drawn where the tension lived.** The 0.24.0 closing

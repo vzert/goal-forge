@@ -108,8 +108,8 @@ claude plugin install goalspec@goal-forge
 
 Then **restart Claude Code** (or run `/reload-plugins` inside the REPL) for the plugin to activate.
 This registers the `/goalspec` skill (invoke it directly, or it auto-triggers on substantive tasks),
-the standalone `/goalspec:adversary` verification command, the `goal-adversary` subagent, and the
-fail-open Stop gate.
+the standalone `/goalspec:adversary` verification command, the `/goalspec:interview` guided-interview
+command, the `goal-adversary` subagent, and the fail-open Stop gate.
 
 > **Already inside Claude Code?** The equivalent REPL slash commands are
 > `/plugin marketplace add vzert/goal-forge`, then `/plugin install goalspec@goal-forge`,
@@ -131,8 +131,8 @@ fail-open Stop gate.
 claude plugin list          # goalspec should appear as enabled
 ```
 
-Inside Claude Code, `/goalspec` and `/goalspec:adversary` should be available and the
-`goal-adversary` subagent listed. Confirm
+Inside Claude Code, `/goalspec`, `/goalspec:adversary`, and `/goalspec:interview` should be
+available and the `goal-adversary` subagent listed. Confirm
 `/goalspec` did **not** shadow the built-in `/goal` (both should exist).
 
 ### Alternative — team setup
@@ -220,6 +220,19 @@ model/CLI), and quotes the verdict verbatim — treating a bare `hold` with no e
 UNVERIFIED, never as a pass. It writes no `## Goal-spec`, so the completion gate stays unarmed —
 deliberate for small tasks. One round per invocation; multi-round convergence discipline stays
 with the full `/goalspec` flow.
+
+### Guided interview — `/goalspec:interview`
+
+For tasks you **can't articulate yet**. The loop's own clarify step handles a terse-but-clear
+request (one batched modal over the forks the agent can already name) — but when the description
+is too thin to even name the forks, a spec written on it is grounded, falsifiable, and aimed at
+the wrong objective. `/goalspec:interview` walks the decision tree in **dependency-ordered rounds
+of multiple-choice questions** (frontier only — the decisions whose prerequisites are settled),
+looks up facts itself and asks only genuine decisions, each with a recommended answer, until
+nothing load-bearing is left silently assumed — then hands the settled understanding to the full
+`/goalspec` loop, which specs it without re-asking anything. Invoke it yourself ("interview me
+about this", "help me figure out what I actually want") — it deliberately does not auto-trigger
+on requests that are merely terse.
 
 ## How it adapts to your domain — automatically
 
@@ -353,6 +366,8 @@ goal-forge/
                                           #   6-question scaffold + clarify + red-team + runbook
     skills/adversary/SKILL.md             # /goalspec:adversary — standalone one-round adversary
                                           #   verification, without the full loop or the gate
+    skills/interview/SKILL.md             # /goalspec:interview — frontier-round interview that
+                                          #   discovers the goal before the spec, for fuzzy intent
     agents/goal-adversary.md              # independent adversarial verifier (read-only)
     hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart hooks below
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop)
