@@ -120,13 +120,16 @@ the verdict were actually counted). The fix scopes the count to the partner's an
 is the only shape the old floor caught (control), **01/04** prove real bullets still pass, **05**
 pins the no-self-report fallback window.
 
-Cases **08/09** pin the P25 sandbox rails: the partner must see a writable `TMPDIR` and run from
-the repo root, because both sandbox failures come back disguised as ungrounded/UNVERIFIED
-findings — a broken instrument fabricating findings, observed across two consecutive phases.
+Cases **08/09/11** pin the P25 sandbox rails: the partner gets a `TMPDIR` the hook's own process
+can write to (08) and runs from the repo root when the invocation cwd is inside one (09) — both
+sandbox failures had come back disguised as ungrounded/UNVERIFIED findings across two consecutive
+phases. The rails are host-side only: from outside any git repo there is no root to resolve, so
+that branch warns on stderr instead of relocating (11), and a partner whose own sandbox denies
+writes the hook's process can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
