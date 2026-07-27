@@ -90,6 +90,9 @@ CASES = [
     ("09-invoked-from-subdir", "STUB_PWD", {}, os.path.join(REPO, "test"), "pass+root"),
     ("10-recursion-guard", MODEL + "\n" + HOLD + "\n", {"GOAL_ADVERSARY_ACTIVE": "1"},
      None, "recursion"),
+    # Outside ANY git repo there is no root to resolve (the recorded Fase 1 incident class:
+    # codex refusing a scratchpad as untrusted) — the hook must warn on stderr, not fix it.
+    ("11-outside-any-repo", "STUB_PWD", {}, "WORKDIR", "pass+warned"),
 ]
 
 PAYLOAD = "goal-spec: /nonexistent/spec.md\noutcome: /nonexistent/outcome.md\n"
@@ -113,6 +116,8 @@ def classify(res, case_name):
         m = re.search(r"STUB-PWD=(.+)", out)
         seen = os.path.realpath(m.group(1).strip()) if m else "?"
         branch += "+root" if seen == os.path.realpath(REPO) else "+cwd:" + seen
+    if case_name.startswith("11"):
+        branch += "+warned" if "not inside any git repo" in err else "+silent"
     return branch
 
 
@@ -134,8 +139,9 @@ def suite(hook, workdir):
                 f.write(transcript)
             env["GOAL_ADVERSARY_CMD"] = "cat " + fixture
         env.update(env_extra)
+        run_cwd = workdir if cwd == "WORKDIR" else (cwd or REPO)
         res = subprocess.run(["bash", hook], input=PAYLOAD, capture_output=True,
-                             text=True, env=env, cwd=cwd or REPO, timeout=30)
+                             text=True, env=env, cwd=run_cwd, timeout=30)
         rows.append((name, classify(res, name), expect))
     return rows
 

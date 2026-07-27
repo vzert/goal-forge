@@ -35,18 +35,25 @@ that work needs before it is re-attempted.)
   `errno=Operation not permitted` creating its cache file, a full `ungrounded` finding still
   spent — was the partner's OWN sandbox denying writes the hook's process could make, and the
   writability test runs in the hook's process, so that observed mode survives this fix. What is
-  removed is the never-configured half (hook-side `TMPDIR` unset/unwritable, cwd outside the
-  repo); the partner-side denial remains a property of the backend to weigh when reading its
-  counts. Deliberately NOT paired with any `/tmp` cleanup: the script writes nothing to `/tmp`,
-  and deleting files it does not own is a remove-verb on artifacts that are not its own.
+  removed: the hook-side `TMPDIR` unset/unwritable case, and the wrong-cwd case **when the
+  invocation cwd is inside the repo** (a subdir). From outside any git repo — the cwd class of
+  the recorded Fase 1 incident, codex refusing a scratchpad as untrusted — `git rev-parse` has no
+  root to resolve, so that branch now warns on stderr ("invoke from the repo under review")
+  instead of silently running the partner from the unrelocated cwd; the second re-verify round
+  broke the first wording of this very sentence for claiming that mode removed (the stderr-warn
+  alternative is the one the P25 pendiente itself named). The partner-side denial remains a
+  property of the backend to weigh when reading its counts. Deliberately NOT paired with any
+  `/tmp` cleanup: the script writes nothing to `/tmp`, and deleting files it does not own is a
+  remove-verb on artifacts that are not its own.
 - **New suite: `test/external-adversary-branches.py`** (the fourth; `test/README.md` and
   `CLAUDE.md` updated from "three"). Hermetic via a `GOAL_ADVERSARY_CMD` stub — no real CLI, no
   credential, no network. Measured against the pre-edit hook with intended diffs declared in
-  advance: `--compare BASELINE --expected 02,05,08,09` exits 0 with exactly those 4 branches
+  advance: `--compare BASELINE --expected 02,05,08,09,11` exits 0 with exactly those 5 branches
   changed and 6 unchanged (02 `pass → bare-unverified` is the live bug; 05 is the no-self-report
   fallback window, a naked verdict the old whole-`$OUT` count also let through; 08/09 are the P25
-  rails; 01/03/04/06/07/10 hold as controls — real bullets still pass, the echoed-template
-  rejection and recursion guard are untouched).
+  rails; 11 pins the outside-any-repo stderr warning added in the second closure round;
+  01/03/04/06/07/10 hold as controls — real bullets still pass, the echoed-template rejection and
+  recursion guard are untouched).
 - All four suites exit 0 (`gate=0 nudge=0 budget=0` plus the new suite), `bash -n` clean, both
   manifests validated with the real exit code.
 

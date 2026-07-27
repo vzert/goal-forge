@@ -139,16 +139,23 @@ EOF
 # Partners burn findings on the limits of their own sandbox, systematically (two consecutive
 # phases observed it): an unwritable TMPDIR fails their suite runs, a cwd outside the repo hides
 # the work — and both come back as ungrounded/UNVERIFIED counts, a broken instrument fabricating
-# findings (principle 1 turned on this script). So run the partner from the repo root with a
-# TMPDIR this process can write to. That is the HOST-side half only, and the claim must not grow
-# past it: the writability test below runs in THIS hook, and the recorded v0.19.1 contra-dato
-# (repo root, TMPDIR=/tmp exported, codex still denied the write: errno=Operation not permitted)
-# was the partner OWN sandbox refusing writes this process could make — a mode this fix does not
-# and cannot remove. Weigh that when reading a partner ungrounded count.
+# findings (principle 1 turned on this script). So: when the invocation cwd is inside a git repo,
+# run the partner from that repo root — which relocates a wrong-subdir invocation and nothing
+# more. From OUTSIDE any repo (the cwd class of the recorded Fase 1 incident: codex refusing a
+# scratchpad as untrusted) there is no root to resolve, and that branch gets a stderr warning,
+# not a fix. And hand the partner a TMPDIR THIS process can write to — the host-side half only:
+# the recorded v0.19.1 contra-dato (repo root, TMPDIR=/tmp exported, codex still denied the
+# write: errno=Operation not permitted) was the partner OWN sandbox refusing writes this process
+# could make — a mode this fix does not and cannot remove. Weigh both limits when reading a
+# partner ungrounded count.
 # Deliberately NOT paired with any /tmp cleanup: this script writes nothing to /tmp, and deleting
 # files it does not own is a remove-verb on artifacts that are not its own.
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
-if [ -n "$REPO_ROOT" ]; then cd "$REPO_ROOT"; fi
+if [ -n "$REPO_ROOT" ]; then
+  cd "$REPO_ROOT"
+else
+  echo "external-adversary: invocation cwd is not inside any git repo — no repo root to relocate to; partner CLIs (e.g. codex) may refuse this directory as untrusted. Invoke from the repo under review." >&2
+fi
 if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || echo /tmp); export TMPDIR; fi
 
 # Pipe the prompt to the external CLI on stdin. Some CLIs accept a prompt on stdin (codex exec,
