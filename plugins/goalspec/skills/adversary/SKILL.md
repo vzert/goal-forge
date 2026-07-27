@@ -99,9 +99,13 @@ skill and the hooks use.
 - A **bare `hold`** — no evidence bullets above it — is **UNVERIFIED, not a pass**: re-run it or
   route to the other backend, and never cite a bare hold as your verification.
 - On **`break`**: report the confirmed violations to the user with the adversary's ground-truth
-  for each. This command runs **one round per invocation** — it does not loop: fixing and
-  re-verifying is the user's call (run the command again after the fix, or escalate to the full
-  `/goalspec` flow, whose convergence guard owns multi-round discipline).
+  for each. This command runs **one round per invocation** — it does not loop. What happens next
+  is the user's decision, and a decision narrated is not a decision owned — so **ask it, don't
+  write "your call" in prose**: raise one `AskUserQuestion` with the fork (apply the fix and
+  re-run `/goalspec:adversary`, vs. stop here with the findings — or escalate to the full
+  `/goalspec` flow, whose convergence guard owns multi-round discipline). Headless /
+  non-interactive: report the findings, stop, and flag the fork explicitly as awaiting the
+  user — a deferred question, not a discharged one.
 - **No completion-review is required or emitted** — with no `## Goal-spec` in the session the
   gate is not armed; do not invent one. (If this session *does* have an armed gate from earlier
   `/goalspec` work, quoting the verdict verbatim integrates with it normally — the gate reads

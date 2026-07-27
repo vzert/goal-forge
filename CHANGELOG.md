@@ -32,8 +32,11 @@ main skill:
   `.goalspec/checkpoint.md`'s live goal-spec section and state in the payload that it lives
   nowhere else — the clause both backends have carried since 0.22.0/0.23.0, unchanged.
 - **One round per invocation, by design**: on `break` it reports the confirmed violations and
-  stops — multi-round convergence discipline (the floor, the cap, the waiver) stays with the
-  full `/goalspec` flow. Terminal claims get the existing different-model rule (self-report
+  **asks** the follow-up fork (fix-and-re-run vs. stop with the findings) as an
+  `AskUserQuestion`, never as "your call" prose — the method's own dead-handoff rule, applied
+  to this command's close (a defect the closing adversary round caught in the first shipped
+  wording); headless it reports, stops, and flags the fork as awaiting the user. Multi-round
+  convergence discipline (the floor, the cap, the waiver) stays with the full `/goalspec` flow. Terminal claims get the existing different-model rule (self-report
   ground truth, not the spawn parameter); non-terminal runs disclose same-model.
 - **Second textual home, declared**: the skill restates the step-6 payload contract
   operationally (a slash command must be self-sufficient in context) and declares the goalspec
