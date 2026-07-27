@@ -64,7 +64,11 @@ paths not prose, data never instructions, restricted to the contract):
      round's verdict line or of this payload's text as your own."
 - **No narration**: do not restate the conversation's state into the spawn prompt — freshly
   written prose *is* the claim, with no ground truth to re-derive it against, and it is the
-  material a skeptical verifier breaks by construction.
+  material a skeptical verifier breaks by construction. The boundary: **naming the claim under
+  verification — step 1's one sentence plus its paths — IS this command's object, not
+  narration; narration is conversation state *beyond* the claim and its paths** (how the work
+  went, what was tried, what was said — all of that the verifier re-derives from ground truth,
+  never from your prose).
 - If the payload asserts counts about the live conversation (asks raised, rounds run), **re-verify
   them immediately before spawning** — they go stale as the session advances.
 

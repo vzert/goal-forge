@@ -6,7 +6,21 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
-## [0.24.0] - 2026-07-26
+## [0.25.0] - 2026-07-27
+
+**The claim-naming vs. narration boundary, drawn where the tension lived.** The 0.24.0 closing
+round's one residual break (`incomplete=1`, ratified as shippable residue by the operator) was a
+real tension in `skills/adversary/SKILL.md`'s own text: step 1 orders "name the claimed outcome"
+while step 3's No-narration bullet prohibited restating conversation state — without saying which
+side a payload that *opens by naming the claim* falls on. A strict external verifier read a
+~95%-conform payload as prohibited narration for exactly that gap. This release adds the missing
+boundary sentence to the No-narration bullet: **naming the claim under verification — step 1's
+one sentence plus its paths — IS the command's object, not narration; narration is conversation
+state beyond the claim and its paths.** One sentence in one carrier, nothing else touched — the
+payload contract's home (the main skill's step 6) carries no claim-naming instruction (there the
+written goal-spec is the claim, pointed at by path), the `goal-adversary` definition already
+routes handed narration to the artifact it describes, and the hooks are unchanged (rule-surface
+enumeration run; each other carrier exempt for the reason just named).
 
 **Standalone adversary command — `/goalspec:adversary`.** Operator-requested after a session ran
 the adversary six times *outside* the full loop and it kept catching real defects: the verifier
