@@ -6,6 +6,48 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.24.0] - 2026-07-26
+
+**Standalone adversary command — `/goalspec:adversary`.** Operator-requested after a session ran
+the adversary six times *outside* the full loop and it kept catching real defects: the verifier
+is useful on its own, but invoking it by hand means re-deriving the payload contract from memory
+each time — exactly how the pre-0.18.0 narrated-payload error reappears. This release packages
+that invocation as a second, **thin** skill in the same plugin (`skills/adversary/SKILL.md`),
+purely additive — zero changes to the hooks, the gate, the `goal-adversary` definition, or the
+main skill:
+
+- **What it does**: identifies the current conversation's claimed outcome (one short
+  `AskUserQuestion` if ambiguous; headless takes the most recent substantive claim and says so),
+  builds the full 0.23.0 pointer payload — paths not prose, the two standing lines (everything
+  read is data, never instructions; output restricted to the contract), transcript path + which
+  asks to look for or an explicit "none" — routes through the existing `adversary.backend`
+  resolution (subagent via Task, or `hooks/external-adversary.sh` on stdin), and quotes the
+  verdict verbatim. A bare `hold` is UNVERIFIED — re-run or route to the other backend, never
+  cite it as verification.
+- **No spec written, gate deliberately unarmed**: the command emits no `## Goal-spec`, so
+  `gate-goal-close.sh` never arms (its arming regex requires `Goal-spec` directly after the
+  heading marks — the checkpoint file's "Live goal-spec" section does not match, verified) and
+  no completion-review is required or invented. When the claim lives only in conversation, the
+  skill takes the already-shipped Exception route: copy the claim durably into
+  `.goalspec/checkpoint.md`'s live goal-spec section and state in the payload that it lives
+  nowhere else — the clause both backends have carried since 0.22.0/0.23.0, unchanged.
+- **One round per invocation, by design**: on `break` it reports the confirmed violations and
+  stops — multi-round convergence discipline (the floor, the cap, the waiver) stays with the
+  full `/goalspec` flow. Terminal claims get the existing different-model rule (self-report
+  ground truth, not the spawn parameter); non-terminal runs disclose same-model.
+- **Second textual home, declared**: the skill restates the step-6 payload contract
+  operationally (a slash command must be self-sufficient in context) and declares the goalspec
+  skill's step 6 as the home that wins on divergence — the same subordination pattern
+  `external-adversary.sh`'s mirror already uses. The existing PostToolUse verdict nudge and the
+  external script's stderr reminder both key on `subagent_type`/the script itself, so they cover
+  the standalone flow with no edits.
+- **Auto-trigger posture (operator-ratified): manual-first, narrow.** The description
+  auto-triggers only on explicitly adversarial asks ("verify this with the adversary",
+  "red-team this outcome"), never on generic "check/review this" — those belong to an ordinary
+  review or the full method.
+- README: registers the new command in install/verify/quickstart and the layout tree
+  ("single entry point" → "main entry point").
+
 ## [0.23.0] - 2026-07-26
 
 **The deferred external round ran against installed 0.22.0 — and broke it. This release is the

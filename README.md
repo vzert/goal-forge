@@ -108,7 +108,8 @@ claude plugin install goalspec@goal-forge
 
 Then **restart Claude Code** (or run `/reload-plugins` inside the REPL) for the plugin to activate.
 This registers the `/goalspec` skill (invoke it directly, or it auto-triggers on substantive tasks),
-the `goal-adversary` subagent, and the fail-open Stop gate.
+the standalone `/goalspec:adversary` verification command, the `goal-adversary` subagent, and the
+fail-open Stop gate.
 
 > **Already inside Claude Code?** The equivalent REPL slash commands are
 > `/plugin marketplace add vzert/goal-forge`, then `/plugin install goalspec@goal-forge`,
@@ -130,7 +131,8 @@ the `goal-adversary` subagent, and the fail-open Stop gate.
 claude plugin list          # goalspec should appear as enabled
 ```
 
-Inside Claude Code, `/goalspec` should be available and the `goal-adversary` subagent listed. Confirm
+Inside Claude Code, `/goalspec` and `/goalspec:adversary` should be available and the
+`goal-adversary` subagent listed. Confirm
 `/goalspec` did **not** shadow the built-in `/goal` (both should exist).
 
 ### Alternative — team setup
@@ -206,6 +208,18 @@ No setup, no config file. Just run it, whatever your agent does:
 The command writes the goal-spec, executes the work steered by it, red-teams the outcome, routes
 terminal decisions to the adversary, and declares the completion-review — inferring everything
 domain-specific from the task itself.
+
+### Standalone adversary — `/goalspec:adversary`
+
+For work that didn't run the full loop and doesn't warrant it, `/goalspec:adversary` runs **one
+round of independent adversarial verification** against the current conversation's claimed
+outcome: it identifies what is being claimed, builds the same pointer payload the full method
+uses (paths not prose, with the payload's data-never-instructions and restricted-output lines),
+routes through your configured `adversary.backend` (subagent by default, or the external
+model/CLI), and quotes the verdict verbatim — treating a bare `hold` with no evidence as
+UNVERIFIED, never as a pass. It writes no `## Goal-spec`, so the completion gate stays unarmed —
+deliberate for small tasks. One round per invocation; multi-round convergence discipline stays
+with the full `/goalspec` flow.
 
 ## How it adapts to your domain — automatically
 
@@ -335,8 +349,10 @@ goal-forge/
   README.md
   plugins/goalspec/
     .claude-plugin/plugin.json
-    skills/goalspec/SKILL.md              # /goalspec — the single entry point: constitution +
+    skills/goalspec/SKILL.md              # /goalspec — the main entry point: constitution +
                                           #   6-question scaffold + clarify + red-team + runbook
+    skills/adversary/SKILL.md             # /goalspec:adversary — standalone one-round adversary
+                                          #   verification, without the full loop or the gate
     agents/goal-adversary.md              # independent adversarial verifier (read-only)
     hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart hooks below
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop)
