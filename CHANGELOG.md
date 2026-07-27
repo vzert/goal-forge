@@ -23,7 +23,10 @@ not back, and the closing adversary broke it both times, from opposite sides.
   happened. The one new reading path — the adversary, when and only when the step-6 payload points
   at the file — is added where the old text was in tension with it ("The reader is a resuming agent
   or a human" §What-this-is-not; "never requires that adversary to open it" §adjacent-practices).
-- **Carriers cite the declaration instead of owning a version of it.** The checkpoint paragraph in
+- **Carriers cite the declaration instead of owning a version of it** — scoped to the per-section
+  authority rule, which is what the declaration covers; each carrier's `Exception:` clause (the
+  goal-spec-lives-nowhere-else case) predates this change and stays carrier-owned, backed by
+  SKILL.md's spawn-payload contract rather than by the declaration. The checkpoint paragraph in
   `agents/goal-adversary.md` reduces to a citation of that section. The external prompt in
   `hooks/external-adversary.sh` inlines the same semantics **by necessity** — the partner cannot
   read files on this host — a deliberate second home, declared as such in a comment above the
@@ -48,7 +51,9 @@ Verification (each claim with its instrument):
   ("the contradictory Rounds entry is non-authoritative history") — the first branch of the
   ratified disjunction (reasoned hold), so no re-run was owed; had it come back naked, the 0.21.1
   `EVIDENCE_LINES` scoping now flags exactly that case UNVERIFIED, which is what made this acid
-  test decidable at all.
+  test decidable at all. Scope: the external route ran fixtures A and B only — B′ (below) went
+  through the subagent route alone, so the external pass rests on B, where GPT-5 did not take the
+  operator-prose bait.
 - **Acid test, subagent route** — fresh-context agents instructed to read and adopt the edited
   `agents/goal-adversary.md` **verbatim from disk** (byte-identical by construction, never
   abbreviated): fixture A → `break ungrounded=2 unfalsified=1 incomplete=1` citing the table row
