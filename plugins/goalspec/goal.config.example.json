@@ -19,7 +19,7 @@
 
   "_advanced_comment": "The fields below are ALWAYS inferred from the task by default. Set them only to override that inference with fixed values.",
   "ground_truth_sources": ["e.g. the test suite / CI, a DB table, an analytics API, an APM dashboard, sensor/lab readings, primary documents"],
-  "enumerate_entities_step": "e.g. list ALL <entities> (not a sample) with real per-entity data before declaring done",
+  "enumerate_entities_step": "e.g. list ALL <entities> (not a sample) with real per-entity data as soon as the task's shape is known, re-verified before declaring done",
   "no_harm_threshold": "e.g. don't remove/scale what works without a validated replacement and a reversible path",
   "terminal_actions": ["e.g. delete", "kill", "deploy-to-prod", "publish", "merge-to-main"]
 }

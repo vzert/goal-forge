@@ -6,6 +6,43 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.27.0] - 2026-07-28
+
+**Fase 1 del plan de remediación del trigger de decomposición — reubicación + simplificación, sin
+código nuevo.** El grounding audit de una investigación de contexto (un usuario reportó "consumió
+1M de tokens y se detuvo" — el forense del transcript real mostró que NO fue eso: pico real 582,815
+tokens, la sesión sí terminó, el checkpoint sí recuperó post-compact; ver
+`memory/research/2026-07-28-context-exhaustion-live-case.md` en el repo de trabajo, no versionado)
+encontró un defecto real e independiente en `SKILL.md`: la guía "decompose execution when the
+entities are independent" (introducida en v0.12.0) estaba enmarcada como check de CIERRE
+("before declaring complete" / "before considering the objective met"), así que un agente que la
+lee como verificación final llega a la instrucción de decomponer cuando el contexto ya se gastó —
+y una de sus dos condiciones ("the task is long enough to risk one context filling up before it's
+done") es estructuralmente inmedible, ya que ningún hook ni el propio agente puede leer el % real
+de contexto usado (confirmado por `references/usage-budget-setup.md` y el propio historial de este
+CHANGELOG). Fix, vía `/goalspec:interview` + el loop completo: (1) la cláusula inmedible se retira
+por completo — decompón siempre que las entidades enumeradas sean independientes, sin condición de
+tamaño. **No es un riesgo ya acotado — es un tradeoff aceptado a propósito**: a la interview se le
+ofreció explícitamente la alternativa de un proxy medible (umbral contable de N entidades) y se
+eligió quitar la condición sin reemplazo; el efecto real es que una tarea multi-entidad chica (ej.
+un PR de 3 archivos) ahora SÍ decompone en 3 subagentes donde antes la cláusula de tamaño podía
+evitarlo — "coverage floor" acota *multiplicidad* de entidades, no *tamaño* de tarea, y son ejes
+ortogonales (hallazgo del adversario subagente, ronda 1: el primer borrador de este párrafo
+confundía ambos ejes al justificar el cambio); (2) el momento de decidir se mueve de "antes de
+declarar completo" a "en cuanto enumerás las
+entidades" (usualmente al armar el spec, no al cerrar) en dos carriers — el bullet de coverage-floor
+(`SKILL.md` sección "cuatro patrones derivados") y el paso 5 (Execute) del loop. Rule-surface
+enumeration corrida sobre todo el repo, en dos rondas (el adversario externo rompió dos veces sobre
+esto: primero un barrido acotado a `plugins/goalspec/` + `README.md` que se saltó `CHANGELOG.md`
+entero; después un recuento sin `grep -n` línea por línea que dijo "2" cuando eran 3): `SKILL.md`
+es el único carrier leído como guía de comportamiento actual, y es el único editado; `README.md`'s
+dos menciones son punteros genéricos sin la cláusula; `CHANGELOG.md` la carga 3 veces (v0.12.0,
+v0.17.0, esta misma entrada) y las 3 quedan explícitamente exentas como registro histórico
+append-only (nunca se reeditan retroactivamente). Cero código nuevo —
+el nudge mecánico no-bloqueante (que le daría un consumidor real a la señal de
+decomposición/checkpoint) queda documentado como Fase 2 en `memory/plans/` (no versionado), fuera
+del alcance de esta release.
+
 ## [0.26.0] - 2026-07-27
 
 **Guided interview command — `/goalspec:interview`.** User-reported failure mode upstream of the
