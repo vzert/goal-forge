@@ -1,6 +1,6 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. Four mechanical suites and one check by hand.
+No CI — the plugin is a skill + hooks + docs. Five mechanical suites and one check by hand.
 
 ## `gate-branches.py` — Stop-gate branch suite
 
@@ -134,6 +134,53 @@ python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh 
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
 baseline copy; `--compare` works like the gate suite's when the hook is edited again.
+
+## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
+
+Same shape, for `hooks/nudge-decompose.sh` (0.28.0) — Fase 2 of
+`memory/plans/plan-trigger-decomposicion.md`. Gives the coverage-floor/decomposition trigger a real
+mechanical consumer, non-blocking: no `decision:block`, no `GOAL_GATE_ENFORCE` branch at all in this
+hook, by design.
+
+The signal: `.goalspec/checkpoint.md` in the cwd carries a `## Coverage-floor table` heading with
+>= 2 markdown-table data rows, and the transcript records zero entity-worker `Task`/`Agent`
+tool_use anywhere — a `Task`/`Agent` whose `subagent_type` is an EXACT match for a known adversary
+agent-type name (`goal-adversary` / `goalspec:goal-adversary`) does not count, since the plugin's
+own step-6 verification spawn is itself a `Task`/`Agent` call and would otherwise close the nudge's
+window on almost every checkpointed run. Checkpoint.md is optional-by-design
+(`references/durable-artifact.md`), so its presence with a populated table is already the agent's
+own claim of >=2 tracked entities — this hook does not try to parse that enumeration out of
+freeform turn prose.
+
+Case **01** is the re-entrant guard (same discipline as `usage-budget-branches.py`'s 01-03).
+**04/05** are controls that decomposition via either `Agent` or `Task` silences the nudge; **06**
+proves an unrelated tool call (`Bash`, `Read`) does NOT count as decomposition.
+
+**07-10 pin two real breaks caught live against this exact release, one from each adversary
+backend**: the subagent backend (Opus) caught that the adversary's own step-6 spawn is ALSO a
+`Task`/`Agent` tool_use, and step-6 explicitly directs the executor to write the checkpoint and
+THEN spawn the adversary pointing at it — so an earlier version of this hook that counted any
+`Task`/`Agent` as "decomposed" had its nudge window close on the plugin's own mandated verification
+step, on almost every checkpointed run. **07** proves a bare adversary spawn does NOT silence the
+nudge on its own; **08** proves a real worker alongside the adversary spawn still does; **09**
+proves the exclusion matches on `Task` as well as `Agent`. The external backend (codex/GPT-5), used
+to re-verify the fix, then caught that the first fix used a **substring** test on `"adversary"` —
+gameable by any real worker whose `subagent_type` merely contains that word (e.g.
+`not-goal-adversary-example`) without being one of the two known exact adversary agent-type names.
+**10** pins this collision control: an exact-match check must still classify it as real
+decomposition (silent), not nudge.
+
+**11/12** prove the row-count check is real (1 row, 0 rows); **13/14** prove the
+checkpoint/heading gate is real (no file, heading absent).
+
+```sh
+python3 test/decompose-nudge-branches.py
+```
+
+**What it does not cover**: a real live session where the table was populated and decomposition was
+genuinely skipped is not exercised — every case drives the hook with a synthetic checkpoint and
+transcript, the same hermetic pattern `usage-budget-branches.py` uses for its own hook. That live
+observation stays open, not something this suite closes.
 
 ## Acid test (manual)
 

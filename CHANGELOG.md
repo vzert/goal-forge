@@ -6,6 +6,122 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.28.0] - 2026-07-29
+
+**Fase 2 del plan de remediación del trigger de decomposición — nudge mecánico no-bloqueante
+(`memory/plans/plan-trigger-decomposicion.md`).** Fase 1 (v0.27.0) reubicó y simplificó el texto
+del trigger de decomposición en `SKILL.md`; no le dio ningún consumidor mecánico —
+`gate-goal-close.sh` seguía sin ningún check funcional para la señal. Este release cierra ese hueco
+con un hook nuevo, `hooks/nudge-decompose.sh`, registrado como `Stop` hook (tercero en `hooks.json`,
+junto a `gate-goal-close.sh` y `check-usage-budget.sh`).
+
+**Diseño, resuelto por grounding, no por pregunta al operador** (dos forks quedaban abiertos en el
+plan): el punto de disparo tenía que ser `Stop`, no `PostToolUse` sobre `Task|Agent` — un
+`PostToolUse` con ese matcher solo se dispara cuando SÍ hubo una llamada a `Task`/`Agent`, así que
+estructuralmente no puede detectar su *ausencia*; solo `Stop` tiene visibilidad de la sesión
+completa (mismo patrón que `check-usage-budget.sh`). La señal elegida: `.goalspec/checkpoint.md`
+presente en el cwd, con un heading `## Coverage-floor table` y una tabla markdown de ≥2 filas de
+datos, Y cero `tool_use` con `name` `Task`/`Agent` **que dispare un worker de entidad** — ver el
+break del adversario abajo — en todo el transcript. `checkpoint.md` es opcional por diseño
+(`references/durable-artifact.md`: "never create it speculatively"), así que su sola presencia con
+una tabla poblada ya es la propia afirmación del agente de que identificó ≥2 entidades — el hook no
+intenta parsear la enumeración de coverage-floor de prosa libre en el transcript (sin forma fija, no
+parseable de forma confiable); mira el único lugar donde el método ya la pide de forma estructurada.
+
+**Nunca un gate**: el hook nunca emite `decision:block`, nunca lee `GOAL_GATE_ENFORCE` — no tiene
+rama de enforce en absoluto, por diseño (ratificado: "cualquier gate bloqueante" estaba
+explícitamente fuera de alcance). Tampoco afirma independencia probada: el mensaje dice
+explícitamente que es un proxy estructural — una tabla de ≥2 filas puede enumerar otra cosa que
+entidades de ejecución decomponibles (ej. los carriers de un rule-surface sweep, forma real
+encontrada en vivo en el propio `.goalspec/checkpoint.md` histórico de este repo).
+
+**Break real del adversario (subagente, Opus vs. mi Sonnet 5, `model=different` — degradado a
+`model=same` en el completion-review por el bug conocido de corchetes anidados en
+`gate-goal-close.sh`, ver pendiente 2026-07-28) — 1 hallazgo `ungrounded` + 1 `unfalsified` + 3
+`incomplete`, los 5 corregidos antes de cerrar**:
+1. **Ungrounded — el borrador original contaba CUALQUIER `Task`/`Agent` como "ya decompuso",
+   incluyendo el propio spawn del adversario del paso 6.** El paso 6 de `SKILL.md` manda escribir
+   el checkpoint y LUEGO spawnear el adversario apuntando a él — exactamente la secuencia que puebla
+   la tabla de coverage-floor y produce un `Agent` tool_use en el mismo aliento, cerrando la ventana
+   del nudge en casi cualquier corrida checkpointeada real. Verificado en vivo: el hook contra el
+   checkpoint real de esta sesión y un transcript sin adversario emitía el nudge; el mismo hook,
+   mismo checkpoint, contra el transcript real de esta sesión (que sí incluye el spawn del
+   adversario) quedaba en silencio. **Corregido**: un `Task`/`Agent` cuyo `subagent_type` nombra al
+   adversario ya NO cuenta como decomposición — `nudge-decompose.sh` step 3 lo excluye
+   explícitamente; 3 casos nuevos en la suite (07/08/09) lo pinnean.
+2. **Unfalsified**: el pre-mortem #3 del checkpoint afirmaba "esta sesión no decompuso, así que el
+   próximo Stop debería nudgear" — falso en el momento en que se escribió, porque el propio spawn
+   del adversario (necesario para verificarlo) ya contaba como decomposición bajo el diseño viejo.
+   Se resuelve solo con el fix del punto 1.
+3. **Incomplete — `references/durable-artifact.md:8-9`** afirmaba "no hook parses it [checkpoint.md]"
+   sin excepción; ahora falso. Corregido: se documenta `nudge-decompose.sh` como segundo lector
+   acotado (solo cuenta filas, nunca confía en el texto de estado de una fila).
+4. **Incomplete — inventario de hooks en `README.md`** no listaba el hook nuevo. Corregido.
+5. **Incomplete — el sweep mecánico de decisiones heredadas nunca se corrió esta sesión**: la
+   pendiente `memory/_pendientes.md` (fila "Observar en vivo (a) la decomposición S5c...") toca
+   directamente esta señal y no fue citada. Corregido: nota cruzada agregada.
+
+**Break real del adversario externo (codex/GPT-5, re-verificación de la ronda anterior —
+`adversary.backend=external` resuelto de config; la ronda 1 había corrido solo el subagente, esta
+ronda corrigió eso) — 1 `ungrounded` + 1 `unfalsified` + 3 `incomplete`, los 5 corregidos**:
+1. **Ungrounded — el fix de la ronda 1 usaba un test de SUBSTRING (`"adversary" in subagent_type`)**,
+   gameable por cualquier worker real cuyo `subagent_type` simplemente contenga esa palabra sin ser
+   uno de los dos nombres exactos conocidos (ej. `not-goal-adversary-example`) — probado en vivo:
+   producía `nudge` en vez de `silent`, clasificando mal una decomposición real como spawn de
+   adversario. **Corregido**: match exacto (case-insensitive, trim) contra
+   `{"goal-adversary", "goalspec:goal-adversary"}` — misma lección que `gate-goal-close.sh` ya
+   aplica al matching de `ADVERSARY-MODEL` (posicional/exacto, nunca substring fabricado).
+2. **Unfalsified/incomplete**: referencias obsoletas a "10 casos" en `.goalspec/checkpoint.md` y a
+   "requiere cero `Task`/`Agent` en cualquier parte" en `test/README.md`, ambas contradichas por la
+   exclusión ya shippeada. Corregidas.
+3. **Incomplete**: sin caso de control para la colisión de substring exhibida en el punto 1.
+   Corregido: caso nuevo `10-substring-collision-still-silences`.
+
+**Segundo break real, externo (mismo backend, re-verificación de la ronda 2) — 1 `ungrounded` +
+1 `unfalsified` + 2 `incomplete` + 1 `autonomy-violations`, los 5 corregidos**:
+1. **Ungrounded**: un `transcript_path` ausente o apuntando a un archivo inexistente se trataba como
+   "cero decomposición" y emitía el nudge, contradiciendo la propia promesa del hook ("cualquier
+   falla de lectura/parseo es fail-open y silenciosa"). **Corregido**: ausencia/no-legibilidad del
+   transcript ahora resuelve a silencioso — "no puedo determinar si hubo decomposición" no es lo
+   mismo que "no hubo decomposición". Caso nuevo `15-missing-transcript-silent`.
+2. **Incomplete**: este mismo CHANGELOG seguía diciendo "13 casos" con la suite y el checkpoint ya
+   en 14. Corregido (ahora 15, tras el fix del punto 1).
+3. **Autonomy**: la fila de la tabla de coverage-floor de `.goalspec/checkpoint.md` sobre el push
+   podía leerse como "autorización ya pedida", cuando en realidad aún no se había pedido — el
+   transcript real solo tiene la pregunta de proceso (interview vs. loop directo), ninguna sobre
+   push. Corregido: reformulada sin ambigüedad, y la autorización se pide de verdad en este turno de
+   cierre, no narrada como ya resuelta.
+
+**Convergencia**: 3 rondas consecutivas de `break` (subagente, externo, externo) — el piso de
+convergencia del método. Cada una rompió algo más chico que la anterior (ventana cero del nudge →
+detalle de matching del fix → higiene de fail-open/docs), ninguna revirtió el fix de la ronda
+previa, así que no es un patrón de "el diseño está mal" sino de hallazgos reales decrecientes. Por
+disciplina del método, esta sesión NO lanzó una cuarta ronda de adversario persiguiendo un veredicto
+limpio — se aplicaron los 3 fixes (todos mecánicos, ninguno de diseño) y se cerró pidiendo
+autorización real de push al humano, sin re-verificar una cuarta vez.
+
+**Verificación**: `test/decompose-nudge-branches.py` nuevo, 15 casos — guard de re-entrada
+(`stop_hook_active`), controles que prueban que la ausencia de `Task`/`Agent` se chequea de verdad
+(con decomposición vía `Agent` y vía `Task`, ambos silencian; una tool no relacionada como
+`Bash`/`Read` no cuenta como decomposición), 3 casos que pinnean la exclusión del spawn del
+adversario, 1 caso de control de colisión de substring, 4 controles que prueban que el conteo de
+filas y la detección del heading son reales y no un "checkpoint existe → nudge" hardcodeado (1 fila,
+0 filas, sin checkpoint, checkpoint sin el heading), y 1 caso de fail-open sobre transcript
+ausente/no-legible. Las 5 suites (las 4 existentes + esta) exit 0, incluyendo `gate-branches.py`
+bajo `GOAL_GATE_ENFORCE=1`; `claude plugin validate` exit 0 (exit code real, no `| tail`).
+`plugin.json` + `marketplace.json` → 0.28.0 (sincronizados); `test/README.md` documenta la suite
+nueva.
+
+**Lo que esta suite NO cubre** (documentado explícitamente, no implícito en el verde): una sesión
+real donde la tabla de coverage-floor se pobló y la decomposición de ENTIDADES DE EJECUCIÓN
+genuinamente se saltó no se observó en vivo — cada caso de la suite maneja el hook directamente con
+un checkpoint y transcript sintéticos, el mismo patrón hermético que `usage-budget-branches.py` ya
+usa para su propio hook. Queda como observación abierta, no como algo que este release cierra. Lo
+que SÍ se observó en vivo, y fue justo lo que encontró el primer break del adversario (subagente,
+punto 1 de esa ronda): el hook real contra el transcript real de esta misma sesión de cierre (que sí
+incluye un spawn del adversario) — esa observación en vivo es la que expuso el defecto, no algo que
+este release deje sin probar.
+
 ## [0.27.0] - 2026-07-28
 
 **Fase 1 del plan de remediación del trigger de decomposición — reubicación + simplificación, sin

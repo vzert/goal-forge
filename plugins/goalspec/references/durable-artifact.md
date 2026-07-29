@@ -5,12 +5,16 @@ decomposition tells you to keep a few facts consistent across per-entity workers
 same problem: **a fact that has to survive outside one agent's context**. This file gives that
 fact a single home.
 
-**What this is not.** Nothing in the plugin reads the checkpoint. `gate-goal-close.sh` never
-opens it; no hook parses it; **nothing gates its absence** — a run that never writes one closes
-exactly as cleanly as a run that does. The reader is a *resuming agent or a human*, not code —
-with one narrow addition: the independent adversary reads it **when and only when** the
-executor's step-6 payload points at this file as where the goal-spec or outcome is written
-(see "Who reads which section" below for what that reader may and may not treat as a claim).
+**What this is not.** `gate-goal-close.sh` never opens it, and **nothing gates its absence** — a
+run that never writes one closes exactly as cleanly as a run that does. The reader is a *resuming
+agent or a human*, not code — with two narrow, additive exceptions, neither of which changes that:
+the independent adversary reads it **when and only when** the executor's step-6 payload points at
+this file as where the goal-spec or outcome is written (see "Who reads which section" below for
+what that reader may and may not treat as a claim); and `hooks/nudge-decompose.sh` (0.28.0) — a
+`Stop` hook, reads only the `## Coverage-floor table` heading and its row count to decide whether to
+print an advisory nudge, never the goal-spec or Rounds/Next sections, and stays silent when the file
+is absent or the heading isn't there. Both readers are consumers of what this file already is; a
+run that never writes one is invisible to either.
 This is a named place with a shape and an instruction to fill it, not a guarantee that state
 survives. Treat a claim that it "closes the resume gap" as unsupported: the resume mechanism
 itself is a human CLI action this harness gives no agent any hook into, and that has not changed.
@@ -63,7 +67,10 @@ Rounds):
   run's state without re-deriving it: the resuming agent, a human, and — in the pointed-at case
   above — the adversary. For every such reader these sections are load-bearing: a row claiming
   "done" for an entity that is not done, or two rows that contradict each other, is a real,
-  reportable defect, exactly like any other load-bearing figure in an outcome.
+  reportable defect, exactly like any other load-bearing figure in an outcome. `nudge-decompose.sh`
+  is a narrower kind of reader of this same table: it only counts rows under the heading, never
+  trusts a row's status text, so a wrong "done" does not affect what it does — only the row count
+  and the transcript's own tool_use history do.
 - **Rounds is append-only history with no authority over current state.** Its reader is the
   resuming agent reconstructing how the run got here; it is the executor's own process log,
   written for itself and its successor. Where a Rounds line disagrees with the table, the table

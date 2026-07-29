@@ -376,6 +376,7 @@ goal-forge/
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
     hooks/route-external-adversary.sh     # PreToolUse nudge toward a configured external backend (fail-open, silent on error)
     hooks/remind-quote-verdict.sh         # PostToolUse nudge: quote the verdict before you forget it
+    hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
 ```

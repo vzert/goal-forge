@@ -23,6 +23,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/check-usage-budget.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/nudge-decompose.sh",
+            "timeout": 10
           }
         ]
       }
