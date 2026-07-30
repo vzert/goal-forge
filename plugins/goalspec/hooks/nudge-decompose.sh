@@ -38,6 +38,13 @@
 #
 # Registered as a Stop hook by hooks/hooks.json (alongside gate-goal-close.sh and
 # check-usage-budget.sh — three Stop hooks now emitting independently; each fail-opens on its own).
+#
+# 0.29.0: this hook has no notion of whether checkpoint.md belongs to THIS session — a leftover
+# from an already-closed run (v0.28.0, `f148d6c`) false-positived on every turn of a later,
+# unrelated session, confirmed live. The fix is write-side, not here: the goalspec skill's close
+# step now deletes the file it wrote (references/durable-artifact.md, "When it goes away"). This
+# hook's only change is its own message text, naming that fix so a human reading a false-positive
+# nudge isn't stuck waiting on a smarter hook. No control-flow branch in this file changed.
 
 INPUT=$(cat)
 
@@ -156,7 +163,10 @@ msg = (
     "(SKILL.md coverage-floor: decide at enumeration time, not at close), consider one subagent per "
     "entity instead of working through them serially in this context. This is a structural proxy, "
     "not proof of independence — the table can also enumerate something other than decomposable "
-    "execution entities (e.g. rule carriers); ignore this if that is the case here."
+    "execution entities (e.g. rule carriers); ignore this if that is the case here. It can also be a "
+    "leftover from an earlier, already-closed run in this same directory (a clean close now retires "
+    "its own checkpoint — references/durable-artifact.md, \"When it goes away\") — if this session "
+    "never wrote this file itself, delete .goalspec/checkpoint.md and re-check."
 ).format(row_count)
 
 print(json.dumps({

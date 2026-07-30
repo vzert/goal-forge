@@ -114,3 +114,9 @@ skill and the hooks use.
   gate is not armed; do not invent one. (If this session *does* have an armed gate from earlier
   `/goalspec` work, quoting the verdict verbatim integrates with it normally — the gate reads
   your latest verdict.)
+- If step 2 wrote `.goalspec/checkpoint.md` for this command's own use (the claim-lives-only-in-
+  conversation case), delete it now that the verdict is quoted — unless the project deliberately
+  committed `.goalspec/` for a trail, in which case leave it (`references/durable-artifact.md`,
+  "Where it lives"). This command has no step 7 of its own to retire it otherwise —
+  `references/durable-artifact.md`'s retirement rule ("When it goes away") still applies, and this
+  is where it fires for this command.

@@ -32,6 +32,49 @@ the project deliberately wants the trail. Never create it speculatively — writ
 actually spans many rounds or you dispatched per-entity workers. A one-round task that leaves a
 checkpoint behind has added clutter, not durability.
 
+## When it goes away
+
+**Exception first, since it qualifies everything below**: a project that deliberately committed
+`.goalspec/` for a trail instead of gitignoring it (see "Where it lives" above) is keeping that
+history on purpose — don't delete on close in that case. Everything that follows targets the
+default, gitignored case, where the file is local run state with no other record of it.
+
+Retire it at the event that ends the obligation to keep it: a clean close. When the run that
+wrote it — or, on resume, adopted an existing one — reaches its close (the goalspec skill's step
+7, or the standalone `/goalspec:adversary` command's own step 5, which has no step 7 of its own),
+**delete the file**, not just its contents: a truncated or "CLOSED" placeholder is still a file
+`nudge-decompose.sh` can read and still shaped like a populated coverage-floor table. Delete it
+after any adversary verdict it fed has been quoted and no backend is still in flight (step 6 may
+point the adversary at this exact path), and only the coordinator does it — workers never touch
+this file either way (see "Verbs" below).
+
+A run that never reaches its close — a crash, a killed session — leaves the file in place, on
+purpose: that is the resume case this file exists for, not a defect.
+
+**A confirmed live incident, and the alternative considered and declined.** A leftover from a
+*cleanly-closed* run (v0.28.0, `f148d6c`, already shipped) sat in a working directory and made
+`nudge-decompose.sh` nudge on every turn of a later, unrelated session — the exact failure this
+section exists to prevent. The alternative — teach the hook to tell "this session's checkpoint"
+from an older one's leftover by stamping the file with a session/transcript id at write time and
+exact-matching it at read time (the same discipline `nudge-decompose.sh` already applies to
+`subagent_type`) — was considered, not ruled out as impossible, and declined: it would *also*
+cover the crash-leftover case below, at the cost of a new content contract on the file and a new
+read-side check, to close a gap with exactly one confirmed occurrence, which was a clean close.
+Write-side retirement needs neither. Recorded here so a future session doesn't re-litigate this
+without a second incident to weigh against that cost.
+
+**What this still does not cover.** A leftover from a run that crashed and was never resumed,
+later picked up by an unrelated task in the same working directory, is a real residual gap — open,
+not closed by this instruction. `nudge-decompose.sh`'s advisory message names the fix directly
+(delete the file) so a human reading a false-positive nudge isn't stuck waiting on a smarter hook.
+
+**The nudge's window on the final turn.** Deleting at close means the Stop that follows reads no
+file, so `nudge-decompose.sh` is silent on that turn by construction — the same shape as the
+0.28.0 break where the adversary's own spawn silenced the nudge. It is benign here: the nudge's
+useful moment is coverage-floor enumeration time (SKILL.md's Execute step), not close, so losing
+the signal on the very last turn costs nothing real. Named here on purpose rather than left for a
+fresh reader to flag as the same break twice.
+
 ## What goes in it
 
 Four things, and nothing that already lives somewhere better:

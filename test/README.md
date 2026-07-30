@@ -177,10 +177,21 @@ checkpoint/heading gate is real (no file, heading absent).
 python3 test/decompose-nudge-branches.py
 ```
 
+**Case 16** (0.29.0) pins the checkpoint-lifecycle fix's only mechanical surface on this hook: the
+advisory message now names the leftover-checkpoint mitigation directly (a leftover from an
+already-closed run in the same directory, and the fix — delete `.goalspec/checkpoint.md`). The
+real fix is write-side, not here — the goalspec skill's close step now deletes the file it wrote
+(`references/durable-artifact.md`, "When it goes away") — so cases 01-15 are a no-regression check
+on unchanged control flow, and 16 is the only case that proves the message actually changed;
+content, not just nudge/silent, is what it asserts.
+
 **What it does not cover**: a real live session where the table was populated and decomposition was
 genuinely skipped is not exercised — every case drives the hook with a synthetic checkpoint and
 transcript, the same hermetic pattern `usage-budget-branches.py` uses for its own hook. That live
-observation stays open, not something this suite closes.
+observation stays open, not something this suite closes. Nor does anything here exercise whether an
+executor actually performs the new close-step deletion in a real multi-round run — that instruction
+lives in `SKILL.md` prose, not in this hook, so no hermetic test can assert it; it stays a second
+open live observation alongside the decomposition-skip case.
 
 ## Acid test (manual)
 

@@ -26,12 +26,21 @@ on the plugin's own mandated verification step, on almost every checkpointed run
 
 Exit code is non-zero if any case does not produce its expected cell.
 
+Case 16 (0.29.0) pins the checkpoint-lifecycle fix's only mechanical surface on THIS hook: the
+advisory message now names the leftover-checkpoint mitigation directly. The real fix is write-side
+(SKILL.md's close step deletes the file it wrote; durable-artifact.md "When it goes away") — no
+control-flow branch in this hook changed, so 01-15 are a no-regression check, not a test of the
+fix. Content, not just nudge/silent, is what proves the message actually changed.
+
 WHAT THIS SUITE DOES NOT COVER (stated so a green run does not imply more —
 references/instrument-validity-own-tools.md): a real live session where a coverage-floor table was
 populated and decomposition was genuinely skipped is not exercised here; every case drives the hook
 directly with a synthetic checkpoint file and transcript, the same hermetic pattern
 usage-budget-branches.py already uses for its own hook. That live observation stays a documented
-open item, not something this suite closes.
+open item, not something this suite closes. Nor does anything here exercise whether an executor
+actually performs the new close-step deletion in a real multi-round run — that instruction lives in
+SKILL.md prose, not in this hook, so no hermetic test can assert it; it stays an open live
+observation alongside the decomposition-skip case above.
 """
 import json, os, subprocess, sys, tempfile
 
@@ -167,6 +176,23 @@ def run_case(name, checkpoint_text, tool_calls, extra, tmp):
     return "nudge" if out else "silent"
 
 
+def run_case_raw(name, checkpoint_text, tool_calls, tmp):
+    """Like run_case but returns the hook's raw stdout instead of collapsing to nudge/silent —
+    needed for the one case (16) that checks message CONTENT, not just presence."""
+    case_dir = os.path.join(tmp, name)
+    os.makedirs(case_dir, exist_ok=True)
+    gs_dir = os.path.join(case_dir, ".goalspec")
+    os.makedirs(gs_dir, exist_ok=True)
+    with open(os.path.join(gs_dir, "checkpoint.md"), "w", encoding="utf-8") as fh:
+        fh.write(checkpoint_text)
+    transcript_path = os.path.join(case_dir, "transcript.jsonl")
+    with open(transcript_path, "w", encoding="utf-8") as fh:
+        fh.write(transcript_with(tool_calls))
+    payload = {"transcript_path": transcript_path}
+    return subprocess.run(["bash", HOOK], input=json.dumps(payload),
+                          capture_output=True, text=True, cwd=case_dir).stdout.strip()
+
+
 def main():
     tmp = tempfile.mkdtemp(prefix="decompose-nudge-branches-")
     failures = []
@@ -177,11 +203,25 @@ def main():
             failures.append((name, expected, got))
         print("{:<32} {:<8} {}".format(name, got, "" if ok else "  <-- FAIL, expected " + expected))
 
+    # --- 16: message CONTENT, not just nudge/silent (0.29.0 checkpoint-lifecycle fix). This fix's
+    # only mechanical surface on THIS hook is the advisory string -- the real fix is write-side
+    # (SKILL.md's close step now deletes the file it wrote; see durable-artifact.md "When it goes
+    # away"). Every case above collapses output to nudge/silent, so without this the new sentence
+    # would ship unasserted. ---
+    name16 = "16-message-names-leftover-mitigation"
+    out16 = run_case_raw(name16, CHECKPOINT_2ROW, [], tmp)
+    ok16 = "already-closed run" in out16 and "durable-artifact.md" in out16
+    if not ok16:
+        failures.append((name16, "content present", "content missing"))
+    print("{:<32} {:<8} {}".format(name16, "content-ok" if ok16 else "content-MISSING",
+                                    "" if ok16 else "  <-- FAIL, expected leftover-mitigation text"))
+
+    total = len(CASES) + 1
     print()
     if failures:
         print("{} case(s) FAILED".format(len(failures)))
         return 1
-    print("all {} case(s) OK".format(len(CASES)))
+    print("all {} case(s) OK".format(total))
     return 0
 
 

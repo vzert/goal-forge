@@ -6,6 +6,57 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.29.0] - 2026-07-30
+
+**Fin de vida para `.goalspec/checkpoint.md`** (resuelve el pendiente ALTA creado 2026-07-30).
+Un leftover de una sesión ya CERRADA y shippeada (v0.28.0, `f148d6c`) quedó en un working
+directory e hizo que `hooks/nudge-decompose.sh` disparara su nudge advisory en CADA turno de una
+sesión posterior no relacionada — el hook nunca tuvo noción de si el archivo pertenecía a ESA
+sesión. `references/durable-artifact.md` decía cuándo crearlo, nunca cuándo borrarlo.
+
+**Decisión, no config**: se evaluaron (a) instrucción de limpieza al cierre, y (b) que el propio
+hook detecte staleness (mtime o un id de sesión/transcript exacto-matcheado contra el archivo).
+(a) se adoptó; (b) se consideró explícitamente y se declinó — no por imposible (un id de sesión
+exacto-matcheado, la misma disciplina que ya aplica `nudge-decompose.sh` a `subagent_type`,
+funcionaría y además cubriría el caso de un crash sin resumir) sino porque agrega un contrato de
+contenido nuevo + lógica read-side nueva para cerrar un hueco con exactamente UNA ocurrencia
+confirmada, que fue un cierre limpio. Retiro write-side no necesita ninguna de las dos cosas. La
+razón queda escrita en `references/durable-artifact.md` ("When it goes away") para que una sesión
+futura no la re-litigue sin un segundo incidente que pese contra ese costo.
+
+**Qué cambió**: `references/durable-artifact.md` gana una sección nueva que manda borrar el
+archivo (no solo su contenido) al cierre limpio — con una excepción explícita para el proyecto que
+deliberadamente comitea `.goalspec/` como trail — y documenta qué queda sin cubrir (un leftover de
+una sesión que crasheó y nunca se resumió). `skills/goalspec/SKILL.md` (paso 7) y
+`skills/adversary/SKILL.md` (paso 5, el comando standalone que no tiene paso 7 propio) ahora
+instruyen el borrado en sus dos caminos de escritura reales (paso 5 y paso 6 del loop principal;
+paso 2 del standalone). `hooks/nudge-decompose.sh` no cambió ninguna rama de control — solo su
+mensaje advisory, que ahora nombra la mitigación directamente para un humano que lea un
+falso-positivo. `test/decompose-nudge-branches.py` suma el caso 16 (contenido del mensaje, no solo
+nudge/silent — el único caso capaz de probar el único cambio mecánico real de este fix en ese
+hook). `CLAUDE.md` corrige "las cuatro suites" a "las cinco" (la quinta, `decompose-nudge-branches.py`,
+existe desde v0.28.0 pero nunca se agregó a esa instrucción).
+
+**Dos rondas de adversario, ambos backends, contra la META-edición** (dogfooding obligatorio del
+proyecto): **ronda 1** (subagente, `claude-opus-5`, `model=different` vs. mi `claude-sonnet-5`) —
+`break incomplete=3`: (1) nunca posteé un bloque `## Goal-spec` real antes de tocar código —
+razoné la decisión (a)-vs-(b) internamente pero violé la instrucción explícita del usuario de
+"decide antes de tocar código"; el gate quedó desarmado toda la sesión; (2) el paso 7 de
+`SKILL.md` condicionaba el borrado solo a "(paso 5)", dejando sin cubrir el camino de escritura
+independiente del paso 6; (3) `durable-artifact.md` tenía una contradicción sin reconciliar entre
+"puede comitear para trail" y "borrar siempre al cierre". El backend externo (codex) falló con
+auth token invalidado — `UNVERIFIED`, no contado. Se posteó el `## Goal-spec` (tarde, con la
+violación de orden divulgada explícitamente — no se puede deshacer) y se corrigieron (2) y (3).
+**Ronda 2** (ambos backends, codex ya reautenticado): el subagente (`claude-opus-5` de nuevo,
+re-derivación completa, git-sha pineado) devolvió `hold` limpio sobre el árbol post-fix. El externo
+(`GPT-5`) devolvió `break incomplete=3` — pero sobre una foto DEL ÁRBOL ANTERIOR al fix de (2)/(3)
+(un race de timing entre las dos rondas paralelas), confirmado stale por la propia re-derivación
+del subagente contra el mismo git diff; su hallazgo (1) es el mismo hecho histórico no corregible
+ya divulgado en la ronda 1. El propio hold de la ronda 2 señaló un riesgo de autonomía real antes
+de cerrar: el goal-spec afirmaba "ninguna otra decisión es del usuario" en el mismo párrafo que
+divulgaba haber violado su instrucción de orden — se lo pregunté al usuario antes de shippear
+("shippear igual" vs. revisar el diff vs. rehacer limpio); eligió shippear.
+
 ## [0.28.0] - 2026-07-29
 
 **Fase 2 del plan de remediación del trigger de decomposición — nudge mecánico no-bloqueante
