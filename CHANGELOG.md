@@ -6,6 +6,42 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.30.0] - 2026-07-30
+
+**Un `[COMPLETION-REVIEW: ...]` cierra el spec, no la sesión** — hallazgo Alta de un audit contra
+el JSONL real de un incidente de usuario (dev externo, sesión real; detalle no shippeado, vive en
+memoria privada del proyecto). Un ciclo formal de goalspec cerró limpio cubriendo dos PRs a
+`develop`; la MISMA sesión siguió después con 3 releases reales a producción y, más serio, con el
+agente investigando por su cuenta tras el cierre, concluyendo un hallazgo falso (error propio de
+timezone), y **escribiéndolo y pusheándolo a memoria compartida** que otros agentes leen como
+hecho — antes de que el humano pudiera confirmarlo o objetar. Nada en `SKILL.md` distinguía
+"spec cerrado" de "sesión terminada", así que ninguna disciplina (clarify/ratify/adversario)
+se re-disparó para la parte de mayor riesgo real de la sesión.
+
+**Decisión de alcance, vía `/goalspec:interview`** (entrevista de 2 rondas, 6 forks resueltos):
+fix **solo documentado**, sin hook/matcher nuevo — el proyecto ya tiene tres instancias de
+"matcher más listo" que perdieron la carrera de heurísticas (id-matcher roto 5 rondas en v0.11.1,
+sub-conteo del convergence-floor por dedup literal, ceguera del floor dentro de una secuencia
+agéntica sin `Stop` entre rondas). Carrier híbrido: regla corta en el cuerpo de `SKILL.md`
+(visible en cada corrida) + rationale completo en un archivo nuevo dedicado.
+
+**Qué cambió**: `skills/goalspec/SKILL.md` gana (1) un ejemplo nombrado en la lista de acción
+terminal — escribir una conclusión propia no confirmada a estado/memoria compartida, aunque no
+mute código — y (2) una subsección nueva ("A completion-review closes the spec, not the
+session") que nombra el límite y prescribe **re-entrada dirigida**: si surge una acción
+terminal-class nueva más tarde en la misma sesión, es un disparador fresco **con su propio
+objetivo/alcance** — no se dobla dentro del spec ya cerrado, aunque esté relacionado; lo único
+que se reusa es el contexto (repo, cuenta, hechos ya asentados), nunca la autorización. Ir directo
+a 4b (ratify), nombrando el objetivo/alcance de ESTA acción, + 6 (adversario), sin reiniciar
+clarify para lo que nada aquí pone en duda — y cerrar el ciclo re-entrado declarando un
+`[COMPLETION-REVIEW: ...]` **fresco** para esa acción (el gate solo lee la declaración más
+reciente de la sesión; una del ciclo anterior no puede representar una acción que nunca vio).
+`references/mid-session-retrigger.md` (nuevo) documenta el caso, el porqué de la vía documentada
+sobre la mecánica, qué significa la re-entrada dirigida, y qué queda explícitamente sin cubrir —
+incluyendo, con honestidad, que el propio gate mecánico no distingue una declaración vieja de una
+que realmente cubre la acción nueva; si el ejecutor omite la declaración fresca, el gate queda en
+silencio igual que con cualquier otra regla solo-documentada de este método.
+
 ## [0.29.0] - 2026-07-30
 
 **Fin de vida para `.goalspec/checkpoint.md`** (resuelve el pendiente ALTA creado 2026-07-30).
