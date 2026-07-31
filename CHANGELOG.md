@@ -6,6 +6,57 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.31.0] - 2026-07-30
+
+**Hallazgo 3 del audit nesquitmx (Media prioridad): verbosidad por turno** — el ejecutor
+narraba visiblemente su propio razonamiento contra los 5 principios (autocrítica antes de
+cerrar, framing de rondas del skill `interview`) como prosa de cara al usuario, aunque
+`SKILL.md` nunca pedía que esa reflexión saliera del turno — solo pedía los artefactos puntuales
+(bloque de spec, líneas de una sola oración, el marcador de cierre). Evidencia: grep directo del
+transcript real de la sesión de v0.30.0 (dogfooding de 6 rondas) — turnos de 400 a 3600+
+caracteres, con la autocrítica y el framing de entrevista escritos como narración visible en
+vez de quedarse en el razonamiento interno.
+
+**Decisión de alcance, vía `/goalspec:interview`** (2 modales reales, 3 preguntas: clase de fix;
+forma de la regla; adoptar `BuilderIO/skills` `quick-recap` aparte — este último forzado por el
+usuario, no por el skill): fix conductual acotado en `SKILL.md` (no un límite solo documentado);
+patrón de forma explícito — una sola línea de cierre por turno, sin repetir lo ya dicho arriba
+(inspirado en la disciplina de `quick-recap`, sin adoptar su emoji/color-coding ni su installer).
+Rechazo de `quick-recap` sostenido primero por alcance (instalar un skill de terceros vía su
+propio manager es una decisión aparte, no bloqueante de este fix) — la razón secundaria dada en
+el momento ("ya existe una regla equivalente") citaba mal la fuente como el `CLAUDE.md` del
+usuario; la cadena real es el propio prompt de sistema del harness de Claude Code
+("End-of-turn summary: one or two sentences... Nothing else"), verificable con
+`grep -a -o "End-of-turn summary" <binario resuelto de \`which claude\`>` — pero esa verificación
+requiere acceso al sistema de archivos local fuera de este repo (no reproducible en un sandbox de
+adversario acotado al workdir) y el path está anclado a la versión instalada (`2.1.220`), así que
+se trata como corroboración, no como criterio de cierre.
+
+**Tres rondas de adversario, dos backends** (`backends=both`, todas sobre el mismo árbol
+uncommitted): ronda 1 (subagente, Opus, tier distinto) cazó la cita mal atribuida
+(`ungrounded=1`) — corregida arriba. Ronda 2 (externo, `codex exec`, GPT-5, sandboxeado al
+workdir) sostuvo `break` de nuevo (`ungrounded=2 incomplete=2`) sobre dos puntos reales: (1) el
+criterio de éxito original trataba "la regla existe en el texto" como prueba de que el
+comportamiento cambió — un proxy, no el objetivo; (2) la decisión de `quick-recap` se había
+tomado sobre la premisa falsa y nunca se re-presentó al humano — solo se editó el texto ya
+escrito. (2) se corrigió de verdad: re-presentada vía `AskUserQuestion` con la premisa corregida
+explícita, el humano sostuvo el mismo "No" (razón principal: alcance, no la cita). Pero el intento
+de corregir (1) repitió la MISMA clase de error que rompió la ronda 1 — afirmar en el CHANGELOG
+que `SKILL.md` ya distinguía precondición de prueba conductual, cuando ese texto nunca se agregó
+ahí (`grep` lo confirma: cero menciones). Ronda 3 (subagente, Opus) cazó esta repetición
+(`ungrounded=1 incomplete=1`). Corregido de verdad esta vez: el criterio se reescribió para
+nombrar el gap explícitamente como precondición-no-prueba (no se le atribuyó a `SKILL.md`, que
+no es el lugar correcto para meta-comentario sobre su propia verificabilidad), y se creó una
+pendiente real de observación en vivo (`memory/_pendientes.md`) — el gap queda rastreado, no
+declarado resuelto por prosa.
+
+**Qué cambió**: `skills/goalspec/SKILL.md` gana un bullet nuevo en `## Scope` — el razonamiento
+del método (derivación de las 6 preguntas, framing de rondas de `interview`, autocrítica de
+`## Before closing`) se queda interno; el turno visible cierra con una sola línea de resultado
+o siguiente paso, no con un párrafo que restaura lo ya dicho. `skills/interview/SKILL.md` gana
+un cross-ref en su propia `## Scope` apuntando a la misma regla, porque la evidencia mostró el
+patrón también en el framing de rondas de esa skill.
+
 ## [0.30.0] - 2026-07-30
 
 **Un `[COMPLETION-REVIEW: ...]` cierra el spec, no la sesión** — hallazgo Alta de un audit contra

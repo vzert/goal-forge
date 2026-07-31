@@ -106,5 +106,10 @@ and say that the interview was skipped for that reason.
   step was explicitly designed to avoid.
 - **Not a verification step.** This runs before the spec exists; it neither red-teams an
   outcome (`/goalspec:adversary` does) nor ratifies a spec (the loop's step 4b does).
+- **Frame the tree in your own reasoning, not in prose before the modal.** Round 1's "Frame the
+  tree" step is how you decide what to ask, not something to narrate to the user first — the
+  fork and its reasoning belong in the question and option descriptions themselves. See the main
+  `SKILL.md`'s `## Scope` → "keep the method's own reasoning internal" bullet, which applies to
+  every round of this skill too.
 - One interview per task. If execution later reveals the intent was still wrong, that is a
   mid-run fork for the loop's ask door, not a reason to re-run the interview.

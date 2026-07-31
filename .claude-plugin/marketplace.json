@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Portable self-goal + independent-adversary methodology for Claude Code agents.",
-    "version": "0.30.0"
+    "version": "0.31.0"
   },
   "description": "Portable self-goal + adversary methodology for Claude Code agents.",
   "plugins": [
