@@ -6,6 +6,71 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.34.0] - 2026-08-01
+
+**Progressive disclosure, Fase B variante (b) — supervivencia a compactación: S11+S12 suben al
+primer tercio del SKILL.md.** Ratificada por el operador vía `AskUserQuestion` esta sesión
+(fork (a) reorden completo / (b) solo S11+S12 / (c) descartar; eligió (b), el default menos
+irreversible). Motivación (research 2026-08-01, verificado verbatim contra
+code.claude.com/docs/en/skills): tras auto-compactación sobreviven los primeros 5,000 tokens
+del skill y el archivo no se relee — hoy eso dejaba fuera la gramática de cierre justo cuando
+más se necesita (al final de una sesión larga); y los punteros a references no se siguen solos
+(0/5 medido en el piloto D2), así que lo que no está en el cuerpo superviviente desaparece del
+método.
+
+- **Reorden puro**: `## Completion-review declaration` (S11) y `## A completion-review closes
+  the spec, not the session` (S12) se movieron de L129–L150 a después del scaffold (ahora L33 y
+  L51), antes de `## Clarify`. Verificado como move puro por multiset de líneas idéntico y
+  conteo de chars idéntico pre/post (script en sesión), antes de los dos fixes de abajo.
+  Ninguna sección renombrada, ningún paso de S16 renumerado, frontmatter byte-idéntico.
+- **Medición de supervivencia** (proxy declarado + estimador independiente; corregido en ronda
+  de adversario r1, que cazó chars/4 sin validar): el segmento frontmatter→fin-de-S12 mide
+  14,056 chars = 3,514 tokens por chars/4 (el instrumento que fijó el operador) y **3,299 /
+  3,298 tokens por tiktoken cl100k/o200k** (tokenizadores BPE reales, independientes del
+  proxy) — ~1,700 tokens de headroom al límite de 5,000. El tokenizador exacto de Claude no es
+  público: la cifra es un intervalo con dos estimadores concordantes, no un conteo exacto, y
+  para que S11+S12 NO sobrevivieran el tokenizador real tendría que emitir ≥42% más tokens que
+  chars/4 (≥52% más que tiktoken) sobre prosa markdown en inglés. Dónde cae exactamente la
+  frontera de 5k dentro de S5 no se afirma (falsa precisión bajo proxy).
+- **Barrido editorial de referencias direccionales** (las 15 líneas / 18 ocurrencias de
+  `grep -nE 'above|below|next section|previous section'` auditadas una a una contra el orden
+  nuevo; conteo corregido en ronda de adversario r1 — "16" era un miscount): 2 líneas
+  cambiadas, cero cambios de contenido más allá. (1) S12 "see the terminal-action list above" →
+  `in "Before closing" below` — rota por el reorden (la lista quedó debajo). (2) S11 waived
+  "see the convergence guard above" → `in step 6 of the loop below` — **ya estaba rota en
+  v0.33.0** (el guard vive en S16, siempre estuvo debajo); el sweep completo la corrigió.
+  Colateral: el "names above" de S9 (L137) pasa de dudoso a correcto — S12, que nombra
+  "writing an unconfirmed conclusion to shared state", ahora sí está arriba.
+- **Rule-surface enumeration sobre el diff**: `gate-goal-close.sh:432` cita el nombre de S12
+  (intacto, no renombrado); `interview/SKILL.md:112` cita `## Scope` (intocada, sigue en el
+  cuerpo); cero carriers repo-wide de las frases viejas rotas; cero descripciones estructurales
+  del orden del archivo en references/agents/README; las 10 líneas que matchean
+  `grep -n 'step [0-9]'` en SKILL.md (14 ocurrencias) citan la numeración de S16, intocada.
+- **Paridad de regresión del gate** (no se tocó ningún hook): las 6 suites exit 0;
+  `test/gate-branches.py --compare` contra copia pre-edit, exit 0 (cero celdas distintas) en
+  default y en `GOAL_GATE_ENFORCE=1`. `claude plugin validate` exit 0 (sin `| tail`);
+  frontmatter parseado como YAML (name+description presentes). `quick_validate.py` de
+  skill-creator reprueba por description 1184 > 1024 chars — **pre-existente e intocado**
+  (pendiente abierto del operador desde v0.33.0, no regresión de este release).
+- **Acid test con control** (throwaway dir, decisión heredada plantada, `/goalspec audit the
+  widgets and decide what to kill`, headless `claude -p`): el run nuevo escribió el `## Goal-spec`
+  al checkpoint (patrón documentado), el sweep leyó `open-decisions.md` 3×, la decisión plantada
+  salió como fork al humano, `goal-adversary` corrió 2 rondas (override sonnet, ≠ ejecutor), y
+  cerró con `[GOAL-CLOSE-WAIVED]` sobre el residual de sandbox (transcript ilegible para el
+  verificador). **Control**: el acid de v0.33.0 en el mismo entorno tuvo la misma forma exacta
+  (spec-al-checkpoint, 0 markers en texto, cierre sin completion-review — paró en el convergence
+  guard tras 3 rondas) — la desviación del happy-path es del entorno sandbox, no del reorden.
+- **Benchmark conductual old-vs-new** (receta del piloto D2; old=`b6609ef` v0.33.0, new=árbol
+  post-reorden; 5 runs/config limpios — 5 slots re-corridos en serie tras morir contra el límite
+  mensual de gasto de la cuenta a mitad de la ola paralela; graders Sonnet independientes con
+  evidencia citada por artefacto, mismas 4 expectations del piloto): **a nivel expectation
+  new 17/20 vs old 17/20 — delta 0.00**; a nivel run-completo new 4/5 vs old 2/5. Las 3 fallas
+  E1 comparten un solo modo — corridas rápidas (102–160s) que saltan el spec — presente en
+  AMBAS configs (1 new, 2 old); la falla E2 de old-4 es rigidez del grader (él mismo la flaggeó
+  como mal fit de la expectation). Cero mutaciones de db.json en 10/10. `spec-examples.md`
+  leído en 0/5 runs new — reconfirma el hallazgo del piloto (los punteros no se siguen solos;
+  la palanca es qué sobrevive en el cuerpo, exactamente lo que este release mueve).
+
 ## [0.33.0] - 2026-08-01
 
 **Progressive disclosure, Fases A+C del plan ratificado (2026-08-01): extracción limpia de
