@@ -41,8 +41,16 @@ INPUT=$(cat)
 # other hook in this plugin uses. Fail-open if neither resolves cleanly.
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
-RESULT=$(printf '%s' "$INPUT" | GOAL_CONFIG_PATH="${GOAL_CONFIG_PATH:-}" "$PY" -c '
+RESULT=$(printf '%s' "$INPUT" | GOAL_CONFIG_PATH="${GOAL_CONFIG_PATH:-}" LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" "$PY" -c '
 import json, sys, os, re, time, subprocess
+
+_libdir = os.environ.get("LIBDIR", "")
+if _libdir and _libdir not in sys.path:
+    sys.path.insert(0, _libdir)
+try:
+    import terminal_actions as ta
+except Exception:
+    ta = None
 from urllib import request, error
 
 def silent():
@@ -90,7 +98,17 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
     except Exception:
         pass
 text = lam_text + "\n" + "\n".join(tx_parts)
-if not re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I):
+# Text-only regex, same as the equivalent check in gate-goal-close.sh, and the SAME blind spot: a goal-spec
+# written to disk (.goalspec/checkpoint.md) instead of posted as chat text is invisible to it —
+# confirmed live (goal-adversary round 2, 2026-08-01) as a stale carrier of this exact rule. `ta`
+# may be None (import failed); the OR degrades to the original text-only check, unchanged.
+_goal_spec_present = bool(re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I))
+if ta is not None and not _goal_spec_present:
+    try:
+        _goal_spec_present = ta.transcript_signals(tpath).get("goal_spec", False)
+    except Exception:
+        pass
+if not _goal_spec_present:
     silent()
 
 # 2. Resolve usage_budget.{enabled,warn_threshold} per key: project overrides global — the SAME

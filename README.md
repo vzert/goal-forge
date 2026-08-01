@@ -370,7 +370,9 @@ goal-forge/
                                           #   discovers the goal before the spec, for fuzzy intent
     agents/goal-adversary.md              # independent adversarial verifier (read-only)
     hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart hooks below
-    hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop)
+    hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop) + terminal-action staleness backstop
+    hooks/precheck-terminal-push.sh       # PreToolUse (Bash): hard-denies a push/merge/deploy/destructive command with no operative adversary hold on record
+    hooks/lib/terminal_actions.py         # shared terminal-command classifier + content exemption, read by gate-goal-close.sh, precheck-terminal-push.sh, and check-usage-budget.sh below
     hooks/check-usage-budget.sh           # opt-in, off by default: 5h/7d usage-ceiling nudge (Stop)
     hooks/enable-autoupdate.sh            # SessionStart: idempotently enables marketplace auto-update
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI

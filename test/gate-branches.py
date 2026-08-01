@@ -271,6 +271,195 @@ def suite(gate):
     return [(c[0],) + run(gate, c[0], c[1], c[2], opts_of(c).get("payload")) for c in CASES]
 
 
+# --- staleness backstop (added alongside hooks/precheck-terminal-push.sh) -------------------------
+# Separate from CASES/suite() above on purpose: those are pure-transcript, no filesystem, and stay
+# that way so --compare keeps working against a bare copy of the gate with no git repo involved.
+# The staleness check reads LIVE git state (hooks/lib/terminal_actions.py's commits_since()), so
+# these cases each get their own synthetic repo with a commit stamped at a CONTROLLED committer
+# date (GIT_COMMITTER_DATE) rather than real wall-clock time — real-time ordering flaked in manual
+# testing (a `sleep 1` between a fixed transcript timestamp and a real `git commit` is exactly the
+# kind of test that is fast except when it is not).
+STALE_TMP = tempfile.mkdtemp(prefix="gate-branches-stale-")
+
+
+def _sh(args, cwd, env=None):
+    out = subprocess.run(args, cwd=cwd, capture_output=True, text=True, env=env)
+    assert out.returncode == 0, "fixture setup failed: %s\n%s" % (args, out.stderr)
+    return out.stdout
+
+
+def stale_repo(name, files_after_review, committer_date):
+    """A repo with one pushed baseline commit, then ONE MORE commit — containing
+    `files_after_review` — stamped at `committer_date` (ISO8601). That second commit is what
+    commits_since(review_ts) must find when review_ts is BEFORE committer_date."""
+    work = os.path.join(STALE_TMP, name, "work")
+    bare = os.path.join(STALE_TMP, name, "bare.git")
+    os.makedirs(work)
+    _sh(["git", "init", "-q", "-b", "main", "."], work)
+    _sh(["git", "config", "user.email", "t@t.com"], work)
+    _sh(["git", "config", "user.name", "t"], work)
+    _sh(["git", "init", "-q", "--bare", bare], STALE_TMP)
+    _sh(["git", "remote", "add", "origin", bare], work)
+    with open(os.path.join(work, "README.md"), "w") as fh:
+        fh.write("init")
+    _sh(["git", "add", "-A"], work)
+    _sh(["git", "commit", "-qm", "pushed baseline"], work)
+    _sh(["git", "push", "-q", "-u", "origin", "main"], work)
+    for rel, content in files_after_review.items():
+        p = os.path.join(work, rel)
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as fh:
+            fh.write(content)
+    _sh(["git", "add", "-A"], work)
+    env = dict(os.environ, GIT_COMMITTER_DATE=committer_date, GIT_AUTHOR_DATE=committer_date)
+    _sh(["git", "commit", "-qm", "after the review"], work, env=env)
+    return work
+
+
+def stale_transcript(events, name):
+    """events: list of dicts {"timestamp": iso8601, "text": ...} and/or {"timestamp": iso8601,
+    "bash": "command"} and/or {"timestamp": iso8601, "write": (file_path, content)} — same
+    per-event shape terminal_actions.read_transcript_items() expects."""
+    p = os.path.join(STALE_TMP, name + ".jsonl")
+    with open(p, "w", encoding="utf-8") as fh:
+        for ev in events:
+            content = []
+            if "bash" in ev:
+                content.append({"type": "tool_use", "name": "Bash", "input": {"command": ev["bash"]}})
+            if "write" in ev:
+                fp, body = ev["write"]
+                content.append({"type": "tool_use", "name": "Write", "input": {"file_path": fp, "content": body}})
+            if "text" in ev:
+                content.append({"type": "text", "text": ev["text"]})
+            fh.write(json.dumps({"type": "assistant", "timestamp": ev.get("timestamp"),
+                                 "message": {"content": content}}) + "\n")
+    return p
+
+
+T0 = "2026-01-01T00:00:00Z"   # spec
+T1 = "2026-01-01T00:05:00Z"   # completion-review declared here
+T2 = "2026-01-02T00:00:00Z"   # committer date used for the post-review commit (well after T1)
+
+STALE_CASES = [
+    # code change after the review, current turn has no fresh CR -> STALE
+    ("stale-01-code-after-review-STALE",
+     lambda: stale_repo("s01", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin main", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    # memory-only change after the review -> content-exempt, NOT stale
+    ("stale-02-memory-only-after-review-NOT-STALE",
+     lambda: stale_repo("s02", {"memory/session.md": "notes"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin main", "text": "checkpoint pushed."}],
+     "still working, no fresh review this turn"),
+    # a FRESH completion-review in the CURRENT turn -> never stale, regardless of what ran earlier
+    ("stale-03-fresh-review-this-turn-NOT-STALE",
+     lambda: stale_repo("s03", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin main"}],
+     V_HOLD + "\n" + CR_ADV),   # this IS the lam for the case below — see run_stale()
+    # no terminal command at all after the review -> NOT stale
+    ("stale-04-no-terminal-command-after-review-NOT-STALE",
+     lambda: stale_repo("s04", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "text": "just thinking out loud, no tool call here"}],
+     "still working, no fresh review this turn"),
+]
+
+
+# --- primary goal-spec precondition, via a checkpoint-file Write instead of chat text --------------
+# Regression pin for a break found by goal-adversary round 2 (2026-08-01), running against THIS
+# diff's own real session: the session's `## Goal-spec` lived only inside a `Write` tool_use to
+# `.goalspec/checkpoint.md` (SKILL.md step 5's own checkpoint pattern for long tasks), never as
+# assistant text — and the gate's PRIMARY "did this session produce a goal-spec at all"
+# precondition (not just the staleness check above) is a separate, older regex that only scans
+# text. Against the real session it found nothing, so the ENTIRE gate went silent — not just the
+# staleness branch. These cases pin the fix (an `ta.transcript_signals()` OR added ahead of that
+# precondition) using a repo with no git history at all, since the precondition fires before any
+# git command runs.
+CHECKPOINT_GOALSPEC_CASES = [
+    # spec ONLY in a checkpoint Write, no completion-review anywhere -> the gate must SPEAK
+    # (completion-review:absent), not stay silent as it did before this fix.
+    ("checkpoint-01-spec-via-write-no-review-SPEAKS",
+     [{"write": (".goalspec/checkpoint.md", SPEC)}, {"text": "still working on it."}],
+     "completion-review:absent"),
+    # same, but with a valid completion-review declared as TEXT in a later turn -> silent (clean
+    # close) — a regression control that the new OR does not false-positive on an ordinary clean
+    # run. This does NOT by itself prove the checkpoint-file signal stays out of the
+    # completion-review check (goal-adversary round 3 caught an earlier comment here overclaiming
+    # exactly that: this case passes identically against a gate with no checkpoint-file signal at
+    # all, so it cannot be evidence FOR that mechanism). Case 03 below is the one that actually
+    # discriminates it.
+    ("checkpoint-02-spec-via-write-then-valid-review-SILENT",
+     [{"write": (".goalspec/checkpoint.md", SPEC)}, {"text": CR_NONE}],
+     None),
+    # THE discriminating case for "does a completion-review written to a file ever count": the
+    # marker lives ONLY inside the checkpoint Write, never in chat text. It must SPEAK
+    # (completion-review:absent), not go silent as a fabricated close would.
+    # PRECISION, per goal-adversary round 4 (an earlier version of this comment overclaimed and
+    # got caught, same defect class as checkpoint-02's original comment): this does NOT exercise
+    # `ta.transcript_signals()` — gate-goal-close.sh's completion-review check never calls it. It
+    # has its OWN inline scan (`cr_pat` over `tx_turns`, built from this file's own parsing loop,
+    # which only extracts `type=="text"` blocks). This case guards THAT scan staying text-only —
+    # confirmed by mutation: making `transcript_signals()` treat `goal_spec_file` content as
+    # general text does NOT flip this case; editing gate-goal-close.sh's own tx_turns builder to
+    # ingest tool_use content DOES. If a future edit ever makes the completion-review check read
+    # from the shared module instead of its own scan, re-verify this case still discriminates.
+    ("checkpoint-03-review-only-in-write-not-text-SPEAKS",
+     [{"write": (".goalspec/checkpoint.md", SPEC + "\n" + CR_NONE)}, {"text": "still working."}],
+     "completion-review:absent"),
+]
+
+
+def run_checkpoint_goalspec(gate, name, events):
+    tx = stale_transcript(events, name)
+    payload = {"last_assistant_message": events[-1].get("text", ""), "transcript_path": tx}
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"))
+    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=env).stdout.strip()
+    if not out:
+        return "silent", None
+    try:
+        d = json.loads(out)
+    except Exception:
+        return "unparseable", None
+    msg = d.get("systemMessage") or d.get("reason") or ""
+    m = re.search(r"\((completion-review:[^)]+)\)", msg)
+    return "spoke", (m.group(1) if m else "NO-DETAIL")
+
+
+def checkpoint_goalspec_suite(gate):
+    return [(name, run_checkpoint_goalspec(gate, name, events))
+            for name, events, _ in CHECKPOINT_GOALSPEC_CASES]
+
+
+def run_stale(gate, name, make_repo_fn, events, lam):
+    cwd = make_repo_fn()
+    tx = stale_transcript(events, name)
+    payload = {"last_assistant_message": lam, "transcript_path": tx, "cwd": cwd}
+    # CLAUDE_PLUGIN_ROOT must be set for the gate's own LIBDIR-based import of
+    # hooks/lib/terminal_actions.py to resolve — without it, step 5b fails to import (silently,
+    # by design: an unimportable shared module must never break the checks that came before it)
+    # and every staleness case degrades to "silent", indistinguishable from "correctly not stale".
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"))
+    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=env).stdout.strip()
+    if not out:
+        return "silent"
+    try:
+        d = json.loads(out)
+    except Exception:
+        return "unparseable"
+    msg = d.get("systemMessage") or d.get("reason") or ""
+    return "STALE" if "stale-terminal-action-after-close" in msg else ("silent" if not msg else "other:" + msg[:40])
+
+
+def stale_suite(gate):
+    return [(name, run_stale(gate, name, repo_fn, events, lam))
+            for name, repo_fn, events, lam in STALE_CASES]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("gate", nargs="?", default=DEFAULT_GATE)
@@ -311,6 +500,35 @@ def main():
     if failures:
         print("\nASSERTION FAILURES: %d\n  %s" % (len(failures), "\n  ".join(failures)))
         return 1
+
+    # Primary goal-spec precondition via checkpoint-file Write — no git repo needed, runs first.
+    print("\n--- goal-spec precondition via .goalspec/checkpoint.md Write (not just chat text) ---")
+    ckpt_failures = []
+    for i, (name, decision) in enumerate(checkpoint_goalspec_suite(a.gate)):
+        want_decision, want_detail = ("spoke", CHECKPOINT_GOALSPEC_CASES[i][2]) if CHECKPOINT_GOALSPEC_CASES[i][2] else ("silent", None)
+        got_decision, got_detail = decision
+        ok = got_decision == want_decision and (want_detail is None or got_detail == want_detail)
+        if not ok:
+            ckpt_failures.append("%s: want (%s,%s), got %s" % (name, want_decision, want_detail, decision))
+        print("%-52s %-10s %-30s%s" % (name, got_decision, got_detail or "", "" if ok else "   <-- FAILS"))
+    if ckpt_failures:
+        print("\nCHECKPOINT-GOALSPEC FAILURES: %d\n  %s" % (len(ckpt_failures), "\n  ".join(ckpt_failures)))
+        return 1
+
+    # Staleness backstop — live-git cases, run against a.gate only (not part of --compare parity;
+    # see the section header above for why they are structurally separate from CASES/suite()).
+    print("\n--- staleness backstop (live git, hooks/lib/terminal_actions.py) ---")
+    stale_failures = []
+    for name, decision in stale_suite(a.gate):
+        want = "silent" if "NOT-STALE" in name else "STALE"
+        ok = decision == want
+        if not ok:
+            stale_failures.append("%s: want %s, got %s" % (name, want, decision))
+        print("%-52s %-10s%s" % (name, decision, "" if ok else "   <-- FAILS (want %s)" % want))
+    if stale_failures:
+        print("\nSTALENESS FAILURES: %d\n  %s" % (len(stale_failures), "\n  ".join(stale_failures)))
+        return 1
+
     return 0
 
 

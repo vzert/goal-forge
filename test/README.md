@@ -1,6 +1,6 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. Five mechanical suites and one check by hand.
+No CI — the plugin is a skill + hooks + docs. Six mechanical suites and one check by hand.
 
 ## `gate-branches.py` — Stop-gate branch suite
 
@@ -30,6 +30,40 @@ instrument can see them — including this one.
 comparison: the point is to separate a designed change from a regression *in advance*, instead of
 reading a non-zero exit afterwards and deciding it was fine. Don't persist the list in the file — a
 standing expected-diff list is a muted alarm.
+
+**Checkpoint-file goal-spec cases (`checkpoint-01`..`03`, 0.32.0)** pin a separate real break from
+the same incident chain: the gate's PRIMARY "did this session produce a goal-spec at all"
+precondition — a different, older check than the staleness backstop below — is also a text-only
+regex, and was blind to a `## Goal-spec` written via `Write` to `.goalspec/checkpoint.md` (the
+pattern `SKILL.md` step 5 itself recommends for long tasks). Against the real session that shipped
+this fix, that meant the ENTIRE Stop gate was silently inert, not just the staleness branch.
+**01** pins the fix: a spec that exists only in a checkpoint-file `Write` now makes the gate speak.
+**02** is a regression control (a normal text-based close still stays silent) — but is NOT, by
+itself, evidence that the checkpoint-file signal stays out of the completion-review check (an
+earlier version of this file's own comment claimed exactly that and was caught overclaiming by a
+later adversary round: 02 passes identically against a gate with no checkpoint mechanism at all,
+so it cannot be evidence for a mechanism it does not exercise). **03** is the case that actually
+discriminates that claim: a completion-review marker living ONLY inside the checkpoint `Write`,
+never in chat text, must still show as `completion-review:absent` — proving a completion-review
+cannot be satisfied by a file write, only by the executor's own turn text, per SKILL.md's own
+rule. These three need no git repo (the precondition fires before any git command runs), unlike
+every other live-git case in this file.
+
+**Staleness backstop cases (`stale-01`..`04`, 0.32.0)** live in this same file but run separately
+from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
+`commits_since()`), unlike every other case here, which is pure-transcript with no filesystem
+involved. Each builds its own synthetic repo with a commit stamped at a fixed `GIT_COMMITTER_DATE`
+(not real wall-clock time — a `sleep`-based ordering flaked in manual testing) and checks whether
+the gate flags the operative `[COMPLETION-REVIEW: ...]` as stale when a terminal Bash command ran
+after it. **01** is the positive case, replaying the 2026-08-01 worker-cloudflare incident this
+backstop exists for (a `none` review declared honestly before a merge, then the merge in the next
+turn with no fresh review). **02** confirms the same content exemption the PreToolUse precheck
+uses (memory-only change, not flagged). **03** confirms a FRESH review declared in the current
+turn is never stale regardless of what ran earlier. **04** confirms no terminal command at all
+after the review means nothing to flag. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
+subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, which resolves from
+it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
+from a passing case, which is exactly the trap the first draft of this suite fell into.
 
 Cases 12–20 and 24–26 cover the convergence floor. Several exist because they are the ones that can
 go wrong quietly:
@@ -192,6 +226,51 @@ observation stays open, not something this suite closes. Nor does anything here 
 executor actually performs the new close-step deletion in a real multi-round run — that instruction
 lives in `SKILL.md` prose, not in this hook, so no hermetic test can assert it; it stays a second
 open live observation alongside the decomposition-skip case.
+
+## `terminal-precheck-branches.py` — PreToolUse terminal-push precheck suite
+
+For `hooks/precheck-terminal-push.sh` (0.32.0), the hard-blocking companion to the staleness
+backstop above — it denies the push/merge/deploy/destructive command BEFORE it runs, rather than
+flagging it after. Structurally different from every other suite here: this hook reads LIVE git
+state (it diffs the actual prospective push), so every case gets its own synthetic repo built with
+a working tree plus a bare `origin` created **outside** that working tree — nesting the bare repo
+inside the working tree was tried first and broke every case, since `git add -A` sucks in the bare
+repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
+reintroduce).
+
+22 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
+allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
+cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
+11-12); merge classification (`gh pr merge` against a synthetic repo with no real GitHub remote —
+`gh pr diff` fails deterministically, so the diff is undeterminable and NOT exempt by design,
+regardless of content, case 13); deploy/destructive commands (never content-exempt, branch-
+agnostic, cases 14-16); the two universal escape hatches (not our tool, not a terminal command,
+malformed JSON — all allow, cases 17-19); and a goal-spec written to disk instead of posted as
+chat text (cases 20-22, see below).
+
+```sh
+python3 test/terminal-precheck-branches.py
+```
+
+**Cases 20-22 are a regression pin for a real break, not a hypothetical.** A `goal-adversary`
+round run against this SKILL's own diff, before it shipped, found the text-only scan blind to a
+`## Goal-spec` written via `Write` to `.goalspec/checkpoint.md` — exactly the pattern `SKILL.md`
+step 5 recommends for long tasks — confirmed live: run against the REAL session transcript with
+the REAL prospective `git push`, the shipped hook's `has_goal_spec()` returned `False` and the
+push was silently allowed. **20/21** pin the fix (a spec living only in a checkpoint-file `Write`
+is now detected, and still requires a `hold` same as any other). **22** pins that the fix stayed
+narrow: the first attempt captured ANY `Write`/`Edit` content as a text-equivalent signal, and
+broke immediately — this SKILL's own docs are full of literal example marker text
+(`[GOAL-CLOSE-WAIVED reason=...]` samples, sample verdicts), so editing `SKILL.md` or
+`CHANGELOG.md` was read as a genuine waiver declaration. **22** replays exactly that shape (a
+`Write` to an unrelated doc file containing example waiver text) and pins that it must still
+`DENY` — only a `Write`/`Edit` whose `file_path` ends in `.goalspec/checkpoint.md` contributes to
+the goal-spec signal, and it contributes to THAT signal only, never to waiver/verdict/completion-
+review (`hooks/lib/terminal_actions.py`'s `transcript_signals()`).
+
+**What it does not cover, stated so a green run does not imply more**: a real live push actually
+denied and then retried after a genuine `hold` — every case here is single-shot.
 
 ## Acid test (manual)
 

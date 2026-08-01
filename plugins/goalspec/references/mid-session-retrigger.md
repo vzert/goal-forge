@@ -19,7 +19,7 @@ a completion-review is scoped to anything narrower than "the session." So an age
 literally had no reason to believe the discipline it just finished applying — clarify, ratify,
 red-team, adversary — still applied to whatever it did next in the same conversation.
 
-## Why documented, not mechanical
+## Why documented, not mechanical — and where that changed
 
 The tempting fix is a hook: watch tool calls for a `git push`, a deploy command, a write to a
 known shared-state path, and force re-entry when one fires after a completion-review. This
@@ -28,19 +28,40 @@ an adversary's self-reported model, a dedup key on the *literal text* of a verdi
 loop-boundary counter — and all three lost the arms race: the id-matcher broke across five
 correction rounds, the verdict dedup silently under-counted identical strings hiding distinct
 findings, and the loop-boundary counter is structurally blind to anything that happens without a
-`Stop` between turns. A detector for "is this tool call a new terminal action" has the same
-shape: it would need to distinguish a release script from a status check, a write to a shared
-learnings file from a write to a scratch file — by pattern, forever chasing new phrasings. This
-project's own history says that fight is not winnable by building a smarter matcher.
+`Stop` between turns. A detector for "is this tool call a new terminal action, in ANY domain"
+has the same shape: it would need to distinguish a release script from a status check, a write
+to a shared learnings file from a write to a scratch file — by pattern, forever chasing new
+phrasings. That fight is still not winnable by a smarter matcher, and nothing below claims it is.
 
-So the fix is instructional: name the boundary in the text the executor already reads at the
-start of every run, and trust the same judgment call the method already asks for everywhere
-else ("you judge reversibility per action; you don't need a pre-declared list"). This is not
-free — it inherits the standing limitation of every documented-only fix in this method: it
-depends on the executor actually re-reading and applying it under time pressure, the same
-dependency that let this exact gap through the first time. It is cheaper and more honest than a
-detector that would eventually be gamed by a wording it wasn't written for, but it is not a
-guarantee.
+**A narrower, bounded version of it was built anyway (2026-08 — `hooks/precheck-terminal-push.sh`
++ a staleness check in `gate-goal-close.sh`, both reading `hooks/lib/terminal_actions.py`), in
+response to a DIFFERENT pair of incidents than the one this document opens with — both were a
+code push/merge/deploy landing before the adversary ran, not a shared-state write.** What makes
+that version tractable where the general one is not: it does not try to classify arbitrary
+executor prose or infer intent — it pattern-matches a *bounded, literal* set of Bash command
+shapes (`git push` to a protected branch, `gh pr merge`, a handful of named deploy/publish CLIs,
+a couple of destructive shell idioms) and, for push/merge, diffs the *actual file paths* the
+action would touch against a small path allowlist. That is closer in kind to the coverage-floor
+enumeration this method already trusts mechanically (glob for files, diff for paths) than to the
+three failed matchers above, which all tried to fingerprint free-form, executor-authored text.
+
+**It does NOT cover the incident this document describes.** The path allowlist that makes the
+new hook usable in practice (`memory/`, `docs/`, `.goalspec/`, root `*.md` — checkpoint commits
+must not trip it on every `/checkpoint-3t` run) is exactly where an unconfirmed conclusion
+written to shared state, per this document's own opening incident, would land. The hook cannot
+tell a routine session log in `memory/sessions/` from a wrong conclusion asserted in
+`memory/learnings/` — that is a content distinction, not a path one, and is the SAME
+undecidable-by-pattern problem this section already argues is not winnable; scoping the hook to
+Bash-invoked code pushes is what kept it tractable, and the shared-state-write case is exactly
+what fell outside that scope by design. So the fix for THIS document's incident remains
+instructional, unchanged: name the boundary in the text the executor already reads at the start
+of every run, and trust the same judgment call the method already asks for everywhere else ("you
+judge reversibility per action; you don't need a pre-declared list"). This is not free — it
+inherits the standing limitation of every documented-only fix in this method: it depends on the
+executor actually re-reading and applying it under time pressure, the same dependency that let
+this exact gap through the first time. Do not read the existence of the code-push hook as
+evidence this gap closed too — it did not, and treating "the hook let the push through" as "this
+was reviewed" would be a worse mistake than having no hook at all.
 
 ## What "targeted re-entry" means
 
@@ -74,12 +95,17 @@ as still operative, silently (see "What this does not cover" below).
   the same session, not a substitute for the initial trigger.
 - **Anything outside a single session.** A new session starting fresh already re-triggers
   normally; there is no persistent state to lose track of across session boundaries.
-- **The mechanical gate cannot tell an old completion-review from one that actually covers the
-  new action.** `gate-goal-close.sh` reads only the *most recent* `[COMPLETION-REVIEW: ...]` in
-  the session — it has no way to know whether that declaration was written against the spec that
-  produced it or against some unrelated action three turns later. If the executor skips the
-  fresh declaration this document asks for, the gate stays silent exactly as if nothing were
-  wrong — the same fail-open shape as every other rule in this method that depends on the
-  executor actually following it. This is not a defect introduced by targeted re-entry; it is
-  the standing limitation from "Why documented, not mechanical" above, landing on the one
-  mechanical surface this change touches.
+- **The mechanical gate now catches ONE shape of this, not the general case.** Since 2026-08,
+  `gate-goal-close.sh` also flags the operative `[COMPLETION-REVIEW: ...]` as stale when a
+  Bash-shaped terminal command (push/merge/deploy/destructive) ran after it and touched anything
+  outside the path allowlist — the exact "declaration was written against an earlier spec,
+  something terminal happened since, nobody re-declared" gap this document names. But it reads
+  only what `hooks/lib/terminal_actions.py` can classify from a Bash command string and a file
+  diff; it still cannot tell an old completion-review from one that covers a NEW action that
+  isn't Bash-shaped — an MCP tool call, a decision made and acted on entirely in prose, or
+  (per the boundary drawn above) an unconfirmed conclusion written to an exempted path. For any
+  of those, if the executor skips the fresh declaration this document asks for, the gate stays
+  silent exactly as if nothing were wrong — the same fail-open shape as every other rule in this
+  method that depends on the executor actually following it. This is not a defect introduced by
+  targeted re-entry; it is the standing limitation from "Why documented, not mechanical" above,
+  narrowed but not removed by the one mechanical surface this change touches.

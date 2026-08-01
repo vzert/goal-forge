@@ -98,8 +98,20 @@ INPUT=$(cat)
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
 # Everything lives in python. Fail-open on any exception.
-RESULT=$(ENFORCE="${GOAL_GATE_ENFORCE:-}" printf '%s' "$INPUT" | "$PY" -c '
+RESULT=$(ENFORCE="${GOAL_GATE_ENFORCE:-}" printf '%s' "$INPUT" | LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" "$PY" -c '
 import json, sys, os, re
+
+# Shared terminal-action detection (hooks/lib/terminal_actions.py) — used below for the staleness
+# backstop only (step 5b). Absent/unimportable -> ta stays None and step 5b silently no-ops; every
+# check ABOVE and BELOW it in this file is unaffected, by construction (ta is referenced nowhere
+# else).
+_libdir = os.environ.get("LIBDIR", "")
+if _libdir and _libdir not in sys.path:
+    sys.path.insert(0, _libdir)
+try:
+    import terminal_actions as ta
+except Exception:
+    ta = None
 
 def fail_open():
     print("OK"); sys.exit(0)
@@ -168,8 +180,26 @@ text = lam_text + "\n" + tx_text
 if not text.strip():
     fail_open()
 
-# 2. Nothing to enforce unless this session produced a goal-spec.
-if not re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I):
+# 2. Nothing to enforce unless this session produced a goal-spec — checked two ways, not one.
+# The plain-text regex is the original check. It is BLIND to a spec written to disk instead of
+# posted as chat text — confirmed live (goal-adversary round 2, 2026-08-01) against THIS diff own
+# session: the goal-spec here was written via `Write` to `.goalspec/checkpoint.md` (a checkpoint
+# pattern SKILL.md step 5 itself recommends for long tasks), never as assistant text, so this
+# regex alone finds nothing and the ENTIRE gate goes silent for the whole session, not just the
+# staleness check added below. `ta.transcript_signals()` (hooks/lib/terminal_actions.py) already
+# carries the narrowly-scoped fix for this (a Write/Edit whose file_path ends in
+# .goalspec/checkpoint.md, and ONLY that — see that module docstring for why a broader scope is a
+# worse bug than the one it fixes: SKILL.md and CHANGELOG.md are themselves full of literal
+# example marker text).
+# `ta` may be None (import failed) — the OR degrades to the original text-only check, unchanged
+# behavior, never a regression from this line.
+_goal_spec_present = bool(re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I))
+if ta is not None and not _goal_spec_present:
+    try:
+        _goal_spec_present = ta.transcript_signals(tpath).get("goal_spec", False)
+    except Exception:
+        pass
+if not _goal_spec_present:
     fail_open()
 
 # 3. Explicit close-over-break waiver (agent- or human-usable — see header).
@@ -248,7 +278,8 @@ def remind(detail):
 # *last* declaration — never the first re.search match — is what prevents an earlier exploratory or
 # malformed [COMPLETION-REVIEW] from permanently poisoning the check after a correct one is emitted.
 cr_pat = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
-crs = re.findall(cr_pat, lam_text, re.I) or re.findall(cr_pat, tx_text, re.I)
+lam_crs = re.findall(cr_pat, lam_text, re.I)
+crs = lam_crs or re.findall(cr_pat, tx_text, re.I)
 if not crs:
     remind("completion-review:absent")
 mode, body = crs[-1]
@@ -323,6 +354,44 @@ else:  # none
     if last_verdict == "break":
         remind("completion-review:none-but-break-recorded")
 
+# 5b. Staleness backstop (added alongside hooks/precheck-terminal-push.sh — see that hook and the
+# module docstring in hooks/lib/terminal_actions.py for the incident this responds to). The
+# operative completion-review found above can be HONEST at the moment it is declared and still be
+# stale by the time this Stop fires, if it came from an EARLIER, already-flushed turn (tx_text) and
+# a terminal Bash command (push/merge/deploy/destructive — same shared classifier the PreToolUse
+# precheck uses) ran in a turn AFTER it. Real transcript evidence this pins: `[COMPLETION-REVIEW:
+# none reason=sin accion terminal, PR abierto sin merge/deploy ...]` declared while a PR was open,
+# then merge+deploy to production in the VERY NEXT turn with no completion-review of its own — the
+# operative review from the OLD turn was still "valid" by every check above, because none of them
+# ask whether something terminal happened SINCE it was written.
+#
+# Skipped entirely when the operative review came from lam_text (this turn, right now): nothing
+# later in the session could have happened yet, so a same-turn close is fresh by construction
+# regardless of what tool calls preceded it in this same turn (see the docstring on
+# terminal_bash_after() in hooks/lib/terminal_actions.py for why file order, not the lam/tx split,
+# is what actually matters there).
+#
+# Content exemption reuses the SAME allowlist the precheck hook uses (memory/, docs/, .goalspec/,
+# root *.md) — a memory-only checkpoint commit pushed after a completion-review is not what this
+# backstop exists to catch. Unlike the precheck (which diffs the actual prospective push live,
+# before it happens), this runs AFTER the fact and has no clean way to know exactly which files a
+# specific historical push carried — so it approximates with `git log --since=<the timestamp of the
+# stale review event>`, best-effort and committer-date based (can disagree with the wall-clock
+# timestamp recorded on the transcript event by clock-skew-sized amounts). Any uncertainty — no
+# timestamp on the review event, no commits found, git itself unavailable — resolves to NOT
+# exempt, i.e. flag it: this is a backstop for exactly the cases where something already slipped
+# past the live precheck, so silently trusting an unreadable signal here would defeat the point of
+# having it at all.
+if ta is not None and not lam_crs:
+    items = ta.read_transcript_items(tpath)
+    idx = ta.last_completion_review_index(items)
+    if idx is not None:
+        terminal_calls = ta.terminal_bash_after(items, idx)
+        if terminal_calls:
+            paths = ta.commits_since(data.get("cwd") or os.getcwd(), items[idx].get("timestamp"))
+            if not ta.all_exempt(paths):
+                remind("completion-review:stale-terminal-action-after-close")
+
 # 6. Floor as its own branch (0.18.0). Until now the floor could only be APPENDED to a reminder some
 #    other check had already raised, so a run that is not converging but has nothing wrong with its
 #    declaration got silence — e.g. a turn quoting both backends closes on the hold (operative
@@ -358,6 +427,9 @@ case "$DETAIL" in
     ;;
   completion-review:model-different-needs-nonunknown-self-report)
     MSG="Goal-spec present but your model=different claim isn't backed by a matching [ADVERSARY-MODEL: …] line (${DETAIL}). Two distinct causes need two different responses: (1) the adversary genuinely self-reported UNKNOWN or the same model as yours — say model=same, that is the honest degrade, not a defect; or (2) the marker line doesn't match the grammar this gate reads — it must be its OWN line, in PLAIN TEXT: no bold/markdown wrapping (\`**[ADVERSARY-MODEL: …]**\` does not match) and nothing appended after the closing \`]\` on that same line (a trailing citation or comment breaks the match too, even a real one). Re-quote the adversary's [ADVERSARY-MODEL: …] line verbatim, alone and unformatted, on its own line — then this check passes."
+    ;;
+  completion-review:stale-terminal-action-after-close)
+    MSG="Your operative [COMPLETION-REVIEW: …] was declared BEFORE what looks like a terminal action (push to a protected branch, merge, deploy/publish, or a destructive command) that ran afterward in this same session, and the files it touched are not all low-risk (memory/docs/checkpoint) content (${DETAIL}). A completion-review closes the spec it was written against, not the session — a NEW terminal action needs its OWN review, not the old one standing in for it (see SKILL.md, \"A completion-review closes the spec, not the session\"). Re-enter targeted: 4b (ratify, naming THIS action's scope/blast-radius) then 6 (adversary) for this action specifically, then declare a FRESH [COMPLETION-REVIEW: …]. If this really is low-risk content that the exemption failed to recognize, say so and add \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) to proceed."
     ;;
   *)
     MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."

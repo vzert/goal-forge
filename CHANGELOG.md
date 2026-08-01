@@ -6,6 +6,112 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.32.0] - 2026-08-01
+
+**Adversario después del push, no antes: dos incidentes reales en producción (worker-cloudflare,
+2026-07-31 y 2026-08-01).** En ambas sesiones el agente corrió el loop de goalspec correctamente
+hasta el spec, pero luego hizo `git push`/`gh pr merge` como parte del paso 5 (Execute) — con el
+adversario recién invocado en el paso 6, después de que la acción irreversible ya había corrido.
+2026-07-31: el usuario tuvo que decirle manualmente al agente que pasara por adversario antes del
+push (patrón confirmado, corregido en esa sesión). 2026-08-01: nadie intervino — merge + deploy a
+producción, y solo entonces 8 rondas de adversario (Opus + GPT-5), una con un bug de seguridad
+real (`unsafe=1`) ya viviendo en producción. El propio `SKILL.md` ya llamaba terminales a
+push/merge/deploy — el defecto era de **orden**: el paso 6 (adversario) corre textualmente
+después del paso 5 (Execute), y el sub-paso irreversible vive dentro del paso 5.
+
+Fix, vía `/goalspec:interview` (2 rondas): **prosa + backstop mecánico**, no solo uno de los
+dos — la prosa ya decía que push/merge/deploy son terminales y falló dos veces en el mismo
+equipo.
+
+- **`hooks/precheck-terminal-push.sh`** (PreToolUse, matcher `Bash`, nuevo) — deniega
+  (`permissionDecision: deny`) un `git push`/`gh pr merge`/deploy-publish/comando destructivo
+  cuando la sesión tiene un `## Goal-spec` abierto y no hay un `[ADVERSARY-VERDICT: hold ...]`
+  operativo — bloqueo duro por defecto (no gateado por `GOAL_GATE_ENFORCE`: bloquear ANTES de que
+  la acción exista es barato, la postura advisory ya falló dos veces). Exención por contenido:
+  si el diff prospectivo cae entero bajo `memory/`, `docs/`, `.goalspec/`, o `*.md` de raíz
+  (un checkpoint de `/checkpoint-3t`, no código), lo deja pasar sin exigir adversario — un diff
+  MIXTO (memoria + código) no se exime. Push a rama no protegida (feature branch) queda fuera de
+  alcance salvo `--force`. Escape hatch: honra un `[GOAL-CLOSE-WAIVED reason=...]` ya existente en
+  la sesión, sin marcador nuevo.
+- **`hooks/gate-goal-close.sh`** (Stop, existente) — nuevo check de staleness: si un comando
+  terminal corrió DESPUÉS del `[COMPLETION-REVIEW: ...]` operativo y lo que tocó no es todo
+  contenido de bajo riesgo, marca el completion-review como obsoleto (mismo camino advisory/
+  `GOAL_GATE_ENFORCE=1` que las demás ramas) — el backstop para cuando el hook de arriba se
+  bypasea, está desactivado, o su exención de contenido se equivoca. Reproduce mecánicamente el
+  patrón exacto del incidente 2026-08-01 (`[COMPLETION-REVIEW: none reason=sin acción terminal —
+  PR abierto sin merge/deploy]` declarado correctamente, luego merge+deploy en el turno
+  siguiente sin review fresco) — cubierto en `test/gate-branches.py`, casos `stale-01`..`04`.
+  Verificado con el protocolo `--compare` de `CLAUDE.md` en ambos modos, 0 diffs inesperados
+  contra los 40 branches existentes.
+- **`hooks/lib/terminal_actions.py`** (nuevo) — módulo compartido: clasificador de comandos
+  terminales, exención de contenido, y lectura de transcript/verdict operativo — una sola fuente
+  para los dos puntos de enforcement, para que no se desincronicen (el pedido explícito que
+  originó el diseño compartido).
+- **Tres rondas de `goal-adversary` (Opus, distinto de Sonnet — la acción terminal de este mismo
+  ship) corriendo contra el transcript REAL de la sesión que lo mandó, cada una encontrando un
+  break genuino que la ronda anterior no cubría — no repatcheando la misma cosa:**
+  - **Ronda 1**: el scan de `## Goal-spec` en `precheck-terminal-push.sh` solo miraba bloques de
+    texto del assistant — pero esta misma sesión escribió el spec vía `Write` a
+    `.goalspec/checkpoint.md` (el patrón que el propio paso 5 de `SKILL.md` recomienda para tareas
+    largas), nunca como texto de chat. Corrido contra el `git push origin main` real de este mismo
+    ship, el hook enviado en el primer intento devolvía ALLOW en silencio — el push exacto que
+    existe para bloquear. Más: `README.md`/`test/README.md`/`CLAUDE.md` no mencionaban el hook/
+    módulo/suite nuevos, y `memory/_pendientes.md` tenía un pendiente Alta abierto sin tocar sobre
+    "no shippear dientes con solo evidencia de suite" (precedente 0.18.1).
+  - **Ronda 2**: el fix de la ronda 1 (`read_transcript_items` etiqueta el contenido de un
+    `Write`/`Edit` cuyo `file_path` termina en `.goalspec/checkpoint.md` como señal de goal-spec —
+    **acotado A PROPÓSITO** a esa sola ruta y ese solo marcador: un primer intento capturó
+    CUALQUIER `Write`/`Edit` como texto y rompió de inmediato, porque `SKILL.md`/`CHANGELOG.md`
+    están llenos de texto de ejemplo de estos mismos marcadores — editar esos archivos se leía
+    como una renuncia real) resolvió el hook nuevo, pero **el mismo blind spot vivía en la
+    precondición PRIMARIA de `gate-goal-close.sh`** (una regex separada, más vieja, no relacionada
+    con el check de staleness de arriba) **y en `check-usage-budget.sh`** — para esta sesión real,
+    el Stop gate entero estaba mudo, no solo la rama de staleness.
+  - **Ronda 3**: los dos hooks de la ronda 2 recibieron el mismo OR (`ta.transcript_signals()`),
+    pero `check-usage-budget.sh` no tenía NINGÚN caso de test ejerciendo ese camino (todo
+    `usage-budget-branches.py` solo seteaba `last_assistant_message`, nunca `transcript_path` — el
+    fix podía haber estado silenciosamente roto y nada lo hubiera detectado), y `CHANGELOG.md`/
+    `.goalspec/checkpoint.md` tenían números que no reconciliaban entre sí ni contra la realidad.
+  - Cada ronda verificó en vivo contra el transcript real, no contra fixtures — la denegación y el
+    silencio-vs-habla del Stop gate se confirmaron ejecutando los hooks reales con el
+    `transcript_path` real de esta sesión.
+- Casos de regresión nuevos: `test/terminal-precheck-branches.py` casos 20-22 (**22 casos
+  totales** en la suite), `test/gate-branches.py` `stale-01`..`04` + `checkpoint-01`..`03`
+  (**7 casos nuevos**, sobre los 40 pre-existentes), y `test/usage-budget-branches.py` caso 07
+  (**7 casos totales**) — cada uno replica exactamente el break que lo motivó, incluido
+  `CLAUDE_PLUGIN_ROOT` explícito en el env del subproceso de test (su ausencia fue, dos veces, la
+  causa de que un caso pasara por la razón equivocada). `checkpoint-03` es el caso que
+  específicamente discrimina "el marcador de completion-review no puede venir de un archivo,
+  solo de texto de chat" — `checkpoint-01`/`02` por sí solos no lo probaban (hallazgo de la
+  ronda 4, ver abajo).
+- Carriers actualizados tras el sweep de superficie de regla: `README.md` (árbol de archivos de
+  hooks, ahora tres consumidores de `terminal_actions.py`), `test/README.md` ("Five" → "Six"
+  suites + secciones nuevas), `CLAUDE.md` (paso 3 del acid-test), `hooks/lib/terminal_actions.py`
+  (docstring del módulo: "dos puntos de enforcement" → tres). `memory/_pendientes.md`
+  reconciliado: un pendiente Alta existente sobre "no shippear dientes con solo evidencia de
+  suite" (0.18.1) es de una entidad distinta (`continue:false`+`stopReason` en Stop, no
+  `permissionDecision:deny` en PreToolUse) pero cae bajo la misma preocupación — anotado, no
+  cerrado, con un disparador de observación en vivo propio.
+- **Límite conocido y documentado, NO resuelto por este cambio** (SKILL.md, el módulo, y
+  `references/mid-session-retrigger.md` actualizados con la misma nota): la exención por ruta no
+  distingue un checkpoint de sesión rutinario de una conclusión no confirmada escrita a memoria
+  compartida — ambas viven bajo `memory/`. Esa distinción es de contenido, no de ruta, y
+  `mid-session-retrigger.md` ya documentaba por qué este proyecto no cree que sea ganable con un
+  matcher (tres intentos previos perdieron esa carrera armamentista). El hook nuevo responde a
+  los dos incidentes de push/merge de código, no al incidente de conclusión-en-memoria de ese
+  documento — que sigue siendo, deliberadamente, solo documentado.
+- **Ronda 4** (pedida explícitamente por el usuario tras ver el patrón de 3 rondas seguidas —
+  no una continuación automática): confirmó que el mecanismo real se sostiene limpio en las
+  cuatro rondas (transcript real, `--compare`, las 6 suites, registro de decisiones) — lo que
+  seguía rompiendo eran números que no reconciliaban entre `CHANGELOG.md` y
+  `.goalspec/checkpoint.md` (arreglado arriba en un solo pase, no archivo por archivo) y un
+  comentario de test que reclamaba una garantía que ese caso puntual no demostraba (agregado
+  `checkpoint-03`, que sí discrimina). `test/README.md` seguía sin documentar
+  `checkpoint-01`..`03` — sección agregada.
+- Las 6 suites (`gate-branches.py`, `terminal-precheck-branches.py`, `verdict-nudge-branches.py`,
+  `usage-budget-branches.py`, `external-adversary-branches.py`, `decompose-nudge-branches.py`) en
+  exit code 0, verificado en cada una de las 4 rondas.
+
 ## [0.31.0] - 2026-07-30
 
 **Hallazgo 3 del audit nesquitmx (Media prioridad): verbosidad por turno** — el ejecutor

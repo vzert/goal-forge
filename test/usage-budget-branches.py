@@ -56,6 +56,16 @@ CASES = [
     ("05-not-enabled-silent", False, 95.0, SPEC, {}, "silent"),
     # goalspec conditionality: no `## Goal-spec` in the run -> not our business
     ("06-no-goalspec-silent", True, 95.0, NO_SPEC, {}, "silent"),
+    # Regression pin (goal-adversary round 2/3, 2026-08-01): the goal-spec precondition above is
+    # blind to a spec written to disk (.goalspec/checkpoint.md via `Write`) instead of posted as
+    # chat text — the SAME blind spot gate-goal-close.sh had, fixed here with the same
+    # `ta.transcript_signals()` OR. Round 3 found this specific fix shipped with NO case
+    # exercising it (every other case here only ever sets last_assistant_message, never
+    # transcript_path) — so the fix could have been silently broken (e.g. CLAUDE_PLUGIN_ROOT not
+    # wired into this hook's own env) and nothing would have failed. `transcript_events` in extra
+    # is a signal run_case() below builds a real transcript file from.
+    ("07-goalspec-only-in-checkpoint-write-nudges", True, 95.0, "still working, no spec in chat",
+     {"transcript_events": [{"write": (".goalspec/checkpoint.md", SPEC)}]}, "nudge"),
 ]
 
 
@@ -79,7 +89,21 @@ def run_case(name, enabled, util, lam, extra, tmp):
         }, fh)
 
     payload = {"last_assistant_message": lam}
+    extra = dict(extra)  # copy — do not mutate the CASES tuple's dict across runs
+    transcript_events = extra.pop("transcript_events", None)
     payload.update(extra)
+    if transcript_events is not None:
+        tx_path = os.path.join(case_dir, "tx.jsonl")
+        with open(tx_path, "w", encoding="utf-8") as fh:
+            for ev in transcript_events:
+                content = []
+                if "write" in ev:
+                    fp, body = ev["write"]
+                    content.append({"type": "tool_use", "name": "Write", "input": {"file_path": fp, "content": body}})
+                if "text" in ev:
+                    content.append({"type": "text", "text": ev["text"]})
+                fh.write(json.dumps({"type": "assistant", "message": {"content": content}}) + "\n")
+        payload["transcript_path"] = tx_path
 
     env = dict(os.environ)
     # HOME too, not just GOAL_CONFIG_PATH: without it the resolver falls back to the developer's own
@@ -88,6 +112,10 @@ def run_case(name, enabled, util, lam, extra, tmp):
     env["HOME"] = case_dir
     env["GOAL_CONFIG_PATH"] = cfg_path
     env["CLAUDE_CONFIG_DIR"] = case_dir
+    # Required for the hook's own LIBDIR-based import of hooks/lib/terminal_actions.py to resolve —
+    # round 3 found this exact omission made an earlier draft of case 07 pass for the wrong reason
+    # (silently falling back to the text-only check, which case 07's spec-free lam cannot satisfy).
+    env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")
 
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True, env=env).stdout.strip()
