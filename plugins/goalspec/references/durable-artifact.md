@@ -1,5 +1,7 @@
 # The durable artifact — one file, one writer, for whoever picks the work up next
 
+**Contents**: [Where it lives](#where-it-lives) · [When it goes away](#when-it-goes-away) · [What goes in it](#what-goes-in-it) · [Who reads which section — and which sections carry authority](#who-reads-which-section-and-which-sections-carry-authority) · [Verbs — who may do what to it](#verbs-who-may-do-what-to-it) · [The worker brief points here](#the-worker-brief-points-here) · [Two adjacent practices, and exactly what is *not* covered](#two-adjacent-practices-and-exactly-what-is-not-covered)
+
 `SKILL.md`'s Execute step tells you to checkpoint a long run to disk, and its coverage-floor
 decomposition tells you to keep a few facts consistent across per-entity workers. Both are the
 same problem: **a fact that has to survive outside one agent's context**. This file gives that

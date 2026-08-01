@@ -1,5 +1,7 @@
 # A closed spec doesn't close the session
 
+**Contents**: [What happened](#what-happened) · [Why documented, not mechanical — and where that changed](#why-documented-not-mechanical-and-where-that-changed) · [What "targeted re-entry" means](#what-targeted-re-entry-means) · [What this does not cover](#what-this-does-not-cover)
+
 ## What happened
 
 A real session ran the full loop cleanly: a terse request became a grounded spec, the spec

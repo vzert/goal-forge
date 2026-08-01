@@ -1,5 +1,7 @@
 # Usage-budget setup — OFF by default, read this before enabling
 
+**Contents**: [An honest caveat: this endpoint is undocumented](#an-honest-caveat-this-endpoint-is-undocumented) · [What it does](#what-it-does) · [What it never does](#what-it-never-does) · [Why this needed its own ratify decision, not a default](#why-this-needed-its-own-ratify-decision-not-a-default) · [Enabling it](#enabling-it) · [Relationship to a statusline tool (e.g. ccstatusline)](#relationship-to-a-statusline-tool-eg-ccstatusline)
+
 Every other config key in this plugin (`sweep_files`, `adversary.backend`) reads project-local
 files or routes a subagent spawn. `usage_budget` is different in kind: enabling it makes
 `hooks/check-usage-budget.sh` read your **local Claude Code OAuth access token** and send it to

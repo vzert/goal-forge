@@ -1,5 +1,7 @@
 # External adversary setup — "the partner reviews, never the host"
 
+**Contents**: [When to use which](#when-to-use-which) · [Enabling the external backend](#enabling-the-external-backend) · [Contract](#contract) · [Safety rails](#safety-rails)
+
 By default the adversary is a `goal-adversary` **subagent**: fresh context — it hasn't seen your
 reasoning, so it can't inherit your conversation's blind spots. Since 0.5.0, for **terminal
 decisions** the executor also spawns it on a **different model tier** than its own (a per-spawn

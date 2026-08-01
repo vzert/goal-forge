@@ -6,6 +6,90 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.33.0] - 2026-08-01
+
+**Progressive disclosure, Fases A+C del plan ratificado (2026-08-01): extracción limpia de
+ejemplos/duplicados + fix del defecto five/six.** Origen:
+`memory/plans/plan-skillmd-progressive-disclosure.md` (Fases A+C+D ratificadas por el operador;
+Fase B — reorden por supervivencia a compactación — queda DRAFT, explícitamente NO incluida).
+Solo se movieron ejemplos y se borraron duplicados; **cero reglas normativas salieron del
+cuerpo** (restricción fijada en la interview: skill-creator marca mover rationale como su modo
+de falla, y 117/218 líneas eran correcciones de adversario). Medido: SKILL.md 10,833 → 10,285
+palabras de archivo (`wc -w`), 218 → 190 líneas.
+
+- **Fase A1 — `## Examples` (S13, 478w) → `references/spec-examples.md` (nuevo).** La sección
+  queda como puntero qué-contiene + cuándo-leerlo (regla oficial de progressive disclosure);
+  micro-puntero adicional en Q2 (scaffold) al par BAD/GOOD del minimal-fix lens — la única demo
+  concreta de esa lens, para que el vínculo regla↔ejemplo no quede huérfano.
+- **Fase A2 — borrada la tabla fleet-version de `## Adapting to your domain` (~110w)** —
+  duplicada (en mejor forma, con columna extra) en `references/adaptation-guide.md`; también la
+  frase "That derivation **is** the method…" (duplicada verbatim allá, líneas 17-18). Queda una
+  frase-puntero. Borrado de duplicados per learning "cifra/prosa con dos hogares: QUITALA de
+  uno, no los sincronices".
+- **Fase A3 — borrada la historia del pilot de la intro (~58w)** — literal en
+  `references/outcome-loop-beats-gates.md` ("The decisive experiment"); queda la conclusión
+  normativa ("the agent never framed its own goal") + puntero.
+- **Fase C — fix del defecto five/six (rule-surface stale preexistente).** `SKILL.md` decía
+  "five instrument defects" (×2, líneas 111/127) donde el catálogo
+  `references/instrument-validity-own-tools.md` dice "six" — exactamente el fallo que el propio
+  bullet describe. Cura: **cifra removida de SKILL.md** (single-source en el catálogo), no
+  sincronizada.
+- **Fase D — sub-ítem por sub-ítem** (D1 suites+compare, D3 quick_validate, D4 TOCs, D5
+  rule-surface: corridos; D2 eval-pilot: **diferido a después del ship por decisión del operador**,
+  modal respondido 2026-08-01, registrado como pendiente con dueño): frontmatter parseado como YAML
+  (name+description intactos, description NO tocada), `claude plugin validate` exit 0 (real,
+  sin `| tail`), las 6 suites en verde (gate-branches con casos stale + verdict-nudge +
+  usage-budget + external-adversary + decompose-nudge + terminal-precheck),
+  `test/gate-branches.py --compare` contra copia pre-edit en ambos modos (default y
+  `GOAL_GATE_ENFORCE=1`): cero diffs — el gate no se tocó y la medición lo confirma.
+  Rule-surface enumeration re-corrida sobre el diff final: cero carriers externos del contenido
+  movido (`## Examples`, tabla fleet, historia del pilot, cifra "five" — solo vivían en
+  SKILL.md); los 8 punteros `references/*.md` resuelven a archivo existente; los nombres de
+  sección citados por portadores (`gate-goal-close.sh:432` → S12, `interview/SKILL.md:112` →
+  `## Scope`) intactos; numeración de pasos de S16 intacta. Hallazgo preexistente (no
+  introducido, no tocado): `quick_validate.py` de skill-creator marca la description del
+  frontmatter con 1184 chars contra su máximo de 1024 — idéntica pre y post edit; el
+  frontmatter es intocable por restricción del plan (auto-trigger). Registrado como pendiente
+  propio en el ledger del proyecto (decisión de acortarla = del operador, con su propia medición
+  de triggering si se toma).
+- **Fase D4 — TOC agregado a los 4 references cuyo largo pre-TOC superaba las 100 líneas**
+  (`usage-budget-setup.md`, `mid-session-retrigger.md`, `external-adversary-setup.md`,
+  `durable-artifact.md` — el conteo vivo es `wc -l`, no este archivo): línea **Contents** con
+  anchors tras el H1 de cada uno. Hecho como corrección de la ronda 1 del
+  adversario (el backend externo detectó D4 del plan sin ejecutar — la enumeración "Alcance
+  exacto" de la sesión lo había omitido; el plan ratificado lo incluye, se ejecutó).
+- **Ronda 1 de adversario (pre-push, ambos backends, mismo árbol cdbd83a): break en ambos —
+  corregido, no waiveado.** Subagente (Sonnet 5, different-tier): incomplete=1 — el tally del
+  pendiente "(Futuro) Reducir el piso permanente de SKILL.md" en `memory/_pendientes.md` (que el
+  plan nombra como directamente tocado) moría en v0.31.0 sin filas para v0.32.0 ni esta release,
+  la primera reducción de la serie; reconciliado con ambas filas. Externo (codex/GPT-5):
+  ungrounded=1 incomplete=3 — "Fase D completa" sobre-reclamada vs el plan (D4 TOCs sin hacer, D2
+  ni corrido ni exento, finding de quick_validate sin dueño); curado con los TOCs de arriba, el
+  modal de D2 al operador, la fila de pendiente para la description, y esta precisión de wording.
+  La ronda 2 corre sobre el árbol corregido ANTES del push; su veredicto se cita en el turno del
+  ejecutor y en la memoria de sesión, no en este archivo — editar el CHANGELOG después del hold
+  rompería la igualdad árbol-verificado = árbol-pusheado.
+- **Fase D — acid test manual corrido contra el SKILL.md post-edit** (copia byte-idéntica al
+  working tree como skill project-local en dir descartable, `claude -p`, decisión plantada en
+  `open-decisions.md`, tarea con acción terminal "decide what to kill"; 20 turnos, 26 min,
+  exit 0, transcript en scratchpad de sesión). Observado estructuralmente (tool_use, no prosa):
+  `## Goal-spec` con criterios grounded + pre-mortem de instrument-validity (vía
+  `.goalspec/checkpoint.md`, el patrón documentado); 4b en fallback headless correcto
+  (least-irreversible, kills solo recomendados, "awaiting ratification" — `AskUserQuestion`
+  mecánicamente ausente en `-p`, confirmado por el propio adversario del run); sweep surfaceó la
+  decisión plantada (widget-C → migrate con owner path, no skipped); `goal-adversary` corrió 3
+  rondas en `sonnet` (regla different-tier viva; explorer en `haiku` — regla down-tier viva);
+  cierre por convergence guard **opción (a)**: 3 breaks consecutivos decrecientes
+  (`ungrounded=1 incomplete=1` → `unfalsified=1 incomplete=1` → `incomplete=1`), paró sin
+  completion-review y rechazó waivear un residuo accionable — la OTRA salida documentada, no la
+  del happy path del acid canónico; se declara tal cual. Backend externo: intentado y
+  permission-denied en headless, degradación declarada como subagent-only (honesta). El run
+  leyó `references/spec-examples.md` (junto con las demás references — un solo run no
+  discrimina puntero-seguido de lectura-blanket; eso es lo que mediría el piloto del
+  eval-harness de skill-creator, pendiente de decisión del operador).
+- Provenance del blame line-by-line (efímero en scratchpad) copiado a
+  `memory/research/2026-08-01-skill-history-blame.txt`.
+
 ## [0.32.0] - 2026-08-01
 
 **Adversario después del push, no antes: dos incidentes reales en producción (worker-cloudflare,
