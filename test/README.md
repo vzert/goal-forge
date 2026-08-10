@@ -65,8 +65,8 @@ subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, w
 it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
 from a passing case, which is exactly the trap the first draft of this suite fell into.
 
-Cases 12–20 and 24–26 cover the convergence floor. Several exist because they are the ones that can
-go wrong quietly:
+Cases 12–20, 24–26 and 41 cover the convergence floor. Several exist because they are the ones that
+can go wrong quietly:
 
 - **14** — the current turn re-quotes a verdict already recorded as the last transcript turn. The
   floor must NOT jump; one round counted twice is a false "three breaks, stop editing", which would
@@ -83,6 +83,32 @@ go wrong quietly:
 - **26** — three break rounds behind a turn that quotes both backends and closes on the `hold`:
   every declaration check passes, so before 0.18.0 the floor had no message to ride and the run got
   silence at streak 3. This is the case the floor's own branch exists for.
+- **18 / 41** — the parked-loop silence (0.36.0), from both sides. **18 was inverted** by that
+  release: at streak 3 with no close attempted *and no verdict in this turn*, the gate now says
+  nothing at all, because the count in a transcript never decays and a parked run never acquires a
+  completion-review — so the floor was re-firing on every later turn of a real session, including a
+  checkpoint the human had asked for. **41** is the control that keeps the silence from being
+  blanket: same streak, same absent declaration, but this turn carries a verdict of its own, so a
+  round ran here and the floor is said — once. Both carry an `expect`, asserted on every run.
+
+The section **`payload shape: at the floor, human only`** exists because the columns above cannot
+see the 0.36.0 fix at all. `run()` collapses every non-block payload to `advisory`, so removing
+`hookSpecificOutput.additionalContext` — the field the harness feeds back to the model, i.e. the one
+that costs the agent a turn — leaves every branch cell identical and `--compare` reports parity.
+That is precisely the defect a user reported watching the agent answer the hook *after* its own
+plain-language close. The four cases pin the floor emitting `systemMessage` only (in both modes) and
+below-the-floor keeping both fields and its teeth, plus a **600-char ceiling on the floor message**:
+that branch has been rewritten three times and twice grew back into a wall of model-facing prose, so
+"one line" is measured, not trusted. What this section still **cannot** prove is that the harness
+generates no follow-up turn — that is harness behavior, not hook output, and needs a live run.
+
+- **42** — the announcing turn when the Stop is ALSO re-entrant, from adversary round 2 on 0.36.0.
+  The first draft of the parked-loop silence let `stop_hook_active` swallow the announcement at the
+  threshold and then suppressed every later chance, so the human was never told. The guard is about
+  re-asking the *model*, and the floor branch carries nothing addressed to it, so the guard is now
+  deferred and skips that branch. 42 must never go silent; it fails against the first 0.36.0 draft.
+  Note **30** did not move: its shape is the parked-loop silence, so it stays silent for a different
+  reason than before — which is exactly why the fix needed a new case rather than an edited one.
 
 Cases **27–30** cover the re-entrant-Stop guard (0.18.1). **27** and **30** are the ones that failed
 before the fix; **28** (flag absent) and **29** (flag explicitly `false`) are controls — they are the

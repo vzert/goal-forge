@@ -64,8 +64,14 @@ except Exception:
 # 0. Re-entrant Stop: say nothing (0.18.1, mirrors step 0 of gate-goal-close.sh). This hook is
 #    advisory and never blocks, but "advisory" is not "inert": its payload carries
 #    hookSpecificOutput.additionalContext, which the harness feeds back to the model, so the turn is
-#    re-entered even though the stop was never prevented. Both Stop hooks in this plugin emit that
-#    shape, so guarding only the gate would leave the budget nudge able to re-ask on its own.
+#    re-entered even though the stop was never prevented. This hook always emits that shape, and so
+#    does the gate on every branch except one, so guarding only the gate would leave the budget
+#    nudge able to re-ask on its own. NOTE for whoever edits this comment: it lives INSIDE a
+#    single-quoted shell string, so an apostrophe here terminates that string and silently disables
+#    the hook — measured, 2026-08-10, on the word that used to sit before "convergence-floor".
+#    (Since 0.36.0 the convergence-floor branch of the gate emits
+#    `systemMessage` only and therefore defers this guard rather than applying it — that exception
+#    is specific to a payload that cannot re-ask, and does not travel to this hook, which can.)
 if data.get("stop_hook_active"):
     silent()
 

@@ -39,6 +39,17 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GATE = os.path.join(REPO, "plugins", "goalspec", "hooks", "gate-goal-close.sh")
 TMP = tempfile.mkdtemp(prefix="gate-branches-")
 
+# The floor message's opening words, and the only string in this suite that must track the gate's
+# own copy. It is Spanish because that message is (0.36.0 — see the branch's comment for why that is
+# a decision and not an oversight); matching it is exact, not a heuristic, precisely because the
+# message is a fixed string rather than a localized one. Reword the floor's opening and this moves.
+FLOOR_OPENERS = ("Piso de convergencia",   # the shipped opening
+                 "Convergence floor")      # pre-0.36.0, kept ONLY so --compare can see across the
+                                           # rename: with a single opener, every floor case reports
+                                           # conv="-" for the OLD gate and six branches read as
+                                           # regressions that are really the classifier's own change.
+                                           # This is not a second supported message; nothing emits it.
+
 SPEC = "## Goal-spec\nObjective: whatever.\n"
 V_BREAK_A = "[ADVERSARY-VERDICT: break ungrounded=1 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
 V_BREAK_B = "[ADVERSARY-VERDICT: break ungrounded=0 unfalsified=2 incomplete=0 autonomy-violations=0 unsafe=0]"
@@ -110,8 +121,13 @@ CASES = [
     # one turn quoting BOTH backends (subagent hold + external break) is ONE break round, and does
     # not reset the run — which is why the floor's wording says "no hold-ONLY turn between them"
     ("17-mixed-turn", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B, V_HOLD + "\n" + V_BREAK_C]),
-    # the floor must also reach the reminder a mid-loop agent actually sees (no completion-review yet)
-    ("18-absent-with-3", SPEC + "still working on it.", [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C]),
+    # Was: "the floor must also reach the reminder a mid-loop agent actually sees (no
+    # completion-review yet)". 0.36.0 INVERTED this cell to silent, deliberately — see the
+    # parked-loop-silence case at the end of this list for the observed session behind it, and case
+    # 41 for the turn shape that still speaks. `expect` is asserted on every run, not only under
+    # --compare, because the parity copy this was flipped against is a one-time artifact.
+    ("18-absent-with-3", SPEC + "still working on it.", [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C],
+     {"expect": "silent"}),
     # an explicit waiver short-circuits everything, floor included
     ("19-waiver-with-3", SPEC + WAIVER, [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C]),
     # the SAME verdict string in three separate turns collapses to 1 — a deliberate under-count
@@ -159,8 +175,10 @@ CASES = [
     # explicit false must behave exactly like absent, not like "key present -> skip"
     ("29-stop-hook-active-false", SPEC + "I did the work.", None,
      {"payload": {"stop_hook_active": False}, "expect": "advisory-or-block"}),
-    # the guard runs ahead of the convergence floor too: on a re-entrant Stop the floor has already
-    # been said once, and saying it again is the loop it exists to stop.
+    # Silent — but since 0.36.0 for a DIFFERENT reason, and the distinction matters: this shape (no
+    # close attempted, no verdict in the turn) is now the parked-loop silence, not the re-entrant
+    # guard, which no longer applies to the floor branch at all. Case 42 is the case that
+    # discriminates the two. The cell is unchanged, which is why it needed a sibling and not an edit.
     ("30-stop-hook-active-true-with-floor", SPEC + "still working on it.",
      [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C],
      {"payload": {"stop_hook_active": True}, "expect": "silent"}),
@@ -218,6 +236,26 @@ CASES = [
      {"expect": "silent"}),
     ("40-indented-marker", SPEC + MODEL_INDENTED + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
      {"expect": "silent"}),
+
+    # --- parked-loop silence (0.36.0) ---
+    # The other side of case 18. Same streak, same absent declaration — but THIS turn carries a
+    # verdict of its own, so a round actually ran here: the floor is news and must still be said,
+    # once. Case 18 is the turn that carries no verdict — the checkpoint, the report, the unrelated
+    # request — in a session whose loop is parked, and it is the shape that made the floor repeat
+    # on every remaining turn of a real session (2026-08-10), burying a checkpoint the human asked
+    # for. 18 asserts the silence; this asserts the silence is not blanket.
+    ("41-absent-with-3-lam-verdict", V_BREAK_C + "\nstill working on it.",
+     [SPEC, V_BREAK_A, V_BREAK_B], {"expect": "advisory-or-block"}),
+    # 42 came from adversary round 2 breaking the FIRST version of 41's silence, and it is the case
+    # that discriminates the re-entrant guard from the parked-loop silence. Same announcing turn as
+    # 41, but the Stop is ALSO re-entrant. Before the fix, step 0 swallowed this announcement and 18
+    # then suppressed every later chance, so the human was never told the floor was reached at all —
+    # a hole this release would have opened. The guard is about re-asking the MODEL, and the floor
+    # branch no longer carries `additionalContext`, so it has nothing here to prevent. This must
+    # never go silent: it fails against the first 0.36.0 draft.
+    ("42-floor-announced-even-when-reentrant", V_BREAK_C + "\nstill working on it.",
+     [SPEC, V_BREAK_A, V_BREAK_B],
+     {"payload": {"stop_hook_active": True}, "expect": "advisory-or-block"}),
 ]
 
 
@@ -256,10 +294,10 @@ def run(gate, name, lam, turns, extra=None):
         return "UNPARSEABLE", "-", "unparseable"
     decision = "block" if d.get("decision") == "block" else "advisory"
     m = re.search(r"\((completion-review:[^)]+|convergence-floor-only)\)", msg)
-    if "Convergence floor" not in msg:
+    if not any(o in msg for o in FLOOR_OPENERS):
         conv = "-"
     else:
-        conv = "CONV!" if msg.lstrip().startswith("Convergence floor") else "CONV"
+        conv = "CONV!" if msg.lstrip().startswith(FLOOR_OPENERS) else "CONV"
     return (m.group(1) if m else "NO-DETAIL"), conv, decision
 
 
@@ -434,6 +472,49 @@ def checkpoint_goalspec_suite(gate):
             for name, events, _ in CHECKPOINT_GOALSPEC_CASES]
 
 
+# --- payload shape: what the floor spends (0.36.0) ------------------------------------------------
+# Structurally separate from CASES/suite() for the same reason the staleness cases are: this asks a
+# question `run()` cannot express. `run()` collapses every non-block payload to "advisory", so
+# REMOVING `hookSpecificOutput.additionalContext` — the field the harness feeds back to the model,
+# i.e. the one that costs the agent a turn — is INVISIBLE to it and to `--compare`. That blindness
+# is not hypothetical: the defect 0.36.0 fixes was reported by a user watching the agent answer the
+# hook AFTER its own plain-language close, and every branch cell stayed identical through it.
+#
+# What these cannot prove: that the harness then generates no follow-up turn. That is harness
+# behavior, not hook output, and it needs a live observation — see CHANGELOG 0.36.0.
+FLOOR_TX = [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C]          # streak 3
+BELOW_TX = [SPEC, V_BREAK_A, V_BREAK_B]                     # streak 2
+PAYLOAD_SHAPE_CASES = [
+    # (name, lam, turns, enforce, want) — want: (has_system, has_additional_context, is_block)
+    # At the floor the gate speaks to the HUMAN and never to the model, in both modes.
+    ("floor-speaks-to-human-only", SPEC + CR_ADV, FLOOR_TX, False, (True, False, False)),
+    ("floor-speaks-to-human-only-ENFORCE", SPEC + CR_ADV, FLOOR_TX, True, (True, False, False)),
+    # Below the floor nothing changes: the advisory still re-enters the turn (that is its consumer),
+    # and the opt-in teeth still block. A fix that quietly muted these would be the real regression.
+    ("below-floor-still-re-enters", SPEC + CR_ADV, BELOW_TX, False, (True, True, False)),
+    ("below-floor-ENFORCE-still-blocks", SPEC + CR_ADV, BELOW_TX, True, (True, False, True)),
+]
+# The floor's message is one human-readable line. This ceiling is the mechanical half of that claim:
+# the branch has now been rewritten three times and twice grew back into a wall of model-facing
+# prose, so "keep it short" is pinned rather than trusted.
+FLOOR_MSG_MAX = 600
+
+
+def run_payload_shape(gate, name, lam, turns, enforce):
+    payload = {"last_assistant_message": lam, "transcript_path": transcript(turns, "shape-" + name)}
+    env = dict(os.environ)
+    env["GOAL_GATE_ENFORCE"] = "1" if enforce else ""
+    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=env).stdout.strip()
+    if not out:
+        return (False, False, False), 0
+    d = json.loads(out)
+    msg = d.get("systemMessage") or d.get("reason") or ""
+    return ((bool(d.get("systemMessage")),
+             bool(d.get("hookSpecificOutput", {}).get("additionalContext")),
+             d.get("decision") == "block"), len(msg))
+
+
 def run_stale(gate, name, make_repo_fn, events, lam):
     cwd = make_repo_fn()
     tx = stale_transcript(events, name)
@@ -513,6 +594,25 @@ def main():
         print("%-52s %-10s %-30s%s" % (name, got_decision, got_detail or "", "" if ok else "   <-- FAILS"))
     if ckpt_failures:
         print("\nCHECKPOINT-GOALSPEC FAILURES: %d\n  %s" % (len(ckpt_failures), "\n  ".join(ckpt_failures)))
+        return 1
+
+    # Payload shape — what the floor spends. Not part of --compare parity: the whole point is that
+    # parity cannot see this field. Runs before the live-git section so it needs no repo.
+    print("\n--- payload shape: at the floor, human only — no turn spent (0.36.0) ---")
+    shape_failures = []
+    for name, lam, turns, enforce, want in PAYLOAD_SHAPE_CASES:
+        got, msglen = run_payload_shape(a.gate, name, lam, turns, enforce)
+        ok = got == want
+        if not ok:
+            shape_failures.append("%s: want %s, got %s" % (name, want, got))
+        if name.startswith("floor-") and msglen > FLOOR_MSG_MAX:
+            ok = False
+            shape_failures.append("%s: floor message is %d chars, ceiling is %d — it grew back into "
+                                  "a wall" % (name, msglen, FLOOR_MSG_MAX))
+        print("%-38s sys=%-5s ctx=%-5s block=%-5s len=%-4d%s"
+              % (name, got[0], got[1], got[2], msglen, "" if ok else "   <-- FAILS (want %s)" % (want,)))
+    if shape_failures:
+        print("\nPAYLOAD-SHAPE FAILURES: %d\n  %s" % (len(shape_failures), "\n  ".join(shape_failures)))
         return 1
 
     # Staleness backstop — live-git cases, run against a.gate only (not part of --compare parity;

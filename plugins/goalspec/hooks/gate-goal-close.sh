@@ -52,13 +52,21 @@
 #           premature waiver, worse than not counting" — is retired with (c): over-counting now costs
 #           an unnecessary suggestion to stop and ask, which is cheap, so (a) and (b) trade in the
 #           direction the old rationale forbade only because the old message pointed somewhere worse.
+#     0.36.0 changed WHO it talks to and how often, which is the first change to this branch that is
+#     not a rewording of it: at the floor the payload is `systemMessage` ONLY (one line, to the
+#     human) with NO `additionalContext` — so the floor never re-enters the turn — and it stays
+#     entirely silent on a turn that neither attempted a close nor carried a verdict of its own (a
+#     checkpoint, a report, unrelated work in a session whose loop is parked). Both come from
+#     observed sessions, not from theory; the branch itself carries the evidence.
 #   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block. Since 0.18.1 that means
 #     AT MOST ONE block per user prompt, not "may not stop until the declaration is complete":
 #     the re-entrant guard at step 0 runs ahead of this branch, so the Stop that follows a block
 #     passes. Unbounded teeth were never the design; they were the runaway, and re-asking your own
 #     output until the harness cuts you off is not enforcement.
 #     0.19.0 measured what that left and states it without the adjective: BOTH branches send the
-#     same $MSG and BOTH re-enter the turn once per prompt (the default via additionalContext), so
+#     same $MSG and BOTH re-enter the turn once per prompt (the default via additionalContext) —
+#     true everywhere EXCEPT the convergence floor since 0.36.0, where neither branch re-enters and
+#     both emit the same human-facing line, so
 #     "one hard interruption that costs the agent a turn and cannot be ignored" — the wording here
 #     until 0.19.0 — described the default equally well and was not a description of the teeth.
 #     The whole measured delta is preventedContinuation:true instead of false, plus a systemMessage
@@ -81,7 +89,10 @@
 #     stop is not prevented, and the model is asked again anyway. That is the intended mechanism
 #     (the reminder has an agent-facing consumer; a `systemMessage` the agent never sees could not
 #     do the job), and it is safe only because step 0 bounds it: one re-ask per turn, then silence.
-#     Unbounded, it was the runaway. A
+#     Unbounded, it was the runaway. The convergence floor is the ONE branch that opts out of that
+#     mechanism entirely (0.36.0): there the reminder has no agent-facing job left — everything it
+#     said is already in SKILL.md's convergence guard — and re-entering cost the human the report
+#     the agent had just written. Floor -> `systemMessage` only. A
 #     transcript_path that cannot be opened or parsed is swallowed and the checks proceed on
 #     last_assistant_message alone — so under the opt-in GOAL_GATE_ENFORCE=1 an unreadable transcript
 #     can still end in a `block`. That is what opting into teeth means, not a fail-open violation
@@ -134,8 +145,20 @@ except Exception:
 #    chains each recorded false on the first Stop and true on the next, under two different
 #    prompt_id values. So this is one re-ask per prompt, then silence; the next thing the user says
 #    re-arms it. A guard that fired once per session would be a different and much worse trade.
-if data.get("stop_hook_active"):
-    fail_open()
+#
+#    0.36.0 narrows it to what it is actually for. Every word above is about RE-ASKING: the guard
+#    exists because the advisory payload carries `additionalContext`, the harness feeds that back to
+#    the model, and asking again the turn that your own asking produced is the runaway. The floor
+#    branch no longer carries that field — it emits `systemMessage` only, which reaches the human
+#    and cannot produce another Stop — so on that branch the guard has nothing to prevent, while it
+#    still costs something real: the SECOND adversary round on this release constructed the case
+#    where the Stop that first reaches the floor is itself re-entrant, the guard swallows the
+#    announcement, and the new parked-loop silence below then suppresses every later chance to say
+#    it, so the human is never told at all. That is a hole this release would have OPENED. So the
+#    guard is deferred rather than applied here: the pipeline runs, and the silence is applied at
+#    the payload, to every branch EXCEPT the floor. Nothing about the re-ask bound changes — the
+#    branches that re-enter the turn are silenced on a re-entrant Stop exactly as before.
+reentrant = bool(data.get("stop_hook_active"))
 
 # 1. Gather the assistant text for this turn.
 #    Prefer last_assistant_message (current turn, never lags). Best-effort append the transcript.
@@ -270,7 +293,16 @@ for t in reversed(turns):
     streak += 1
 
 def remind(detail):
-    print("REMIND|%s|%d" % (detail, streak)); sys.exit(0)
+    # The deferred re-entrant guard (step 0). Below the floor every payload carries
+    # `additionalContext` and would re-ask the turn that the last one produced — silence, exactly as
+    # 0.18.1 shipped it. At or above the floor the payload is `systemMessage` only, has no way to
+    # re-ask, and swallowing it can cost the human the one announcement they get.
+    if reentrant and streak < 3:
+        fail_open()
+    # Third field (0.36.0): does the CURRENT turn carry a structured verdict at all? The floor
+    # branch below uses it to tell "this turn ran a round of the loop" apart from "this turn did
+    # something else entirely while the loop sits parked" — see the parked-loop silence there.
+    print("REMIND|%s|%d|%d" % (detail, streak, 1 if lam_verdicts else 0)); sys.exit(0)
 
 # 5. Validate the completion-review declaration.
 # Operative completion-review = the current-turn declaration if present (last_assistant_message is
@@ -411,12 +443,17 @@ case "$RESULT" in
   *) exit 0 ;;
 esac
 
-# RESULT is REMIND|<detail>|<streak>. No detail token contains "|", so the split is unambiguous;
-# a malformed/absent streak field degrades to 0 (no convergence note) rather than erroring.
+# RESULT is REMIND|<detail>|<streak>|<current-turn-carries-a-verdict>. No detail token contains
+# "|", so the split is unambiguous; a malformed/absent streak field degrades to 0 (no convergence
+# note) and a malformed verdict flag degrades to 1 (the SPEAKING side of the floor branch below) —
+# both degrade toward the pre-0.36.0 behavior, never toward new silence on a bad parse.
 REST="${RESULT#REMIND|}"
-STREAK="${REST##*|}"
-DETAIL="${REST%|*}"
+DETAIL="${REST%%|*}"
+REST="${REST#*|}"
+STREAK="${REST%%|*}"
+LAMV="${REST#*|}"
 case "$STREAK" in ''|*[!0-9]*) STREAK=0 ;; esac
+case "$LAMV" in 0|1) : ;; *) LAMV=1 ;; esac
 
 case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
@@ -455,16 +492,66 @@ esac
 # old text apologised for it in prose ("read this INSTEAD of the reminder above, not in addition to
 # it") rather than fixing the control flow. The detail code is carried into the floor's first line
 # so the reminder it replaces stays greppable and the branch suite keeps its detail column.
+#
+# 0.36.0 changes WHO this branch talks to, and how often — the third repair of the same defect, and
+# the first one that touches the delivery instead of the copy. Two observed sessions (2026-08-09
+# paperclip, and the same run's checkpoint turn the next day) showed the remaining cost, which no
+# amount of rewriting the text could reach:
+#   (1) The default payload carries the message BOTH as `systemMessage` (to the user) and as
+#       `hookSpecificOutput.additionalContext` (fed back to the model, which continues the
+#       conversation). So the floor SPENDS A TURN: the agent had already written its plain-language
+#       close, the floor re-entered, and the agent answered it — leaving a meta-confirmation, not
+#       the summary, as the last thing the human reads. The 0.18.0 comment above already recorded
+#       that both times the floor fired in the worst runaway it RESUMED a loop the executor had
+#       stopped by itself; 0.18.0 rewrote what the floor SAYS and left the re-entry intact. Three
+#       firings, zero where the model-facing copy improved the outcome. It is dropped: at the floor
+#       this branch speaks to the HUMAN and never to the model. That is not a loss of guidance —
+#       the same content is in SKILL.md's convergence guard, which the model already carries.
+#   (2) The break count in a transcript never decays and a parked run never acquires a
+#       completion-review, so the floor fired AGAIN on every later turn of that session — including
+#       a turn that was a checkpoint the human asked for, burying that report under the same wall.
+#       Hence the parked-loop silence below: when this turn attempted no close (detail is plainly
+#       `absent`) and carried no verdict of its own, the loop ran no round here, the floor has
+#       nothing NEW to say, and saying it again only buries what the human did ask for.
+# The wall itself is replaced by one human-readable line. Everything the wall explained (de-dup
+# semantics, GOAL_GATE_ENFORCE suspension, why not to re-verify, the waiver's precondition) was
+# written for the model, and the model is no longer the audience of this branch.
 if [ "$STREAK" -ge 3 ]; then
-  MSG="Convergence floor (${DETAIL}).
-
-At least ${STREAK} verdict-carrying turns in this session each contain a \`break\`, and your most recent verdict-carrying turn is one of them. An earlier turn where one backend held does not reset that count (two backends disagreeing is one unconverged loop, not convergence); a hold in your LATEST verdict-carrying turn does, and would have silenced this. Verbatim re-quotes of one round are de-duplicated, so this can under-count; re-wording an old round can make it over-count. It is a floor, not your round count.
-
-STOPPING HERE IS A LEGITIMATE OUTCOME OF THIS METHOD, AND THIS FLOOR NEVER BLOCKS IT — not even under GOAL_GATE_ENFORCE=1, which is suspended for this branch precisely so that a loop that cannot converge is never mechanically forced to continue. Ending your turn WITHOUT a completion-review is a valid terminal state: say plainly what is unresolved, how many rounds you actually ran, and what you would do next, then hand the decision back to the human. That is not an evasion and not a waiver — you are not closing over the \`break\`, you are declining to keep going alone. The human is the exit the loop does not have.
-
-Why this, rather than \"address it and re-verify\": every corrective round rewrites the outcome, and freshly-written prose is the least verifiable material that exists — it IS the claim, with no ground truth to re-derive it against — so an adversary that resolves what it cannot verify as \`break\` is handed a new break by construction. Past three rounds the next break is likelier to be about your RECORD of the decision than about the decision. Re-verifying an outcome you just rewrote is not converging.
-
-If you do continue, continue on the design, not the wording: a genuinely different approach, or a genuinely different model/vendor, can be worth one more round; a round that only re-words is patching to green. And do not reach for \`[GOAL-CLOSE-WAIVED reason=…]\` as a way out of this — its precondition is unchanged and narrow (a residual break you have verified to be non-actionable, e.g. a limitation of the adversary's own environment rather than a defect in the outcome). If the break is actionable and you still cannot resolve it, the honest exit is the one above: stop, report, hand back."
+  # Parked-loop silence. Deliberately narrow, and both halves are required: `absent` means this
+  # turn made no close attempt (a turn closing over a break still gets told), and LAMV=0 means it
+  # quoted no verdict (a turn that ran a fresh round is news, and is said once). Anything else,
+  # including an unparseable flag, falls through to the line below.
+  #
+  # The first adversary round on this change attacked LAMV as a proxy: it reads only the assistant's
+  # own text, so a round whose verdict arrived in a TOOL RESULT and was never quoted looks like a
+  # turn that ran nothing, and goes silent. Correct about the mechanism, and it is the same
+  # epistemics as every other check in this file (the gate reads authored text; an unquoted verdict
+  # does not exist for it — which is why hooks/remind-quote-verdict.sh nudges you to quote one).
+  # What keeps it from hiding the floor is an invariant, not the proxy: STREAK counts trailing
+  # verdict-carrying turns, so if this turn contributes none, the same count was already >= 3 at the
+  # PREVIOUS Stop — and at that Stop the turn did carry the verdict, so the floor was said there,
+  # with LAMV=1. The floor therefore lands on the turn the count first reaches it, and the silence
+  # only ever suppresses REPEATS. Round 2 of the adversary then broke that invariant where it was
+  # weakest: if the ANNOUNCING Stop is itself re-entrant, the step-0 guard used to swallow it, and
+  # this silence suppressed every later chance — never announced. Fixed at the root rather than
+  # papered over: the guard is now deferred and does not apply to this branch (step 0), so the
+  # announcing Stop announces whether or not it is re-entrant. Cases 18 (silent repeat), 41
+  # (announcing turn) and 42 (announcing turn that is ALSO re-entrant) are the three sides. Case 30
+  # is NOT that third side, though its name suggests it: its shape has no verdict in the turn, so it
+  # is silent by the rule right below, not by the guard.
+  if [ "$DETAIL" = "completion-review:absent" ] && [ "$LAMV" = "0" ]; then
+    exit 0
+  fi
+  # In Spanish, and the ONLY user-facing string in this plugin that is: chosen by the author
+  # (2026-08-10) over an English line and over locale detection, because this is the one message
+  # whose entire audience is the human operator — everything else here is read by the agent. A
+  # hook has no model in its path and no locale in its payload, so "in the user's language" would
+  # have to be guessed from the transcript; a wrong guess costs more than a fixed choice. English
+  # installers get this one line in Spanish. `Piso de convergencia` is the literal the branch suite
+  # keys its CONV/CONV! column on — if this opening is ever reworded, that constant moves with it.
+  MSG="Piso de convergencia (${DETAIL}). Al menos ${STREAK} rondas de revisión independiente objetaron; nadie aprobó este trabajo. La decisión es tuya."
+  MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage": os.environ["MSG"]}))'
+  exit 0
 fi
 
 # Opt-in teeth: block the stop ONCE per user prompt — EXCEPT on the convergence floor, where the

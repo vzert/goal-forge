@@ -6,6 +6,99 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.36.0] - 2026-08-10
+
+**El floor de convergencia deja de hablarle al modelo y deja de repetirse.** Dos defectos
+reportados desde sesiones reales por el operador — el cierre de un run del agente paperclip
+(2026-08-09) y el turno de checkpoint del día siguiente sobre ese mismo run. Es el **tercer** cambio
+a esta rama y el primero que toca la *entrega* en vez del *texto*: 0.18.0 reescribió lo que dice,
+0.18.1 arregló que reemplazara al reminder en vez de colgarse debajo, y ambos dejaron intacto que
+re-entrara el turno.
+
+- **En el floor el payload es `systemMessage` solo — sin `hookSpecificOutput.additionalContext`.**
+  Ese campo es el que el harness devuelve al modelo, así que el floor **gastaba un turno**: el
+  agente ya había escrito su cierre en lenguaje llano (v0.35.0), el hook re-entró, y el agente
+  contestó — dejando una meta-confirmación, no el resumen, como lo último que lee el humano.
+  Evidencia acumulada: el comentario de 0.18.0 ya registraba que las **dos** veces que el floor
+  disparó en el peor runaway medido **reanudó un bucle que el ejecutor ya había detenido solo**;
+  esta sesión es la tercera. Tres disparos, cero donde el texto dirigido al modelo mejoró el
+  resultado. No se pierde guía: todo lo que decía el muro (semántica de de-dup, la suspensión de
+  `GOAL_GATE_ENFORCE`, por qué no re-verificar, la precondición del waiver) está en la guarda de
+  convergencia de `SKILL.md`, que el modelo ya carga.
+- **El muro de 5 párrafos es ahora una sola oración** (162 chars vs ~2,900). Estaba escrito en
+  segunda persona para el agente; para el operador era ruido que se interponía entre el resumen y la
+  respuesta. **Y está en español** — la única cadena de este plugin que lo está, decidida por el
+  autor sobre las otras dos opciones que se le presentaron (una línea en inglés, o detectar el
+  idioma): un hook no tiene modelo en su ruta ni locale en su payload, así que "en el idioma del
+  usuario" tendría que adivinarse del transcript, y una adivinanza equivocada cuesta más que una
+  elección fija. **Consecuencia declarada: quien instale el plugin en inglés recibe esta línea en
+  español.** Todo lo demás (skill, agente, hooks, docs) sigue en inglés.
+- **Silencio de bucle estacionado.** El conteo de `break` de un transcript no decae y un run
+  detenido nunca adquiere un completion-review, así que el floor volvía a dispararse en **cada
+  turno posterior de la sesión** — incluido un turno de checkpoint que el humano había pedido,
+  sepultándolo bajo el mismo muro. Ahora, en `streak>=3`, si el turno **no intentó cerrar** (detalle
+  `completion-review:absent`) **y no trae veredicto propio**, el gate no emite nada: no corrió una
+  ronda aquí, el floor no tiene nada nuevo que decir, y repetirlo sólo tapa lo que sí se pidió.
+  Ambas mitades son necesarias — un turno que cierra sobre un `break` sigue avisando (caso 12), y un
+  turno que corrió una ronda fresca lo dice una vez (caso 41 nuevo).
+- **Alcance declarado, no descubierto en revisión**: en `streak>=3` el floor **reemplaza** el
+  mensaje de *todos* los detalles, incluidos `closed-over-break` y `stale-terminal-action-after-close`.
+  Quitar `additionalContext` ahí se los quita también: en el floor el gate le habla al humano y
+  nunca al modelo. Esos detalles ya recibían texto del floor y no su corrección propia desde 0.18.1,
+  así que el delta real es "el modelo deja de oír el floor", no "deja de oír su corrección".
+- **`SKILL.md`**: la guarda de convergencia ya no le promete al agente un aviso que no va a llegar —
+  dice que el conteo va al humano y que en el floor nada lo va a interrumpir. Y la opción (a)
+  (parar y devolver) ahora manda escribir **el cierre en lenguaje llano también ahí**: una parada no
+  es un cierre, pero sí es el reporte, y es todo lo que el humano recibe. La sección del cierre en
+  lenguaje llano dejó de ser sólo "después del marker" — una parada no tiene marker que seguir.
+- **Suites**: `test/gate-branches.py` +1 caso (41) y el caso 18 **invertido a silencio** con
+  `expect` asertado en cada corrida; nueva sección `payload shape` con 4 casos + techo de 600 chars
+  sobre el mensaje del floor. Esa sección existe porque `--compare` es **ciego** a este fix:
+  `run()` colapsa todo payload no-`block` a `advisory`, así que quitar `additionalContext` deja las
+  41 celdas idénticas. Paridad contra la copia pre-edición en ambos modos: 1 rama cambiada
+  (`18-absent-with-3`, declarada con `--expected`), 0 inesperadas. Las 6 suites en exit 0.
+- **NO OBSERVADO EN VIVO** (declarado aquí a propósito, igual que v0.35.0 declaró la supervivencia a
+  compactación como no medida): que el harness **no genere** el turno siguiente. Las suites prueban
+  la forma del payload; que ausencia de `additionalContext` ⇒ ausencia de turno es comportamiento
+  del harness, no del hook. **Dueño y disparador, no "pendiente" a secas**: la primera sesión de
+  cualquier agente que instale 0.36.0 y llegue a `streak>=3` — no necesita variable de entorno (a
+  diferencia del pendiente de `GOAL_GATE_ENFORCE`), así que la observación es: tras el cierre en
+  lenguaje llano debe verse la línea del piso y **ningún mensaje del agente debajo**. La sesión de
+  paperclip que reportó el defecto es el caso natural. Registrado en `memory/_pendientes.md`.
+- **El guard de re-entrada (`stop_hook_active`) ahora se difiere en vez de aplicarse en el paso 0, y
+  no cubre la rama del piso.** Cambio de comportamiento, no de comentario. El guard existe porque el
+  payload advisory lleva `additionalContext` y re-preguntarle al turno que tu propia pregunta produjo
+  es el runaway (0.18.1). El piso ya no lleva ese campo, así que ahí el guard no tiene nada que
+  prevenir — y sí tenía algo que costar: **la ronda 2 del adversario construyó el caso donde el
+  `Stop` que alcanza el piso es él mismo re-entrante**, el guard se tragaba el anuncio, y el silencio
+  de bucle estacionado suprimía todas las oportunidades posteriores → **el humano nunca se enteraba**.
+  Era un hueco que esta versión habría *abierto*. Caso 42 nuevo lo fija; el caso 30 sigue en silencio
+  pero ahora por la regla del bucle estacionado, no por el guard (su comentario decía lo contrario y
+  se corrigió). Debajo del piso el guard se comporta exactamente igual que antes.
+- **Carrier stale que el grep mecánico no encontró y el adversario sí**: `check-usage-budget.sh:66`
+  afirmaba que "ambos Stop hooks de este plugin emiten `additionalContext`". Grepeé "convergence
+  floor", no `additionalContext` — la enumeración de superficies se hace por el **término de la
+  regla que cambió**, y el término aquí era el campo del payload. Corregido.
+- **Y al corregirlo se reprodujo un defecto conocido de la flota**: ese comentario vive **dentro** de
+  una cadena de shell entre comillas simples, así que un apóstrofo (`gate's`) la terminó y dejó el
+  hook mudo — 3 de 7 casos de `test/usage-budget-branches.py` en rojo. Cazado por la suite, no por
+  lectura. La advertencia quedó escrita en el propio comentario.
+- **Ciclo adversarial: 4 rondas, cierre en `hold` en la cuarta y en otro vendor.** R1–R3 con
+  GPT-5 (`codex exec`), las tres en `break`; R4 con `claude -p --model claude-sonnet-5` — opción (c)
+  del guard de convergencia (modelo/vendor distinto), no otra pasada de wording. R1 y R2 cambiaron
+  el **diseño** (el guard diferido, el invariante del anuncio, el carrier stale); **R3 no encontró
+  un solo hallazgo de diseño** — sus dos hallazgos fueron del *registro* (una cifra "41 branches"
+  que ya eran 42, y dos textos describiendo el comportamiento viejo), que es exactamente la forma
+  que el guard predice después de la ronda 3. R4 sostuvo con evidencia de lo que intentó: corrió
+  las 6 suites y la paridad en ambos modos, intentó construir la sesión donde el piso nunca se
+  anuncia y no pudo, y leyó el transcript para el chequeo de handoff muerto.
+- **Ronda 1 del adversario externo (GPT-5 vía `codex exec`) cambió el resultado, no sólo el texto**:
+  cazó que `LAMV` es un proxy sobre el texto autorado (una ronda cuyo veredicto sólo llegó en un
+  tool result se ve como turno sin ronda) — el invariante que lo hace seguro está ahora escrito en
+  la rama, no asumido — y cazó un **dead handoff real**: el checkpoint declaraba "si la línea dice
+  lo que el humano quiere leer" como decisión suya, y nunca se la había preguntado. Se preguntó, y
+  la respuesta es la que produjo el texto corto en español.
+
 ## [0.35.0] - 2026-08-09
 
 **El cierre en lenguaje llano, y el caso `UNKNOWN` del backend externo deja de ser silencioso.**

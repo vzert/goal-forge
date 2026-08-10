@@ -300,12 +300,22 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.18.0** attacks a measured
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.36.0** stops the convergence
+floor from talking over the human. At the floor the Stop hook now emits one human-readable line and
+nothing to the model, so it never costs the agent a turn — the plain-language close stays the last
+thing on screen — and it is silent altogether on a turn that neither attempted a close nor ran a
+round, so a parked loop stops re-firing it for the rest of the session. Both defects were reported
+from real sessions, and both survived two previous rewrites of the floor's *wording*: this is the
+first change to its *delivery*.
+
+Earlier: **v0.18.0** attacks a measured
 runaway — 22 adversary invocations to decide to change nothing, 19 of the 20 breaks landing on the
 *record* of the decision rather than the decision. The adversary is now spawned with **paths, not a
 narrated payload** (so each round stops manufacturing the surface that breaks the next), and the
-convergence floor stops pointing back into the loop: it says stopping and handing back to the human
-is legitimate, and never blocks it. The exit-set defect itself stays open.
+convergence floor stops pointing back into the loop: it said, to the agent, that stopping and
+handing back to the human is legitimate, and never blocked it. (That message no longer goes to the
+agent at all — v0.36.0 moved it to you and left the guidance in the skill; the floor's behavior today
+is described under "The completion gate" below.) The exit-set defect itself stays open.
 
 ## The completion gate
 
@@ -321,7 +331,8 @@ formal block rather than as advisory context, **at most once per user prompt** �
 guard added in 0.18.1 runs ahead of the teeth, so the Stop that follows a block passes. It is not
 "you may not stop until you close." Read the two payloads, not their adjectives: the default emits
 `systemMessage` + `hookSpecificOutput.additionalContext`, and the harness feeds that context back to
-the model, so **the default also re-enters the turn exactly once, with the same text**. The entire
+the model, so **the default also re-enters the turn exactly once, with the same text** — everywhere
+except the convergence floor, which since v0.36.0 re-enters in neither mode. The entire
 measured delta is that the Stop record carries `preventedContinuation:true` instead of `false`, and
 that the block payload now also sets `systemMessage` (until 0.19.0 it omitted that field, which made
 opting into teeth strictly *worse* than the default in one user-facing respect).
@@ -336,10 +347,19 @@ shipped — see the 0.19.0 CHANGELOG entry for the evidence bar it has to clear 
 
 The gate also carries a **convergence floor**: when at least three verdict-carrying turns each
 contain a `break` and the most recent one is among them, it says so — on its own branch if nothing
-else objected — and tells the agent that **stopping is legitimate**: end the turn with no
-completion-review, say what is unresolved and how many rounds it ran, and hand the decision back to
-you. It never blocks that, not even under `GOAL_GATE_ENFORCE=1`, which is suspended on this one
-branch: "you may not stop until you close" plus "you may not close over a break" is an unterminable
+else objected. Since **v0.36.0** it says it *to you, in one line (in Spanish — the plugin's only
+localized string, and a deliberate choice: see CHANGELOG 0.36.0), and never to the agent*: the floor
+is the one branch whose payload carries nothing addressed to the model (no
+`hookSpecificOutput.additionalContext`), because that field is what made the agent answer the hook
+after its own plain-language close, so the summary stopped being the last thing you read. What is
+verified is the payload; that the harness then generates no follow-up turn is the expected
+consequence and is declared unobserved in CHANGELOG 0.36.0 until a live session shows it. It
+is also silent on a turn that neither attempted a close nor ran a round — a checkpoint, a report,
+an unrelated request — since a parked loop otherwise re-triggered it on every remaining turn of the
+session. What the floor used to tell the agent (that **stopping is legitimate**: end the turn with
+no completion-review, say what is unresolved and how many rounds it ran, and hand the decision back
+to you) now lives only in the skill, which the agent already carries. It never blocks that, not
+even under `GOAL_GATE_ENFORCE=1`, which is suspended on this one branch: "you may not stop until you close" plus "you may not close over a break" is an unterminable
 loop, and mechanizing it was the failure this floor exists to end. **v0.20.0** gave the agent a
 second, non-mechanical way to reach that same exit — a round cap *you* fix in writing before it
 starts, your cost call, not a judgment it makes mid-run — but the gate itself still only counts the
