@@ -6,6 +6,50 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.35.0] - 2026-08-09
+
+**El cierre en lenguaje llano, y el caso `UNKNOWN` del backend externo deja de ser silencioso.**
+Motivado por dos auditorías de sesiones reales del mismo día (`memory/research/audit-seo-agent-goalspec-usage-2026-08-09.md`,
+`memory/research/audit-ppc-agent-goalspec-reporting-2026-08-09.md`), y ratificado por el operador,
+que además fijó la forma: preguntas, no encabezados, y al final del turno.
+
+- **Nuevo: `## The plain-language close`** en `SKILL.md`, colocado temprano en el archivo con la
+  intención de sobrevivir a la auto-compactación (**no medido**: no había tokenizer disponible;
+  ver `references/plain-close.md` §"Known limits"). Seis preguntas fijas, en el idioma del usuario, dos líneas cada una, después del
+  marker de cierre y sin nada debajo: qué quedó listo / qué no se hizo y por qué / **qué cambió que
+  es difícil de deshacer** / qué sigue y cuándo / **¿necesitas decidir algo?** / ¿se puede dar por
+  cerrado? Las dos en negritas las agregó el ciclo adversarial: son no-daño (principio 5) y
+  autonomía (principio 4) hechos legibles para un lector no técnico. Racional, evidencia y límites
+  conocidos en `references/plain-close.md` (nuevo).
+- **Carrier heredado reconciliado, no dejado huérfano**: la regla de v0.31.0 ("one line out, not a
+  recap") ahora declara explícitamente que gobierna los turnos de medio run, no el cierre. Lo cazó
+  la ronda 2 del adversario externo — sin eso se shippeaban dos instrucciones opuestas.
+- **`external-adversary.sh`: el caso id-`UNKNOWN` ya no es silencioso.** El hook solo avisaba
+  cuando faltaba la línea `[ADVERSARY-MODEL:]` entera; cuando el partner se nombraba pero reportaba
+  su id como `UNKNOWN` (observado **6/6 rondas** con `codex` el 2026-08-09, y es la respuesta
+  honesta: un modelo rara vez puede leer su propio snapshot) el hook no decía nada, y el ejecutor
+  enfrentaba el caso más común sin guía. Ahora nombra la regla que ya existe —
+  `gate-goal-close.sh` **rechaza** `model=different` respaldado por un id `UNKNOWN` y pide
+  `model=same`, el degradado honesto — e imprime qué comando y binario ejecutó, **declarando que
+  eso NO prueba el vendor** (un wrapper, un adapter o `env`/`bash` como primera palabra pueden
+  frontear cualquier modelo). **Deliberadamente NO es un resolvedor de ids más listo ni una tercera
+  forma de gramática**: la primera se rompió 5 rondas seguidas, y la segunda contradecía a su
+  propio consumidor — la cazó la ronda 4 del adversario, después de que yo ya la había escrito.
+- **Tests**: `test/external-adversary-branches.py` **+4 casos** — `12-model-id-unknown` (dispara),
+  `13-model-id-resolved-silent` (un id resuelto sigue silencioso), `14-model-id-unknown-via-wrapper`
+  (wrapper real vía `bash <stub>`; exige que el bin reportado sea el intérprete, para que el texto
+  no se lea como prueba de vendor) y `15-model-id-unknown-bracketed-name` (nombre con corchetes: la
+  captura `MODEL_LINE` trunca en el primer `]`, así que la condición se evalúa contra la línea
+  cruda — sin esto el hook quedaba mudo en una forma que el gate sí juzga, su caso 33). Las 11 ramas
+  previas quedaron idénticas contra el hook pre-edición; las 6 suites en exit 0.
+- **Límite conocido, declarado y no perseguido**: en formas *decoradas* de la línea
+  `[ADVERSARY-MODEL:]` (envuelta en negritas o code span, o con texto después del `]`) el gate ya
+  rechaza `model=different` mientras el hook permanece silencioso. Es conducta preexistente, no una
+  regresión de esta versión, y **cerrar ese producto cruzado exigiría el "matcher más listo" que
+  este repo ya vio romperse 5 rondas seguidas**. La palanca real es la que el gate ya usa: pedir la
+  línea sin decorar. Documentado aquí para que nadie lea la equivalencia hook↔gate como total. Las 11 ramas previas
+  quedaron idénticas (comparación contra el hook pre-edición); las 6 suites en exit 0.
+
 ## [0.34.0] - 2026-08-01
 
 **Progressive disclosure, Fase B variante (b) — supervivencia a compactación: S11+S12 suben al

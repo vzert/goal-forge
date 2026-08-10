@@ -92,7 +92,7 @@ skill and the hooks use.
   context, pass a `model` override targeting a different tier (above Sonnet-class → `sonnet`;
   Sonnet-class or below → `opus`), and trust the adversary's `[ADVERSARY-MODEL: …]` self-report,
   never the parameter you passed (harnesses fall back silently). Same or UNKNOWN → the verdict
-  still counts, but disclose it as same-model. For a non-terminal claim, same-model is
+  still counts, but disclose it as `model=same`. For a non-terminal claim, `model=same` is
   acceptable — still disclose it.
 
 ## 5. Report the verdict — verbatim, then judge it

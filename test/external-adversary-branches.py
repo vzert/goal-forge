@@ -31,6 +31,13 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "external-adversary.sh")
 
 MODEL = "[ADVERSARY-MODEL: GPT-5 / gpt-5]"
+# Same shape, but the partner could not resolve its own snapshot — the honest answer from most
+# CLIs, and what codex returned 6/6 rounds on 2026-08-09. Pins the third branch (0.35.0).
+MODEL_UNKNOWN = "[ADVERSARY-MODEL: GPT-5 / UNKNOWN]"
+# Bracketed name + UNKNOWN id: the shape gate-goal-close.sh rules on in its case 33. The hook's
+# MODEL_LINE capture stops at the first "]", so the branch must test the RAW line or it goes silent
+# on a form its own consumer already rejects.
+MODEL_UNKNOWN_BRACKET = "[ADVERSARY-MODEL: Claude [x] / UNKNOWN]"
 HOLD = ("[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 "
         "autonomy-violations=0 unsafe=0]")
 FILLED_RE = re.compile(r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+")
@@ -97,7 +104,28 @@ CASES = [
     # Outside ANY git repo there is no root to resolve (the recorded Fase 1 incident class:
     # codex refusing a scratchpad as untrusted) — the hook must warn on stderr, not fix it.
     ("11-outside-any-repo", "STUB_PWD", {}, "WORKDIR", "pass+warned"),
+    # 0.35.0 — id UNKNOWN is neither "no self-report" nor a resolved id. Before this branch the
+    # case was SILENT, so the executor had to over- or under-claim independence. It must now warn
+    # with the qualifier, and must NOT be mistaken for the no-self-report branch (05/04).
+    ("12-model-id-unknown", NOISE + MODEL_UNKNOWN + "\n" + BULLETS + HOLD + "\n", {}, None,
+     "pass+idunresolved"),
+    # Guard the discrimination in the other direction: a REAL id must stay silent on this branch.
+    ("13-model-id-resolved-silent", NOISE + MODEL + "\n" + BULLETS + HOLD + "\n", {}, None,
+     "pass"),
+    # A REAL wrapper fronting the partner (STUB_WRAP is executed via `bash <stub>`, so the leading
+    # word the hook resolves is `bash`, not any vendor binary). Pins that the branch fires and that
+    # the reported bin is the wrapper — which is exactly why the text must not read as vendor proof.
+    ("14-model-id-unknown-via-wrapper", "STUB_WRAP", {}, None, "pass+idunresolved+wrapperbin"),
+    # Bracketed model name + UNKNOWN id — silent before the raw-line fix; gate case 33 covers it.
+    ("15-model-id-unknown-bracketed-name",
+     NOISE + MODEL_UNKNOWN_BRACKET + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+idunresolved"),
 ]
+
+# A real wrapper script: consumes the prompt on stdin and emits the UNKNOWN-id transcript. Invoked
+# as `bash <stub>`, so the leading word the hook resolves with `command -v` is the INTERPRETER —
+# which is the point: what ran is not evidence of which vendor answered.
+STUB_WRAP = ("#!/usr/bin/env bash\ncat >/dev/null\ncat <<'WRAPEOF'\n"
+             + MODEL_UNKNOWN + "\n" + BULLETS + HOLD + "\nWRAPEOF\n")
 
 PAYLOAD = "goal-spec: /nonexistent/spec.md\noutcome: /nonexistent/outcome.md\n"
 
@@ -114,12 +142,22 @@ def classify(res, case_name):
         "pass" if FILLED_RE.search(out) else "no-verdict")
     if "no [ADVERSARY-MODEL:] self-report" in err:
         branch += "+nomodel"
+    elif "NOT an exact id" in err:
+        # The branch must (a) name the gate's ruling so the hook cannot contradict its own consumer,
+        # and (b) refuse to launder the resolved first argument into a vendor claim. A warning that
+        # drops either half re-creates the over/under-claim it exists to prevent.
+        ok = "write model=same" in err and "NOT proof of vendor" in err
+        branch += "+idunresolved" if ok else "+idunresolved-badguidance"
     if case_name.startswith("08"):
         branch += "+tmpdir-rw" if "STUB-TMPDIR-WRITABLE=yes" in out else "+tmpdir-ro"
     if case_name.startswith("09"):
         m = re.search(r"STUB-PWD=(.+)", out)
         seen = os.path.realpath(m.group(1).strip()) if m else "?"
         branch += "+root" if seen == os.path.realpath(REPO) else "+cwd:" + seen
+    if case_name.startswith("14"):
+        # The resolved bin must be the WRAPPER interpreter, never a vendor binary — that is the
+        # whole point of refusing to read `command -v` as vendor evidence.
+        branch += "+wrapperbin" if re.search(r"bin='[^']*/bash'", err) else "+notwrapper"
     if case_name.startswith("11"):
         branch += "+warned" if "not inside any git repo" in err else "+silent"
     return branch
@@ -132,10 +170,11 @@ def suite(hook, workdir):
         env.pop("GOAL_ADVERSARY_ACTIVE", None)
         env.pop("GOAL_ADVERSARY_CMD", None)
         env.pop("GOAL_CONFIG_PATH", None)
-        if transcript == "STUB_TMPDIR" or transcript == "STUB_PWD":
+        if transcript in ("STUB_TMPDIR", "STUB_PWD", "STUB_WRAP"):
             stub = os.path.join(workdir, "stub-" + name + ".sh")
             with open(stub, "w") as f:
-                f.write(STUB_TMPDIR if transcript == "STUB_TMPDIR" else STUB_PWD)
+                f.write({"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD,
+                         "STUB_WRAP": STUB_WRAP}[transcript])
             env["GOAL_ADVERSARY_CMD"] = "bash " + stub
         elif transcript is not None:
             fixture = os.path.join(workdir, "out-" + name + ".txt")

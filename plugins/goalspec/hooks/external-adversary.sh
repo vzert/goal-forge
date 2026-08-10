@@ -228,6 +228,40 @@ fi
 # claim, and silence here is how a degraded pass gets read as an independent one.
 if [ -z "$MODEL_LINE" ]; then
   echo "external-adversary: partner returned no [ADVERSARY-MODEL:] self-report — independence UNVERIFIED; report model=same in the completion-review, not model=different." >&2
+elif printf '%s\n' "$OUT" | grep -E '\[ADVERSARY-MODEL:' | tail -1 \
+     | grep -qiE '/[[:space:]]*(UNKNOWN|N/A)?[[:space:]]*\]?[[:space:]]*$'; then
+  # Tested against the RAW last line, not $MODEL_LINE: that capture stops at the first "]", so a
+  # bracketed model name ("[ADVERSARY-MODEL: Claude [x] / UNKNOWN]") truncates before the id and
+  # this branch would stay silent on a form gate-goal-close.sh explicitly rules on (its case 33).
+  # Hook and consumer must not diverge on a shape the consumer already tests.
+  # KNOWN GAP, on purpose: decorated lines (bold/code-span wrapping, or text after the "]") still
+  # go silent here while the gate still rejects them. Closing that cross-product means the smarter
+  # matcher this project already watched fail 5 rounds running; the lever is the same one the gate
+  # uses — demand the line undecorated — not a cleverer regex.
+  # The partner named itself but could not resolve its own exact id. Observed 6/6 rounds with the
+  # `codex` CLI (2026-08-09) — and it is the honest answer, not a partner defect: a model generally
+  # cannot read its own snapshot id from inside its context. Before this branch existed the case was
+  # SILENT: only a wholly ABSENT [ADVERSARY-MODEL:] line said anything, so the executor met the
+  # commonest real case with no guidance and either overclaimed independence or dropped it.
+  #
+  # Deliberately NOT a smarter id resolver, and deliberately NOT a third grammar: matching model ids
+  # out of agent-authored text is a proxy with no floor (that design broke 5 rounds straight; the
+  # design was ungameable, not the wording), and gate-goal-close.sh already RULES on this exact case
+  # — an UNKNOWN self-report cannot back `model=different`, and the honest degrade is `model=same`.
+  # A hook that told you to write anything else would contradict its own consumer (caught in review,
+  # 2026-08-09 r4). So this branch adds no new claim; it only ends the silence and points at the
+  # existing rule, plus the one fact this script KNOWS rather than infers: what it executed.
+  _EXT_BIN=$(command -v "${EXT_CMD%% *}" 2>/dev/null || echo "${EXT_CMD%% *} (not on PATH)")
+  {
+    echo "external-adversary: partner self-reported a name but NOT an exact id (\"$MODEL_LINE\")."
+    echo "  Per gate-goal-close.sh, an UNKNOWN id cannot back model=different — write model=same in"
+    echo "  the completion-review. That is the honest degrade, not a defect, and not a claim that"
+    echo "  the same model reviewed you."
+    echo "  What this host actually executed:  cmd='$EXT_CMD'  bin='$_EXT_BIN'"
+    echo "  That is a resolved first argument, NOT proof of vendor: a wrapper, an adapter script, or"
+    echo "  'env'/'bash' as the leading word can front any model. If the difference is real and you"
+    echo "  want it on the record, say so in PROSE next to the marker — never by upgrading the field."
+  } >&2
 fi
 
 # Bare-verdict floor: a verdict with NO evidence of work above it (no bullets, no ground-truth —
