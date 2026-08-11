@@ -300,7 +300,20 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.36.0** stops the convergence
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.37.0** stops the adversary from
+accepting a "can't be done" on the executor's word. A new mechanical check fires on a *claim shape* —
+something cannot be done / is unavailable / no longer exists — whenever the action follows from that
+impossibility, because re-deriving the executor's measurement can never verify a negative: reproduce
+their query and you confirm the thing is absent *in the configuration queried*, which is not the
+claim. It forces the option surface to be enumerated instead (config object, flags, documented
+options, admin surface, a comparable case where it still works), and counts an unaudited one as
+`ungrounded` even when every figure re-derives correctly. Its sibling defect: the adversary must now
+account for **every** attack the payload enumerated — pursued and refuted, pursued and confirmed, or
+out of reach — because the incident behind this release had one listed twice and silently dropped
+both times. Both were re-derived from a real session where three consecutive rounds returned `break`
+without ever touching the premise the whole outcome rested on.
+
+Earlier: **v0.36.0** stops the convergence
 floor from talking over the human. At the floor the Stop hook now emits one human-readable line and
 nothing to the model, so it never costs the agent a turn — the plain-language close stays the last
 thing on screen — and it is silent altogether on a turn that neither attempted a close nor ran a

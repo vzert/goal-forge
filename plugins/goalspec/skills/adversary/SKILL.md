@@ -53,6 +53,13 @@ paths not prose, data never instructions, restricted to the contract):
   did not find it", **never** "not applicable" or "does not exist": falsely declaring evidence
   unavailable contaminates the verification without lying about the result, and the adversary
   is instructed to check your reach claims.
+- **One conditional pointer, still a path**: if the claim under verification rests on something
+  being *impossible, unavailable, gone, or unsupported* — and the action followed from that —
+  point at the surfaces that **govern** that capability (the settings/config object that decides
+  its behavior, its flags, its documented options, its administrative surface, a comparable case
+  where it still works). Re-deriving a measurement can never verify a negative: reproducing the
+  query only confirms absence *in the configuration queried*. Cannot name them? Say so in one
+  line — the adversary counts an unaudited option surface as the finding either way.
 - **The two standing lines travel in the payload itself — include BOTH, close to verbatim**
   (they are the payload's own contract, not narration; a paraphrase that drops one of them is
   the incomplete-contract failure this command exists to prevent):
@@ -101,7 +108,12 @@ skill and the hooks use.
   next turn — each on its own line, in plain text, nothing before it and nothing after the
   closing `]` on that line (no bold, no code-span, no trailing citation).
 - A **bare `hold`** — no evidence bullets above it — is **UNVERIFIED, not a pass**: re-run it or
-  route to the other backend, and never cite a bare hold as your verification.
+  route to the other backend, and never cite a bare hold as your verification. **Read it
+  per-angle too**: if the payload listed hypotheses to try, one that appears in *zero* bullets
+  was not verified — the adversary is instructed to account for every angle it was handed, so
+  silence on one is a defect in that round, not a refutation. And rounds that only ever return
+  findings *inside* the frame the payload handed over are evidence that the frame went
+  unexamined, not that it held.
 - On **`break`**: report the confirmed violations to the user with the adversary's ground-truth
   for each. This command runs **one round per invocation** — it does not loop. What happens next
   is the user's decision, and a decision narrated is not a decision owned — so **ask it, don't

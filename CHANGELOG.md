@@ -6,6 +6,66 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.37.0] - 2026-08-11
+
+**El adversario deja de aceptar un "no se puede", y deja de abandonar ataques en silencio.** Dos
+defectos distintos, ambos re-derivados del transcript de un run real del agente paperclip
+(`d40a10dc`, 2026-08-10) en el que **tres rondas seguidas de adversario externo devolvieron `break`
+sin que ninguna tocara la premisa que sostenía todo el outcome**. El ejecutor retiró un gate
+declarándolo irreparable porque "el runtime dejó de emitir el dato"; el dato volvía activando un
+campo documentado en la configuración del adapter, que nadie abrió. Se documentó como irreparable en
+cuatro sitios antes de que el operador lo notara.
+
+- **Barrido de afirmación negativa — auditar el espacio de opciones, no sólo la medición**
+  (`agents/goal-adversary.md`, `## Mechanical checks`, y el prompt del partner externo). Se dispara
+  por **forma de la afirmación**, en cualquier dominio: algo *no se puede / no está disponible / ya
+  no existe / no está soportado*, **y** la acción se sigue de esa imposibilidad (un retiro, un stub,
+  una degradación, un workaround). Ahí el método del adversario se invierte contra él: **re-derivar
+  la medición del ejecutor no puede verificar un negativo** — reproduces su consulta y confirmas que
+  la cosa está ausente *en la configuración consultada*, que no es la afirmación. Obliga a enumerar
+  y nombrar las superficies que **gobiernan** la capacidad (el objeto de configuración, los flags y
+  modos, las opciones documentadas, la superficie administrativa, y cualquier caso comparable donde
+  siga funcionando), exige un **registro positivo de qué se descartó** (la ausencia de mención no es
+  un chequeo hecho), y trata como hallazgo el que el payload nunca apunte a esas superficies —
+  `ungrounded`, **incluso cuando todas las cifras del outcome re-derivan bien**, que es exactamente
+  el caso para el que existe. **Sin contador nuevo**: la gramática de 5 la fijan 11 carriers.
+  Ya existía una frase genérica que debió cubrirlo ("if you cannot verify a load-bearing claim,
+  treat it as unproven"); existía y no disparó en tres rondas — por eso ahora es un check mecánico
+  y no otra exhortación.
+- **Rendición de cuentas por ataque enumerado.** El mismo transcript muestra al ejecutor pidiendo
+  por escrito, en el payload de las rondas 2 **y** 3, que se atacara si el retiro era prematuro; las
+  salidas de esas rondas traen 2 y 4 bullets y **cero** que lo mencionen. Un abandono silencioso es
+  peor que no haberlo listado: el ejecutor lee el veredicto como si cubriera ese ángulo. Ahora cada
+  ataque enumerado vuelve como *perseguido y refutado* / *perseguido y confirmado* / *fuera de
+  alcance*, y la lista se declara **piso, nunca techo** — la escribe la parte cuyo encuadre el
+  adversario existe para desconfiar. Del lado del ejecutor (`skills/goalspec/SKILL.md` step 6,
+  `skills/adversary/SKILL.md` §5): un ángulo con cero bullets **no fue verificado**, y rondas que
+  sólo devuelven hallazgos *dentro* del encuadre entregado son evidencia de que el encuadre no se
+  examinó, no de que resistió.
+- **Puntero condicional en el contrato del payload** (step 6 y su restatement en el comando
+  `/goalspec:adversary`): cuando el outcome descansa en una imposibilidad, el payload apunta a las
+  superficies que gobiernan esa capacidad — sigue siendo *ruta, no narración*; no se argumenta la
+  afirmación, se entrega lo que la falsificaría.
+- **Cuatro carriers, no tres.** El barrido de superficies encontró que `skills/adversary/SKILL.md`
+  §3 restata el contrato del payload y habría quedado stale — la enumeración de carriers cazando su
+  propio caso.
+- **Cierre en lenguaje llano: llano no es vago.** Reporte del operador sobre el cierre de esta misma
+  sesión — *"alguien de fuera lo revisó"* no deja claro qué pasó. El defecto estaba en la regla, cuyo
+  propio ejemplo (*Say "nadie de fuera lo revisó", not "cero hold"*) prohibía la jerga **y de paso la
+  información**, incluida la cuenta de pasadas. La prueba ya no es "¿evité las palabras prohibidas?"
+  sino **"¿podría el lector decir, con sus palabras, qué se hizo y quién lo hizo?"**; los verificadores
+  vagos ("alguien", "se revisó") son el tell, y las cuentas llanas —cuántas pasadas, cuántas cosas
+  revisadas— son información, no jerga: la prohibición de *round counts* era sobre la contabilidad
+  interna del método (el piso de convergencia, los tallies del veredicto), nunca sobre decirle a un
+  humano cuántas veces se revisó algo de verdad.
+
+Verificación de este release: 6 suites en verde, `claude plugin validate` exit 0, `bash -n` del hook
+OK, `VERDICT_RE` sin tocar, frontmatter YAML de los 3 SKILL.md intacto. El adversario externo corrió
+sobre el árbol parchado **con el hook ya parchado** — y las dos reglas nuevas dispararon sobre el
+propio release: dio cuenta de los 5 ataques uno por uno, y aplicando el barrido de afirmación
+negativa encontró un consumidor real omitido en la enumeración de superficies del ejecutor
+(`hooks/lib/terminal_actions.py:229`). Corregido; la ronda siguiente sostuvo.
+
 ## [0.36.0] - 2026-08-10
 
 **El floor de convergencia deja de hablarle al modelo y deja de repetirse.** Dos defectos
