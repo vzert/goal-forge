@@ -105,7 +105,7 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
         pass
 text = lam_text + "\n" + "\n".join(tx_parts)
 # Text-only regex, same as the equivalent check in gate-goal-close.sh, and the SAME blind spot: a goal-spec
-# written to disk (.goalspec/checkpoint.md) instead of posted as chat text is invisible to it —
+# written to disk (.goalspec/checkpoint*.md) instead of posted as chat text is invisible to it —
 # confirmed live (goal-adversary round 2, 2026-08-01) as a stale carrier of this exact rule. `ta`
 # may be None (import failed); the OR degrades to the original text-only check, unchanged.
 _goal_spec_present = bool(re.search(r"(^|\n)#{1,6}\s*Goal-spec\b", text, re.I))
@@ -261,7 +261,8 @@ if isinstance(seven_u, (int, float)) and seven_u >= threshold:
 msg = (
     "[USAGE-BUDGET] Your Claude Code 5-hour usage window is at {:.0f}% (resets at {}).{} "
     "This is a real account ceiling, not context — if this task still has several rounds to go, "
-    "checkpoint state to .goalspec/checkpoint.md now (see SKILL.md Execute step) so a mid-round cutoff loses at most "
+    "checkpoint state to .goalspec/checkpoint-<session>.md now (see SKILL.md Execute step; one file per session, "
+    "never a shared fixed path) so a mid-round cutoff loses at most "
     "the in-flight round."
 ).format(five_u, resets, seven_note)
 

@@ -8,12 +8,24 @@ non-blocking Stop-hook nudge, never a gate (no `decision:block`, no GOAL_GATE_EN
 in this hook — that is a design property, not an omission, and case 01 below is the only guard this
 suite needs against a re-entrant loop, not against blocking).
 
-The signal the hook reads: `.goalspec/checkpoint.md` in the cwd, a `## Coverage-floor table`
-heading with >= 2 markdown-table data rows, and zero entity-worker `Task`/`Agent` tool_use blocks
-anywhere in the transcript. Checkpoint.md is optional-by-design (durable-artifact.md: "never create
-it speculatively"), so its mere presence with a populated table is already the agent's own claim of
->=2 tracked entities — this suite proves the row-count and tool_use-absence checks are both real,
-not a hardcoded "checkpoint exists -> nudge" (cases 04/05 are the controls for that).
+The signal the hook reads: a `.goalspec/checkpoint*.md` in the cwd THAT THIS SESSION WROTE (a
+Write/Edit tool_use for that exact path in this session's own transcript), a `## Coverage-floor
+table` heading with >= 2 markdown-table data rows, and zero entity-worker `Task`/`Agent` tool_use
+blocks anywhere in the transcript. The checkpoint is optional-by-design (durable-artifact.md: "never
+create it speculatively"), so its mere presence with a populated table is already the agent's own
+claim of >=2 tracked entities — this suite proves the row-count, ownership and tool_use-absence
+checks are all real, not a hardcoded "checkpoint exists -> nudge" (cases 04/05 are the controls for
+the last, 17/19/20 for ownership).
+
+CONTRACT CHANGE, 0.38.0 — the concurrency fix. Two concurrent sessions in one
+project used to clobber the single fixed path `.goalspec/checkpoint.md`; the file is now per-session
+and this hook decides ownership from the transcript. That means every pre-existing case in this file
+changed shape: each now emits a `Write` tool_use for the checkpoint it creates, because a checkpoint
+nobody in this session wrote is, correctly, no longer this hook's business. The cases whose
+EXPECTATION changed are none — 01-15 keep their expected cells, which is the no-regression check;
+what changed is the fixture they run against. Case 16's asserted message text DID change (the
+leftover-mitigation sentence it pinned described a mitigation that ownership now performs
+mechanically), and that is stated here rather than quietly re-pinned.
 
 Cases 07-09 pin a real break an adversary subagent caught live against this exact release: the
 adversary's own step-6 spawn is ALSO a Task/Agent tool_use, and step-6 explicitly directs the
@@ -86,12 +98,35 @@ Objective: whatever. No coverage-floor section at all.
 """
 
 
-def transcript_with(tool_calls):
+def transcript_with(tool_calls, writes=()):
     """Build a synthetic transcript JSONL: one assistant turn per tool_use block requested.
 
     tool_calls: list of (name, subagent_type_or_None) or bare name strings (subagent_type=None).
+    writes: list of (tool_name, file_path) emitted FIRST — this is how a session claims ownership
+        of a checkpoint under the concurrency fix. A checkpoint with no matching write here belongs
+        to somebody else (a concurrent session, a crashed run) and the hook must ignore it.
     """
     lines = []
+    for i, entry in enumerate(writes):
+        tool, path = entry[0], entry[1]
+        outcome = entry[2] if len(entry) > 2 else "ok"
+        tid = "toolu_w%d" % i
+        ev = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": tid, "name": tool,
+                                     "input": {"file_path": path}}]},
+        }
+        lines.append(json.dumps(ev))
+        # The paired result is what turns a REQUEST into an ACT. A denied Write is still a
+        # tool_use, so ownership that ignores the result counts a refusal as proof of writing --
+        # the defect an adversary round found in the sibling gate and rated unsafe there.
+        if outcome != "none":
+            lines.append(json.dumps({
+                "type": "user",
+                "message": {"content": [{"type": "tool_result", "tool_use_id": tid,
+                                         "is_error": outcome == "error",
+                                         "content": "denied" if outcome == "error" else "ok"}]},
+            }))
     for call in tool_calls:
         name, subagent_type = call if isinstance(call, tuple) else (call, None)
         input_ = {"subagent_type": subagent_type} if subagent_type else {}
@@ -149,25 +184,98 @@ CASES = [
     #     round on this exact release): "cannot determine whether decomposition happened" must
     #     resolve to silent, never to "assume it didn't happen -> nudge". ---
     ("15-missing-transcript-silent", CHECKPOINT_2ROW, "MISSING_TRANSCRIPT", {}, "silent"),
+
+    # --- ownership (the concurrency fix). The write-side half is a per-session filename; this is
+    #     the read-side half, and these are its controls. 17 is the incident itself: a concurrent
+    #     session's checkpoint sitting in the same working directory. 19 is the residual v0.29.0
+    #     accepted and left open (a leftover from a run that crashed and was never resumed) — now
+    #     closed by the same mechanism, at the legacy name, which is why it is pinned separately
+    #     rather than assumed to follow from 17. 18/21/22 are the twin controls proving ownership
+    #     does not just silence everything: same file, same table, ownership present -> nudge. ---
+    ("17-foreign-session-checkpoint-silent", CHECKPOINT_2ROW, [], {}, "silent",
+     {"cp_name": "checkpoint-other-session.md", "owned": False}),
+    ("18-owned-session-scoped-nudges", CHECKPOINT_2ROW, [], {}, "nudge",
+     {"cp_name": "checkpoint-mine.md"}),
+    ("19-crash-leftover-legacy-name-silent", CHECKPOINT_2ROW, [], {}, "silent",
+     {"owned": False}),
+    # A Write to a near-miss path must NOT confer ownership: the matcher is anchored on the
+    # `.goalspec/` directory component and on end-of-string, the same narrowness
+    # hooks/lib/terminal_actions.py needs to keep SKILL.md/CHANGELOG example text out of the gate.
+    # The decoys must EXIST and carry a >= 2-row table of their own, or this case passes for the
+    # wrong reason: a loose matcher would resolve a near-miss path to a file that is not there,
+    # skip it, and fall silent anyway -- green against the very implementation it must reject.
+    # With the decoys real, a loose matcher nudges and this case fails, which is the point.
+    ("20-near-miss-write-is-not-ownership", CHECKPOINT_2ROW, [], {}, "silent",
+     {"owned": False,
+      "decoy_files": ["docs/checkpoint-notes.md", ".goalspec/checkpoint.md.bak",
+                      ".goalspec/nested/checkpoint.md"],
+      "extra_writes": [("Write", "docs/checkpoint-notes.md"),
+                       ("Write", ".goalspec/checkpoint.md.bak"),
+                       ("Write", ".goalspec/nested/checkpoint.md")]}),
+    # Found by an external adversary round on this very change, by live-probing the hook rather
+    # than reading it: the path pattern alone accepts ANY `.goalspec/` below the cwd, while this
+    # hook's header and `references/durable-artifact.md` both say the cwd's own. A sub-package
+    # running its own goalspec loop is its own run. The checkpoint here is real, owned, and has a
+    # >= 2-row table — everything except being at the anchored location.
+    ("23-nested-goalspec-dir-is-not-the-cwd-checkpoint", None, [], {}, "silent",
+     {"decoy_files": ["sub/.goalspec/checkpoint-mine.md"],
+      "extra_writes": [("Write", "sub/.goalspec/checkpoint-mine.md")]}),
+    # A write this session ATTEMPTED but that failed or was denied is not a write. Same evidence
+    # rule as the sibling gate, where an adversary round rated the missing check unsafe; here the
+    # cost is only nudging about a file that is not ours.
+    ("24-denied-write-is-not-ownership", CHECKPOINT_2ROW, [], {}, "silent",
+     {"cp_name": "checkpoint-mine.md", "write_outcome": "error"}),
+    ("25-write-with-no-result-is-not-ownership", CHECKPOINT_2ROW, [], {}, "silent",
+     {"cp_name": "checkpoint-mine.md", "write_outcome": "none"}),
+    ("21-edit-confers-ownership", CHECKPOINT_2ROW, [], {}, "nudge",
+     {"cp_name": "checkpoint-mine.md", "write_tool": "Edit"}),
+    # The transcript records whatever path the tool was called with; a relative one must resolve
+    # against the cwd the hook runs in, or ownership silently never matches in a real session.
+    ("22-relative-write-path-confers-ownership", CHECKPOINT_2ROW, [], {}, "nudge",
+     {"cp_name": "checkpoint-mine.md", "relative_write": True}),
 ]
 
 
-def run_case(name, checkpoint_text, tool_calls, extra, tmp):
+def _write_checkpoint(case_dir, checkpoint_text, cp_name):
+    gs_dir = os.path.join(case_dir, ".goalspec")
+    os.makedirs(gs_dir, exist_ok=True)
+    path = os.path.join(gs_dir, cp_name)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(checkpoint_text)
+    return path
+
+
+def _ownership_writes(cp_path, opts):
+    """The (tool, path) writes that claim ownership of cp_path, per this case's options."""
+    writes = list(opts.get("extra_writes", []))
+    if opts.get("owned", True) and cp_path is not None:
+        path = os.path.join(".goalspec", os.path.basename(cp_path)) \
+            if opts.get("relative_write") else cp_path
+        writes.append((opts.get("write_tool", "Write"), path, opts.get("write_outcome", "ok")))
+    return writes
+
+
+def run_case(name, checkpoint_text, tool_calls, extra, tmp, opts=None):
+    opts = opts or {}
     case_dir = os.path.join(tmp, name)
     os.makedirs(case_dir, exist_ok=True)
 
+    cp_path = None
     if checkpoint_text is not None:
-        gs_dir = os.path.join(case_dir, ".goalspec")
-        os.makedirs(gs_dir, exist_ok=True)
-        with open(os.path.join(gs_dir, "checkpoint.md"), "w", encoding="utf-8") as fh:
-            fh.write(checkpoint_text)
+        cp_path = _write_checkpoint(case_dir, checkpoint_text, opts.get("cp_name", "checkpoint.md"))
+
+    for rel in opts.get("decoy_files", []):
+        decoy = os.path.join(case_dir, rel)
+        os.makedirs(os.path.dirname(decoy), exist_ok=True)
+        with open(decoy, "w", encoding="utf-8") as fh:
+            fh.write(CHECKPOINT_2ROW)
 
     if tool_calls == "MISSING_TRANSCRIPT":
         payload = {"transcript_path": os.path.join(case_dir, "does-not-exist.jsonl")}
     else:
         transcript_path = os.path.join(case_dir, "transcript.jsonl")
         with open(transcript_path, "w", encoding="utf-8") as fh:
-            fh.write(transcript_with(tool_calls))
+            fh.write(transcript_with(tool_calls, _ownership_writes(cp_path, opts)))
         payload = {"transcript_path": transcript_path}
     payload.update(extra)
 
@@ -181,13 +289,10 @@ def run_case_raw(name, checkpoint_text, tool_calls, tmp):
     needed for the one case (16) that checks message CONTENT, not just presence."""
     case_dir = os.path.join(tmp, name)
     os.makedirs(case_dir, exist_ok=True)
-    gs_dir = os.path.join(case_dir, ".goalspec")
-    os.makedirs(gs_dir, exist_ok=True)
-    with open(os.path.join(gs_dir, "checkpoint.md"), "w", encoding="utf-8") as fh:
-        fh.write(checkpoint_text)
+    cp_path = _write_checkpoint(case_dir, checkpoint_text, "checkpoint.md")
     transcript_path = os.path.join(case_dir, "transcript.jsonl")
     with open(transcript_path, "w", encoding="utf-8") as fh:
-        fh.write(transcript_with(tool_calls))
+        fh.write(transcript_with(tool_calls, _ownership_writes(cp_path, {})))
     payload = {"transcript_path": transcript_path}
     return subprocess.run(["bash", HOOK], input=json.dumps(payload),
                           capture_output=True, text=True, cwd=case_dir).stdout.strip()
@@ -196,25 +301,33 @@ def run_case_raw(name, checkpoint_text, tool_calls, tmp):
 def main():
     tmp = tempfile.mkdtemp(prefix="decompose-nudge-branches-")
     failures = []
-    for name, checkpoint_text, tool_calls, extra, expected in CASES:
-        got = run_case(name, checkpoint_text, tool_calls, extra, tmp)
+    for row in CASES:
+        name, checkpoint_text, tool_calls, extra, expected = row[:5]
+        opts = row[5] if len(row) > 5 else {}
+        got = run_case(name, checkpoint_text, tool_calls, extra, tmp, opts)
         ok = got == expected
         if not ok:
             failures.append((name, expected, got))
         print("{:<32} {:<8} {}".format(name, got, "" if ok else "  <-- FAIL, expected " + expected))
 
-    # --- 16: message CONTENT, not just nudge/silent (0.29.0 checkpoint-lifecycle fix). This fix's
-    # only mechanical surface on THIS hook is the advisory string -- the real fix is write-side
-    # (SKILL.md's close step now deletes the file it wrote; see durable-artifact.md "When it goes
-    # away"). Every case above collapses output to nudge/silent, so without this the new sentence
-    # would ship unasserted. ---
-    name16 = "16-message-names-leftover-mitigation"
+    # --- 16: message CONTENT, not just nudge/silent. Every case above collapses output to
+    # nudge/silent, so without this the message would ship unasserted.
+    #
+    # 0.29.0 pinned a sentence telling the human to delete the file if this session never wrote it
+    # -- the manual mitigation for a leftover the hook could not detect. Ownership now performs that
+    # check mechanically, so that sentence became false (the hook no longer nudges about a file this
+    # session did not write) and the assertion moved with it. What is pinned now: the message names
+    # the specific file it read (a per-session name means "the checkpoint" is no longer unambiguous)
+    # and still points at the declaration that owns the lifecycle rule. ---
+    name16 = "16-message-names-file-and-lifecycle"
     out16 = run_case_raw(name16, CHECKPOINT_2ROW, [], tmp)
-    ok16 = "already-closed run" in out16 and "durable-artifact.md" in out16
+    ok16 = (".goalspec/checkpoint.md" in out16
+            and "wrote that file itself" in out16
+            and "durable-artifact.md" in out16)
     if not ok16:
         failures.append((name16, "content present", "content missing"))
     print("{:<32} {:<8} {}".format(name16, "content-ok" if ok16 else "content-MISSING",
-                                    "" if ok16 else "  <-- FAIL, expected leftover-mitigation text"))
+                                    "" if ok16 else "  <-- FAIL, expected file name + lifecycle text"))
 
     total = len(CASES) + 1
     print()

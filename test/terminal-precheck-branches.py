@@ -224,6 +224,30 @@ case("22-unrelated-write-with-example-marker-text-DENY", lambda: run_hook(
                {"write": ("docs/some-doc.md",
                           "Example: declare " + WAIVER_TEXT + " to override.")}], "22")))
 
+# The checkpoint is per-session since the concurrency fix (two concurrent sessions in one project
+# used to clobber the single fixed path). Case 23 is case 20 at the new name: if the matcher had
+# stayed pinned to the old exact filename, a session writing its spec to the per-session name would
+# reproduce the exact break cases 20/21 exist for — this hook blind to the spec, silently ALLOWING
+# the push it exists to gate. Case 24 is the narrowness control that must survive the widening: a
+# near-miss path carrying a real `## Goal-spec` is not the checkpoint, so no spec is on record and
+# the hook has nothing to gate (ALLOW) — and a matcher loose enough to swallow it would flip this
+# to DENY.
+case("23-goalspec-only-in-session-scoped-checkpoint-write-DENY", lambda: run_hook(
+    make_repo("23", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"write": (".goalspec/checkpoint-a1b2c3.md", SPEC_TEXT)}], "23")))
+
+# Windows separator — same inherited defect, same fix, same synthetic-only evidence as
+# gate-branches' checkpoint-06. A backslash path must still be recognized as the checkpoint, or
+# the hook is blind to the spec on that platform and silently allows the push.
+case("25-goalspec-in-windows-separator-checkpoint-write-DENY", lambda: run_hook(
+    make_repo("25", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"write": ("C:\\proj\\.goalspec\\checkpoint-a1b2c3.md", SPEC_TEXT)}], "25")))
+
+case("24-goalspec-in-near-miss-checkpoint-path-ALLOW", lambda: run_hook(
+    make_repo("24", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"write": ("docs/checkpoint-notes.md", SPEC_TEXT)},
+               {"write": (".goalspec/checkpoint.md.bak", SPEC_TEXT)}], "24")))
+
 
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),

@@ -230,6 +230,23 @@ VERDICT_RE = (r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+\s+unfalsifi
               r"incomplete=\d+\s+autonomy-violations=\d+\s+unsafe=\d+\s*\]")
 CR_RE = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
 
+# The durable checkpoint's path, session-scoped: `.goalspec/checkpoint.md` (pre-concurrency-fix
+# name, still adopted and still read) or `.goalspec/checkpoint-<token>.md` (one file per session,
+# so two concurrent sessions in one project stop sharing one — see durable-artifact.md for what
+# that does and does not guarantee; this module only recognizes the name, it enforces nothing). Anchored on BOTH sides —
+# the `.goalspec/` directory component and the end of the string — so it stays as narrow as the
+# `endswith` it replaced: `docs/checkpoint-notes.md` and `.goalspec/checkpoint.md.bak` do not
+# match. The token charset excludes `/`, so `.goalspec/checkpoint-x/y.md` does not match either.
+# It does NOT require the `.goalspec/` to be the project root's — a nested `sub/.goalspec/…`
+# matches, on purpose: this module has no cwd to anchor against and must accept whatever absolute
+# `file_path` the transcript recorded, and in a monorepo a spec written under a sub-package is
+# still THIS session's spec (only this session's transcript is ever read). `nudge-decompose.sh`
+# additionally anchors to its cwd, because its declared contract is the narrower one ("in the
+# cwd") — an adversary round caught that hook accepting a nested path its own header disclaimed.
+# Keep in lockstep with nudge-decompose.sh's own ownership matcher and with
+# references/durable-artifact.md ("Where it lives"), which is the declaration both cite.
+CHECKPOINT_PATH_RE = re.compile(r"(^|/)\.goalspec/checkpoint(-[A-Za-z0-9._-]+)?\.md$")
+
 
 def read_transcript_text(transcript_path):
     """-> the transcript's assistant text, all of it, joined — the text-only view of
@@ -291,6 +308,14 @@ def read_transcript_items(transcript_path):
                         # returned False against the real transcript, and the precheck hook
                         # silently ALLOWED the exact push it exists to gate.
                         #
+                        # The filename is session-scoped since the concurrency fix (two sessions
+                        # in one project used to clobber a single fixed path — see
+                        # references/durable-artifact.md, "Where it lives"), so this matches
+                        # `.goalspec/checkpoint.md` AND `.goalspec/checkpoint-<token>.md`. It stays
+                        # session-scoped by construction either way: this function reads only THIS
+                        # session's transcript, so another session's checkpoint can never reach it
+                        # — the widening admits no foreign file, only this session's own new name.
+                        #
                         # NARROWLY scoped to that one path and that one marker on purpose — a
                         # first attempt captured ANY Write/Edit content as text and broke
                         # immediately: SKILL.md and CHANGELOG.md are FULL of literal example
@@ -299,13 +324,22 @@ def read_transcript_items(transcript_path):
                         # operative_verdict() see those examples as genuine declarations — a
                         # false positive far worse than the gap being closed. Only a Write/Edit
                         # whose `file_path` ends in `.goalspec/checkpoint.md` contributes text
-                        # here, and only for the goal-spec-presence check below (has_goal_spec) —
+                        # here (`checkpoint.md` or `checkpoint-<token>.md`, and only directly
+                        # inside a `.goalspec/` directory) — and only for the goal-spec-presence
+                        # check below (has_goal_spec) —
                         # NOT tagged into the general text-marker scan, so it can never satisfy
                         # has_waiver/operative_verdict/completion-review, which SKILL.md itself
                         # requires to be authored in the executor's OWN turn text, not a file.
                         ti = blk.get("input") or {}
                         fp = ti.get("file_path")
-                        if isinstance(fp, str) and fp.endswith(".goalspec/checkpoint.md"):
+                        # Backslashes normalized before matching: on Windows the transcript
+                        # records `...\.goalspec\checkpoint.md` and the POSIX-separator pattern
+                        # would never match, leaving the gate blind to a spec written to disk on
+                        # that platform — the same blindness this whole signal exists to fix,
+                        # just platform-shaped. Inherited from the `endswith` this replaced, found
+                        # by the decision-log sweep on this change, fixed here on the user-s call.
+                        # Not observed on a real Windows host; the suites assert it synthetically.
+                        if isinstance(fp, str) and CHECKPOINT_PATH_RE.search(fp.replace("\\", "/")):
                             for key in ("content", "new_string"):
                                 v = ti.get(key)
                                 if isinstance(v, str) and re.search(GOAL_SPEC_RE, v, re.I):

@@ -28,7 +28,8 @@ block — take the most recent substantive claimed outcome and say so in your re
   those paths are the object. This is the normal case.
 - **The claim lives only in this conversation** (nothing durable was written — e.g. an analysis,
   a conclusion, a recommendation): write it durably first, exactly as the goalspec skill's
-  step 6 already instructs for this case — copy the claim into `.goalspec/checkpoint.md` (its
+  step 6 already instructs for this case — copy the claim into `.goalspec/checkpoint-<session>.md`
+  (one file per session, never a shared fixed path — `references/durable-artifact.md`; its
   live goal-spec section: the claimed objective, what was touched, where any evidence lives),
   and in the payload **state explicitly that the claim lives nowhere else and point at that
   section as the object to verify**. Both backends already carry the Exception clause for
@@ -126,7 +127,7 @@ skill and the hooks use.
   gate is not armed; do not invent one. (If this session *does* have an armed gate from earlier
   `/goalspec` work, quoting the verdict verbatim integrates with it normally — the gate reads
   your latest verdict.)
-- If step 2 wrote `.goalspec/checkpoint.md` for this command's own use (the claim-lives-only-in-
+- If step 2 wrote a `.goalspec/checkpoint*.md` for this command's own use (the claim-lives-only-in-
   conversation case), delete it now that the verdict is quoted — unless the project deliberately
   committed `.goalspec/` for a trail, in which case leave it (`references/durable-artifact.md`,
   "Where it lives"). This command has no step 7 of its own to retire it otherwise —

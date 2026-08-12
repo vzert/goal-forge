@@ -6,6 +6,200 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.38.0] - 2026-08-12
+
+**Dos sesiones concurrentes en el mismo proyecto dejan de pisarse el checkpoint.** Reportado en
+vivo por dos agentes paperclip corriendo goalspec en el mismo repo: `.goalspec/checkpoint.md` era
+una **ruta fija**, o sea estado compartido entre sesiones, y una sobrescribió el estado de corrida
+de la otra mientras seguía viva. Es exactamente la lección que `references/durable-artifact.md` ya
+citaba del port multi-agente de Bun — el arreglo no es coordinar a los escritores, es quitar el
+objeto compartido — aplicada donde no se había aplicado: entre sesiones, no sólo entre workers.
+
+- **Lado escritura: el nombre lleva un token de sesión** (`references/durable-artifact.md`, "Where
+  it lives"). `.goalspec/checkpoint-<session>.md`, un archivo por sesión: sesiones con tokens
+  distintos nunca abren el mismo archivo, así que la colisión se evita sin que ningún check tenga
+  que dispararse al escribir. **No es un lock, y el documento lo dice**: si dos sesiones terminan
+  con el mismo token vuelven a caer en la misma ruta. Por eso la regla es **derivar, nunca
+  elegir**: el token sale de un hecho que ya difiere por sesión (id de sesión/transcript, ruta por
+  sesión, pid, timestamp) — dos agentes a los que se les pide "un slug corto al azar" no son dos
+  tiradas independientes, son el mismo modelo alcanzando la misma palabra obvia. La ruta legacy se
+  sigue leyendo y adoptando. Dos reglas más: nunca escribir sobre un checkpoint que esta
+  sesión no creó (puede ser el estado VIVO de otra corrida), y escribirlo con `Write`/`Edit`, no
+  con un heredoc — el transcript es de dónde sale la pertenencia.
+- **Lado lectura: los hooks distinguen "mío" de "ajeno"** (`hooks/nudge-decompose.sh`,
+  `hooks/lib/terminal_actions.py`). Un checkpoint es de esta sesión si el transcript de esta sesión
+  registra un `Write`/`Edit` a esa ruta — **sin contrato de contenido nuevo** (ni estampa, ni
+  cabecera, ni id dentro del archivo), que era justo el costo por el que esta alternativa se
+  declinó en 0.29.0. Es la misma evidencia que `terminal_actions.py` ya leía para encontrar un
+  goal-spec escrito a disco.
+- **Cierra el residual que 0.29.0 aceptó y dejó abierto**: un leftover de una corrida que crasheó y
+  nunca se reanudó ya no puede false-positivear el nudge en una sesión ajena — no por ser viejo,
+  sino por no ser de quien lee.
+- **La alternativa declinada, adoptada bajo su propia condición de desbloqueo.** El párrafo de
+  0.29.0 se escribió con una condición explícita ("no re-litigar esto sin un segundo incidente");
+  el segundo incidente llegó y es un modo de falla DISTINTO (concurrencia viva, no obsolescencia),
+  que el retiro write-side no podía tocar. El párrafo se reescribió: de DECLINADA a adoptada, con
+  ambos incidentes en el registro.
+
+**El harness sabía el dato que el agente no — y ahora se lo dice** (`hooks/announce-checkpoint-name.sh`,
+nuevo hook `SessionStart`; `test/announce-checkpoint-branches.py`, 18 checks). Toda versión de la
+regla de nombrado le pedía al AGENTE fabricar la unicidad, y las dos rondas de adversario pegaron
+justo ahí: un token que elegís no es distinto, y uno derivado de un timestamp o un pid tampoco lo es
+en el límite. Nunca hizo falta: el payload de `SessionStart` trae `session_id`. El hook anuncia
+`.goalspec/checkpoint-<session_id>.md` al arrancar y la regla se degrada a "usá el nombre que te
+dieron" — sin derivación y sin nada que el agente tenga que inventar. Lo que el harness documenta
+es el CAMPO, no una garantía de unicidad, así que la afirmación se queda ahí y no dice "no pueden
+colisionar". El id va
+COMPLETO, sin truncar: ocho caracteres se leerían mejor y volverían a introducir una afirmación
+probabilística, que es exactamente lo que costó dos rondas.
+
+Esa es la mitad que **avisa**. La que **impide** llegó después, en el mismo trabajo y por decisión
+explícita del usuario, y es deliberadamente más angosta que el aviso — ver la entrada siguiente.
+
+**Observado en vivo, no sólo en suite**: con este hook registrado en un proyecto de descarte, una
+sesión hija headless a la que se le preguntó su ruta de checkpoint (sin herramientas disponibles)
+respondió `.goalspec/checkpoint-a8fc85ae-...md`, y existe en disco un transcript con ese nombre —
+o sea que el id anunciado era realmente el suyo. Una observación, no una garantía; la suite afirma
+lo que el hook EMITE, nunca que el agente lo use.
+
+**La mitad que impide: un gate angosto, elegido midiendo y no opinando**
+(`hooks/precheck-checkpoint-overwrite.sh`, `PreToolUse` sobre `Write|Edit`;
+`test/checkpoint-overwrite-branches.py`, 19 checks). Es la segunda cosa que bloquea en el plugin —
+la primera guarda acciones terminales — y rechaza **un solo acto**: escribir encima de un
+checkpoint que ya existe y que no se puede demostrar que esta sesión haya escrito con éxito.
+
+Tres decisiones de diseño, cada una con su medición detrás:
+
+- **Antes y no después.** El primer candidato era un aviso en `PostToolUse`. Es inútil acá: dispara
+  después de la escritura, así que el contenido de la víctima ya no existe, y le avisa a quien pisó,
+  no a quien perdió. Con `.goalspec/` en gitignore no hay de dónde recuperarlo.
+- **`deny` y no `ask`.** Se midió `permissionDecision: "ask"` en tres modos headless (default,
+  `acceptEdits`, `bypassPermissions`): **nunca cuelga y siempre falla cerrado**, pero sin humano que
+  conteste degrada a una denegación con peor mensaje — y en una corrida, tras **201 segundos** del
+  agente deliberando. `ask` compra "que decida el humano" sólo donde hay humano; la flota corre
+  headless. Dato colateral de la misma medición, útil en otro contexto: el `ask` de un hook **no**
+  lo esquiva `--permission-mode bypassPermissions`.
+- **La condición es pertenencia, no nombre.** Rechazar todo nombre que no sea el anunciado rompería
+  a un proyecto que commitea `.goalspec/` como rastro con sus propios nombres — caso que el propio
+  documento bendice — y negaría a una sesión que crea un checkpoint donde no había nada, que no
+  daña a nadie. Además hace cumplir una regla **ya ratificada en prosa** ("nunca escribas sobre un
+  checkpoint que esta sesión no creó") en vez de inventar una restricción nueva.
+
+El caso que parecía un falso positivo — reanudar una corrida caída y **adoptar** su checkpoint —
+resultó ser una contradicción interna del documento, no un conflicto con el gate: con nombres por
+sesión, adoptar significa **leer** el archivo ajeno y seguir en el propio. Esa cláusula se corrigió;
+era un resto del diseño de ruta fija.
+
+**El adversario lo rompió con `unsafe=1` — el primero de toda esta entrega — y tenía razón.** La
+primera versión del gate deducía la pertenencia de *cualquier* `Write`/`Edit` previo a esa ruta, sin
+mirar si había funcionado. Pero **una escritura DENEGADA queda igual registrada como `tool_use`**:
+el primer intento de pisar se denegaba, esa denegación pasaba a valer como "evidencia" de que la
+sesión había escrito el archivo, y **el reintento idéntico se permitía**. El gate se derrotaba solo
+al segundo intento, justo en el acto destructivo que existe para impedir. Es exactamente la regla
+que este proyecto ya tenía escrita sobre instrumentos — *la evidencia de un chequeo no puede
+autorarla el acto que el chequeo rechaza* — aplicada contra sí mismo, y hizo falta un verificador
+externo para verla.
+
+Arreglado exigiendo el `tool_result` emparejado y que no sea error (forma leída de un transcript
+real, no supuesta). Casos 16/17/18 lo fijan, con mutación que lo prueba: si se quita el chequeo del
+resultado, 16 y 17 pasan a `allow`. `nudge-decompose.sh` cargaba el mismo defecto con menos
+consecuencia (un aviso equivocado, no un archivo perdido) y recibió el mismo arreglo; casos 24/25.
+
+**Dónde falla abierto y dónde falla cerrado, que no es lo mismo.** La primera versión permitía la
+escritura cuando no podía leer el transcript. Una ronda de adversario lo calificó **unsafe** y tenía
+razón: un instrumento de pertenencia roto habilitaba exactamente el acto que el gate existe para
+impedir, y ofrecer documentación como remedio no es un remedio. La justificación para permitirlo
+("denegar rompería cualquier harness que no provea transcript") era además una **afirmación negativa
+sin auditar**; auditada contra la referencia oficial de hooks, `transcript_path` es un campo común de
+todos los eventos y no tiene condición de ausencia documentada. Así que esa rama ahora **deniega**.
+
+El reparto queda: falla **abierto** en todo lo previo a preguntar por la pertenencia (payload que no
+parsea, ruta que no es un checkpoint, archivo que aún no existe) y falla **cerrado** en la
+pertenencia misma. Llegado ese punto ya se sabe que el destino es un checkpoint existente de este
+proyecto, y "no sé de quién es" no es razón para dejar que lo pisen. Escapar de un rechazo
+equivocado siempre está disponible y nunca se bloquea: escribir con el nombre propio, que todavía no
+existe. Caso 09 de la suite, cuya expectativa cambió de `allow` a `deny` con la razón escrita al
+lado.
+
+**Observado en vivo, y una vez pasó por la razón equivocada.** El primer intento no probó nada: el
+agente hijo leyó el archivo antes de escribirlo y se negó por criterio propio, así que el hook
+probablemente ni disparó. Forzando la escritura sin lectura previa, el hijo citó la denegación
+**literal** y el archivo quedó intacto; el control inverso — la misma sesión creando y luego
+reescribiendo su PROPIO checkpoint dos veces — pasó sin estorbo; y tras el arreglo del reintento, un
+hijo instruido para repetir la misma escritura denegada hasta tres veces **fue denegado las tres**,
+con el archivo intacto.
+
+**Verificación** (todo mecánico salvo las observaciones en vivo de arriba):
+
+- 8/8 suites verdes; `claude plugin validate .` exit 0 (no piped); frontmatter YAML de los 3 skills
+  y del agente parseado con `name`+`description` intactos.
+- `gate-branches.py --compare <copia pre-edición>` paridad OK en modo default **y** con
+  `GOAL_GATE_ENFORCE=1` (42 branches, 0 diffs).
+- **Y la limitación de ese instrumento, escrita en `test/README.md` en vez de dejada implícita**:
+  las dos copias del gate importan `hooks/lib/terminal_actions.py` desde `CLAUDE_PLUGIN_ROOT`, así
+  que un cambio en ese módulo está en AMBOS lados de la comparación y la paridad es
+  estructuralmente ciega a él. Lo que sí cubre el módulo son los casos nuevos, y se probó que
+  discriminan por **mutación**: revertir el matcher al `endswith` pre-fix voltea `checkpoint-04`
+  (gate) y el caso 23 (precheck); un matcher laxo de substring voltea el caso 20 (decompose-nudge).
+- 8 casos nuevos: `decompose-nudge` 17-22 (pertenencia, con sus controles gemelos), `gate-branches`
+  `checkpoint-04/05`, `terminal-precheck` 23/24. Los casos preexistentes de `decompose-nudge`
+  cambiaron de **fixture** (ahora emiten el `Write` que reclama la pertenencia) pero no de
+  expectativa — eso es el chequeo de no-regresión. El caso 16 sí cambió su aserción: pinneaba una
+  frase que le pedía al humano borrar a mano un leftover, y la pertenencia ahora hace ese chequeo
+  mecánicamente.
+
+**El adversario externo (codex, GPT-5) devolvió `break` en la ronda 1 y los tres hallazgos eran
+reales.** Ninguno los encontró leyendo el diff: el primero salió de sondear el hook en vivo.
+
+1. **Ungrounded — el código era más ancho que su propia declaración.** El patrón de ruta acepta
+   cualquier `.goalspec/` *debajo* del cwd; el header del hook y `durable-artifact.md` dicen "en el
+   cwd" / "en la raíz del proyecto". Un sub-paquete corriendo su propio loop es su propia corrida.
+   Arreglado anclando el match a `<cwd>/.goalspec/` (no ensanchando la declaración), con caso 23 y
+   mutación que lo prueba. Colateral: el ancla rompió 8 casos al aterrizar (`/var` vs
+   `/private/var` en macOS) — por eso la comparación usa `realpath`, no `normpath`.
+2. **Incomplete — afirmé cerrado un pendiente heredado sin tocar su archivo.** `git diff` sobre
+   `memory/_pendientes.md` estaba vacío. Corregido en el registro: los dos ítems del barrido se
+   **surfacean**, no se marcan como cerrados — la entrada del log sigue abierta hasta que esto se
+   shippee.
+3. **Autonomy — dead handoff, el defecto exacto que el principio 4 existe para prevenir.** El
+   checkpoint decía que la decisión de Windows era del usuario; el adversario verificó contra el
+   transcript real que los únicos dos modales se levantaron ANTES de la primera edición y ninguno
+   preguntaba eso. Se levantó el modal de verdad; el usuario eligió meter el fix.
+
+**Ronda 3: el piso de convergencia, y un cambio de diseño en vez de otra pasada de redacción.**
+Tercer `break` consecutivo — todo lo demás refutado (incluida la paridad `--compare`, que esta ronda
+sí pudo re-correr al pasarle la ruta del snapshot). El hallazgo: mi corrección de la ronda 2 llamaba
+"fiable" a *mirar qué nombres hay y elegir uno libre*, que es un check-then-write — dos sesiones lo
+pasan en el mismo instante y las dos escriben. Es exactamente lo que el piso de convergencia existe
+para cortar: la ronda 3 rompía la prosa escrita para arreglar la ronda 2. Así que el arreglo fue al
+**mecanismo**, no a las palabras: el token se **deriva**, nunca se elige (id de sesión/transcript,
+ruta por sesión, pid, timestamp), y el chequeo se elimina en vez de defenderse — un nombre calculado
+a partir de hechos que ya difieren no necesita mirar nada. El residual queda nombrado: un entorno
+que no ofrezca NINGÚN hecho distintivo deja la colisión posible, y la regla manda declararlo en la
+corrida en vez de taparlo.
+
+**Ronda 2: los tres hallazgos anteriores refutados, y uno nuevo — sobreafirmación.** El adversario
+mostró que la garantía que yo había escrito ("dos sesiones nunca abren el mismo archivo") no la da
+el mecanismo: el documento permitía que el token fuera "un slug corto que elijas", sin generador ni
+chequeo de unicidad. Dos agentes eligiendo "al azar" están correlacionados — son el mismo modelo
+alcanzando la misma palabra obvia. Corregido en las dos direcciones: la **regla** ahora exige
+derivar el token de algo ya único y, como último recurso, mirar qué nombres existen antes de
+elegir; y la **afirmación** se degradó a lo que el mecanismo realmente entrega (quita el objeto
+compartido; no arbitra uno disputado — no es un lock, y ahora lo dice).
+
+**Fix de Windows, dentro por decisión explícita del usuario** (`hooks/lib/terminal_actions.py`,
+`hooks/nudge-decompose.sh`): el matcher normaliza backslashes antes de probar. En Windows el
+transcript registra `...\.goalspec\checkpoint.md` y un patrón con separador POSIX nunca matchea —
+la puerta ciega al goal-spec escrito a disco, el mismo break que la señal existe para cerrar, en
+forma de plataforma. Heredado del `endswith` anterior (flaggeado en `_pendientes.md` el
+2026-08-01), encontrado por el barrido de este cambio. Casos nuevos: `checkpoint-06` (gate) y 25
+(precheck). **Ningún Windows real lo corrió**: la aserción es sintética y eso es toda la evidencia.
+
+**Lo que esto NO cubre**: un checkpoint escrito por una ruta que el transcript no registra (un
+heredoc de shell) es indistinguible de uno ajeno y el nudge calla — dirección fail-open elegida a
+propósito, y nombrada como regla write-side para que la pérdida sea evitable. Y nada de esto se ha
+observado en una sesión real con dos agentes concurrentes: la evidencia es de suite y de mutación.
+
 ## [0.37.0] - 2026-08-11
 
 **El adversario deja de aceptar un "no se puede", y deja de abandonar ataques en silencio.** Dos

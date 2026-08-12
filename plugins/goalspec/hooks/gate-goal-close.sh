@@ -206,12 +206,13 @@ if not text.strip():
 # 2. Nothing to enforce unless this session produced a goal-spec — checked two ways, not one.
 # The plain-text regex is the original check. It is BLIND to a spec written to disk instead of
 # posted as chat text — confirmed live (goal-adversary round 2, 2026-08-01) against THIS diff own
-# session: the goal-spec here was written via `Write` to `.goalspec/checkpoint.md` (a checkpoint
+# session: the goal-spec here was written via `Write` to `.goalspec/checkpoint.md` (the checkpoint
 # pattern SKILL.md step 5 itself recommends for long tasks), never as assistant text, so this
 # regex alone finds nothing and the ENTIRE gate goes silent for the whole session, not just the
 # staleness check added below. `ta.transcript_signals()` (hooks/lib/terminal_actions.py) already
 # carries the narrowly-scoped fix for this (a Write/Edit whose file_path ends in
-# .goalspec/checkpoint.md, and ONLY that — see that module docstring for why a broader scope is a
+# .goalspec/checkpoint.md or the per-session .goalspec/checkpoint-<token>.md, and ONLY those — see
+# that module docstring for why a broader scope is a
 # worse bug than the one it fixes: SKILL.md and CHANGELOG.md are themselves full of literal
 # example marker text).
 # `ta` may be None (import failed) — the OR degrades to the original text-only check, unchanged

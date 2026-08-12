@@ -167,7 +167,8 @@ Anything below that reads as narration rather than a location is text the execut
 as a claim to check against the artifact, never as the outcome itself, and never as attack surface
 in its own right. If a pointer names a file that does not exist, THAT is the finding.
 
-If the outcome pointer resolves to .goalspec/checkpoint.md: that file is run state, not a
+If the outcome pointer resolves to a .goalspec/checkpoint*.md (the checkpoint is per-session:
+checkpoint-<session>.md, or the legacy checkpoint.md): that file is run state, not a
 deliverable, and the per-section authority that follows is DECLARED in the plugin reference
 references/durable-artifact.md (section: Who reads which section) — you cannot read that file from
 where you run, so it is restated here as a citation of that declaration, not as a rule this prompt

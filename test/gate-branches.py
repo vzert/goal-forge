@@ -447,6 +447,33 @@ CHECKPOINT_GOALSPEC_CASES = [
     ("checkpoint-03-review-only-in-write-not-text-SPEAKS",
      [{"write": (".goalspec/checkpoint.md", SPEC + "\n" + CR_NONE)}, {"text": "still working."}],
      "completion-review:absent"),
+    # The checkpoint is per-session since the concurrency fix (two concurrent sessions in one
+    # project used to clobber the single fixed path). If this precondition had kept matching only
+    # the old exact name, every session writing its spec to the new name would have reproduced the
+    # ORIGINAL break this whole block was written for — the entire gate silent — with no test
+    # noticing. This is the case that notices: it fails against a gate whose matcher is the
+    # pre-fix `endswith(".goalspec/checkpoint.md")`.
+    ("checkpoint-04-spec-via-session-scoped-write-SPEAKS",
+     [{"write": (".goalspec/checkpoint-a1b2c3.md", SPEC)}, {"text": "still working on it."}],
+     "completion-review:absent"),
+    # ...and the narrowness control for that widening, the same defect class checkpoint-02 and the
+    # precheck suite's case 22 guard: a Write to a file that merely LOOKS checkpoint-ish must not
+    # be read as a goal-spec. Both of these carry a real `## Goal-spec` heading, so a matcher that
+    # widened to "any path containing checkpoint" (or that dropped the end-of-string anchor) makes
+    # this case SPEAK instead of staying silent.
+    # Windows separator. The transcript on that platform records `...\\.goalspec\\checkpoint.md`,
+    # which a POSIX-separator matcher never sees — the gate blind to a disk-written spec, exactly
+    # the break checkpoint-01 exists for, just platform-shaped. Inherited from the `endswith` this
+    # replaced (memory/_pendientes.md flagged it 2026-08-01) and fixed on the user's explicit call
+    # during this change. Synthetic assertion only: no real Windows host has run this.
+    ("checkpoint-06-windows-separator-path-SPEAKS",
+     [{"write": ("C:\\proj\\.goalspec\\checkpoint-a1b2c3.md", SPEC)}, {"text": "still working."}],
+     "completion-review:absent"),
+    ("checkpoint-05-near-miss-paths-are-not-the-checkpoint-SILENT",
+     [{"write": ("docs/checkpoint-notes.md", SPEC)},
+      {"write": (".goalspec/checkpoint.md.bak", SPEC)},
+      {"text": "still working on it."}],
+     None),
 ]
 
 
