@@ -6,6 +6,113 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.39.0] - 2026-08-13
+
+**Una corrida que no terminó ahora lo dice — y la decisión se pregunta, no se narra.** Reportado con
+dos cierres reales de agentes distintos el mismo día, ambos impecables en todo lo demás. El primero
+paró tras tres verificaciones en rotura y entregó el bloque de seis preguntas con dos decisiones
+escritas como preguntas bien formadas — en prosa. El segundo cerró con waiver y dejó una tercera
+igual. Ninguna llegó a un modal, y los dos resúmenes se leyeron como si el trabajo hubiera
+terminado. La causa no fue que el agente ignorara la regla: **la regla no cubría esas salidas.**
+
+- **El disparador pasa de "el completion-review" a "cualquier turno que termina la corrida"**
+  (`SKILL.md`, sección nueva "Ending a run that did not finish", más `:85`, `:89`, waiver, ask-door
+  mid-run, red-team de Autonomía, guía de convergencia y paso 7). Una corrida tiene **tres** finales
+  — `[COMPLETION-REVIEW]`, `[GOAL-CLOSE-WAIVED]` y la parada sin marcador de la opción (a) — y hasta
+  hoy la obligación de preguntar estaba escrita contra el primero (`:172` decía *"never later than
+  the close: do not emit the completion-review with…"*). Los dos handoffs muertos observados salieron
+  por los otros dos. Ningún marcador nuevo, ningún hook nuevo, ningún matcher: es el alcance de una
+  regla que ya existía.
+- **El modal va DEBAJO del bloque llano, y es lo único que puede ir ahí.** Enmienda deliberada a la
+  regla de orden (`SKILL.md:89`, `references/plain-close.md`), que decía "marcador, bloque, nada".
+  Un resumen se lee como un cierre por más que su última línea diga que no; un modal abajo es la
+  única señal que sobrevive a eso. La pregunta 5 nombra las decisiones en una línea y apunta al
+  modal — el texto queda como registro de qué se preguntó, el modal es la pregunta.
+- **Parada sin decisión pendiente: igual se levanta un modal, de continuidad.** *Seguir por otro
+  camino / dejarlo acá / lo tomás vos*. Es la mitad del problema que el disparador de decisiones no
+  alcanza: una parada sin nada que responder se lee idéntica a un cierre.
+- **Los dos modales nuevos traen su salida headless**, como el resto de las reglas con modal del
+  archivo. Sin pantalla (cron, CI, `-p`) no se pregunta: se toma el default menos irreversible — en
+  el fork de continuidad, *dejarlo acá* — se anota en **Assumptions** como pendiente de ratificar, y
+  el bloque de continuación se imprime igual, porque es texto y no necesita respuesta. Lo cazó la
+  cuarta ronda de adversario: la sección nueva era la única del archivo que introducía un modal sin
+  decir qué hacer cuando nadie puede contestarlo, o sea le pedía una pregunta a una pantalla vacía.
+- **"Lo sigo en otra sesión" ahora es un claim con precondición.** Diferir sólo vale nombrando cuál
+  de tres cosas frena: un permiso o autorización que es del humano, un límite duro (contexto, techo
+  de uso de la cuenta) o una dependencia externa que no responde. Si no se puede nombrar ninguna, el
+  trabajo se hace en la sesión. Misma forma que el waiver: la salida existe, la precondición es
+  estrecha, y hay que decirla en voz alta. El adversario ahora lo cuenta como violación de Autonomía
+  (`agents/goal-adversary.md`, `hooks/external-adversary.sh`).
+- **Toda salida que deja trabajo sin hacer entrega un pegable, no una frase** — parada, waiver con
+  pendientes, corte por límite; no sólo las que cruzan a otra sesión (la primera versión decía
+  "cuando el trabajo cruza a otra sesión" y una ronda de adversario la cazó como infiel a la
+  decisión que la pidió). Bloque con
+  `/clear` + un prompt de **punteros, no narración**: objetivo en ~3 líneas, la ruta de
+  `.goalspec/checkpoint-<session>.md`, dónde vive el trabajo, y una línea con lo ya decidido que no
+  se re-litiga. `references/durable-artifact.md` ya decía que reanudar *"es una acción humana de CLI
+  a la que ningún agente tiene hook"* — por eso una frase es el peor formato posible. Dos
+  acoplamientos lo hacen real: el checkpoint **tiene que existir antes** de imprimir el bloque, y el
+  borrado del paso 7 queda declarado como regla **de cierre** — en un handoff el archivo se queda,
+  porque el archivo *es* el handoff.
+
+- **Mina encontrada al escribir esto, y documentada en el archivo donde muerde**
+  (`hooks/external-adversary.sh`). El prompt del backend externo es un heredoc **sin comillas**
+  dentro de `$( )`, y el bash 3.2 del sistema en macOS parsea la sustitución buscando el `)` que
+  cierra: un número **impar de apóstrofes** en el cuerpo se come el resto del archivo. Agregar un
+  `the human's` a la prosa rompió el backend entero — `bash -n` lo reporta como "unexpected EOF"
+  doscientas líneas más abajo, y lo único que lo cazó fue `test/external-adversary-branches.py` (13
+  aserciones caídas). Queda un comentario de advertencia arriba del heredoc; la regla es escribir
+  `theirs` o dejar los apóstrofes pareados, y correr `bash -n` después de editar.
+
+Sin cambios de lógica en hooks — el único hook tocado es `external-adversary.sh`, y sólo su prosa de
+payload más el comentario de advertencia. Las ocho suites se corrieron verdes y
+`test/gate-branches.py --compare` contra la copia pre-edición no reportó ninguna rama distinta, en
+modo default y con `GOAL_GATE_ENFORCE=1`.
+Nada gatea esta regla, a propósito: `references/plain-close.md` ya documenta por qué un gate que
+grepea la forma del texto sería gameable exactamente como los marcadores que este método vino a
+deshacer.
+
+**Y un segundo defecto, encontrado dogfoodeando este mismo release: el loop de verificación que no
+podía terminar.** Varias rondas de adversario devolvieron, entre sus hallazgos, **conteos
+auto-reportados** que el ejecutor había escrito en su propio estado de corrida: cuántos modales había
+levantado, cuántos forks había resuelto el usuario. Ese tipo de cifra queda vieja **por
+construcción** — la corrida sigue produciendo esos eventos, así que el número está mal un evento
+después y la corrección está mal un evento más tarde. El adversario acertaba cada vez, el ejecutor
+corregía, y la corrección nacía vieja: rondas gastadas en contabilidad. Arreglado en los dos lados, y **sin agregar un solo token dentro de la ventana de
+compactación** (los cuatro portadores están fuera de ella — medido, no supuesto; la cifra vive en
+`references/plain-close.md`, que es su única autoridad):
+
+- **Lado escritura** (`references/durable-artifact.md`, sección nueva en "What goes in it"): en las
+  dos secciones que llevan autoridad no se escribe un conteo de los eventos del propio método. Si
+  alguien lo necesita, se apunta a dónde se cuenta — el transcript de la sesión para los asks, el
+  diff para los archivos tocados. El ejecutor no escribe el transcript, y por eso ahí la pregunta se
+  zanja y con un auto-reporte nunca se zanjaba. Los conteos que describen **el resultado** se quedan
+  y siguen siendo load-bearing: la distinción es de qué habla el número, no si se ve prolijo.
+- **Lado lectura** (`agents/goal-adversary.md`, `hooks/external-adversary.sh`): una tally de proceso
+  vieja se reporta como **nota, no como rotura**, nombrando el ground truth. La excepción es
+  estrecha a propósito y el prompt lo dice: cubre *cuántas veces el método hizo algo*, nunca *qué es
+  el resultado ni qué se le dijo al humano*. Un conteo de archivos declarado en un modal de
+  ratificación sigue rompiendo — en esta misma release fue el hallazgo más valioso de cinco rondas.
+- **La guía de convergencia nombra la forma** (`SKILL.md`): si dos rondas seguidas rompen sólo tu
+  prosa *sobre* el trabajo y no el trabajo, no estás convergiendo — estás fabricando material para
+  la ronda siguiente. Se detecta por **qué** se rompió, no por cuántas rondas van.
+
+**Medición de compactación, hecha y no estimada** — y la primera versión de esta entrada mentía al
+respecto. Decía que no había tokenizer BPE en la máquina; el adversario mostró que sí lo había, en
+otro intérprete del mismo PATH (`/usr/bin/python3`, tiktoken 0.13.0): la premisa negativa se había
+verificado contra **un solo** intérprete. Medido de verdad con `cl100k_base`, la sección nueva
+terminaba prácticamente pegada al presupuesto de ~5000 que `references/plain-close.md` documenta para
+la retención de auto-compactación — margen casi nulo, y con un tokenizer que además es proxy del de
+Claude. (Las cifras exactas, ahí; acá no, por lo que sigue.) Se comprimió sin sacarle ninguna regla, el bloque del cierre llano sigue empezando en
+la línea 49, y nada se agregó por encima de esa sección. **Las cifras exactas viven en un solo lugar,
+`references/plain-close.md`, y este párrafo no las repite a propósito** — se repitieron dos veces y
+las dos quedaron viejas: primero la tabla etiquetó mal la frontera interna (el párrafo del waiver
+está **dentro** de la sección nueva, así que la frontera interna no es su final), y después este
+CHANGELOG quedó con los números de antes del arreglo headless. Es el mismo defecto de cifra-con-dos-
+casas que esta release nombra, aplicado a sí misma. Y el margen medido, sea cual sea, **no es una
+garantía** de que la regla sobreviva a la compactación: el presupuesto es aproximado y el tokenizer
+es un proxy del de Claude. Es la mejor evidencia obtenible en este host, declarada como tal.
+
 ## [0.38.0] - 2026-08-12
 
 **Dos sesiones concurrentes en el mismo proyecto dejan de pisarse el checkpoint.** Reportado en

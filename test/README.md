@@ -1,6 +1,7 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. Six mechanical suites and one check by hand.
+No CI — the plugin is a skill + hooks + docs. **Eight** mechanical suites (one per `*-branches.py`
+in this directory — keep this count in step when you add one) and one check by hand.
 
 ## `gate-branches.py` — Stop-gate branch suite
 

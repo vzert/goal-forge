@@ -146,6 +146,20 @@ this file either way (see "Verbs" below).
 A run that never reaches its close — a crash, a killed session — leaves the file in place, on
 purpose: that is the resume case this file exists for, not a defect.
 
+**A deliberate handoff is that same case, chosen rather than suffered (v0.39.0).** On **any** ending
+that leaves work undone — a stop with no marker, a waiver with work still open, a cutoff at a limit
+— `SKILL.md` ("Ending a run that did not finish") has you print a pasteable `/clear` + pointer
+prompt, and this file is what that prompt points at. The trigger is *work left undone*, not *a new
+session*: whether the reader clears and starts fresh or keeps going right here is their call, and
+the same block serves both. So it **stays**, for the same
+reason a crash leaves it: the obligation to keep it has not ended. Two consequences worth stating,
+because they invert the default above. Deleting it there does not tidy up a finished run, it aims
+the resume prompt at nothing. And a run that never needed a checkpoint must **write one before
+printing that block** — the handoff is the first reader this file has ever had that was promised in
+advance, and a promised path that does not exist is worse than no promise. The nudge-on-a-later-session
+cost described below is real and is accepted here: a handoff is by construction a run that is not
+over.
+
 Retire **your own** file and only your own. Another session's checkpoint sitting in the same
 directory is not litter for you to sweep up — it may be the live state of a run that is still
 going.
@@ -207,6 +221,33 @@ Four things, and nothing that already lives somewhere better:
 Anything already recorded in ground truth — commit messages, the CHANGELOG, the test output —
 gets **pointed at, not copied**. A derived figure with two homes goes stale; that is not a
 hypothetical, it is the failure mode that produced multiple shipped defects in this method.
+
+### Never write a running count of the run's own process into sections 1 or 2 (v0.39.0)
+
+There is one class of figure that goes stale **by construction**, and it burned three adversary
+rounds of a single release before it was named: a **self-reported tally of events the run is still
+producing** — how many modals you have raised, how many rounds you have run, how many forks the user
+has settled. Write "six modals" into the goal-spec and the number is wrong the moment you raise the
+seventh, which the same run will do, because raising it is how the method works. Correcting it
+writes a number that is wrong again one modal later. The adversary is right every time; the loop
+never terminates; and none of it is about the deliverable.
+
+So, in sections 1 and 2 — the two that carry authority:
+
+- **Do not record a count of the method's own process events.** If a resuming agent needs one, name
+  where it is counted from: the session transcript for asks, this file's own Rounds section for
+  rounds, `git diff --stat` for touched files. The executor does not author the transcript, which is
+  exactly why it settles the question and a self-report never could.
+- **Counts that describe the outcome stay, and stay load-bearing.** Entities enumerated by the
+  coverage floor, files in the change, a measured figure with its command — these are claims about
+  the work, and an adversary breaking one of them is catching a real defect. **The distinction is
+  what the number is about, not how tidy it looks**: a file count that was *disclosed to the human
+  to obtain authorization* is one of the most load-bearing figures in a run (a release of this
+  method shipped a ratify modal naming 8 files against a real 10, and the adversary catching that
+  was the single most valuable finding of five rounds). A count of how many times that human was
+  asked is bookkeeping.
+- **Process metadata, if you want it at all, goes in Rounds** — append-only history, explicitly
+  non-authoritative (next section), where a superseded line is a record rather than a contradiction.
 
 ## Who reads which section — and which sections carry authority
 

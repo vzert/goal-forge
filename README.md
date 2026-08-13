@@ -300,7 +300,30 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.37.0** stops the adversary from
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.39.0** makes an unfinished run
+say so. A run has three endings — the completion-review, `[GOAL-CLOSE-WAIVED]`, and a stop that emits
+no marker at all — but the rule that a human decision must be *asked* was written against only the
+first, so the other two shipped real dead handoffs: two agents (both correct in every other respect)
+wrote the decision as a well-formed question in prose, and the human had nothing to answer. The
+trigger is now **every turn that ends the run**, and the `AskUserQuestion` goes *below* the
+plain-language block — the one thing allowed to follow it, because a summary reads as a finish no
+matter what its last line says. A stop with no decision pending still raises one, asking about
+continuing. Two failure modes around it are named too: deferring work to "another session" now
+requires a blocker you can name (a permission that is the human's, a hard limit, an unanswering
+dependency) or the work happens now; and when work genuinely does carry over, the agent prints a
+pasteable `/clear` + pointer prompt instead of the sentence "let's continue next session" — resuming
+is a human CLI action no agent has a hook into, so a paste is the only handoff that works.
+**The same release fixes a second defect, found by dogfooding the first one:** verification loops
+that could not terminate. Several adversary rounds of this very release spent findings on
+self-reported tallies the agent had written into its own run state — how many questions it had
+asked — and that kind of number is stale *by construction*, because the run keeps asking. The agent
+corrected it, the correction was stale one question later, and rounds burned on bookkeeping. Now: the run-state format forbids process counts in its authoritative
+sections and points at the session log instead; the adversary reports a stale process tally as a
+note rather than a break, under a carve-out written narrow enough that a file count disclosed to get
+a human's approval still breaks; and the convergence guard names the shape, so it is caught by *what*
+broke rather than by counting rounds. Before it,
+**v0.38.0** gave the run-state checkpoint a per-session name so two agents working the same repo stop
+clobbering each other's, and **v0.37.0** stopped the adversary from
 accepting a "can't be done" on the executor's word. A new mechanical check fires on a *claim shape* —
 something cannot be done / is unavailable / no longer exists — whenever the action follows from that
 impossibility, because re-deriving the executor's measurement can never verify a negative: reproduce

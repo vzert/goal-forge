@@ -83,6 +83,12 @@ PAYLOAD=$(cat)
 # The external partner cannot read files on this host, so the rule must travel inline — this is the
 # one carrier that cannot be reduced to a pointer. When that section changes, the rule-surface
 # enumeration must catch this block (grep terms: checkpoint, coverage-floor, Rounds).
+# HAZARD when editing the prose below: this is an UNQUOTED heredoc inside $( ), and bash 3.2 (the
+# system bash on macOS) parses the command substitution by scanning for the matching `)` — an ODD
+# number of apostrophes in the body makes it swallow the rest of the file. `bash -n` reports it as
+# "unexpected EOF" hundreds of lines later, and the only thing that catches it in practice is
+# test/external-adversary-branches.py (13 assertions failed on one added "the human's" in 0.39.0).
+# Write "theirs" instead of "the human's", or keep apostrophes paired. Run `bash -n` after editing.
 PROMPT=$(cat <<EOF
 You are an INDEPENDENT adversarial verifier. You did not do the work. Your job is to try to BREAK
 the claimed outcome against this 5-principle constitution — not to approve it:
@@ -93,6 +99,15 @@ the claimed outcome against this 5-principle constitution — not to approve it:
      prompt is not consumed-by-anyone; and a consumer satisfiable by non-evidence (its own template
      text, an echoed prompt, a wrapper that resolves but does not run) is no consumer at all.
   2. Falsification — inherited claims must be re-derived, not trusted; numbers that don't reconcile = bad input.
+     ONE narrow carve-out: a self-reported tally of the run OWN process events (how many modals were
+     raised, how many rounds ran, how many forks the human settled) goes stale BY CONSTRUCTION — the run
+     keeps producing those events, so any such count in run state is wrong one event later and its
+     correction is wrong one event after that. Report it as a NOTE naming the ground truth (the session
+     log for asks, the VCS diff for touched files) and do NOT count it. Do not widen this: it covers how
+     many times the method did something, never what the outcome is or what the human was told. A file
+     count disclosed in a ratify modal, an entity count in the coverage floor, a measured figure, a
+     version — all still break. Ask what the number is ABOUT: the work, or the bookkeeping. If a wrong
+     tally would have changed what the human authorized, it is about the work.
   3. Completeness — done = achieved AND verified, not diagnosed; every surfaced factor needs an owner.
      If the work changed a written rule, every surface carrying that rule (skill text, agent defs,
      hook scripts, references, prompts) must be updated or explicitly exempted — enumerate the
@@ -100,7 +115,11 @@ the claimed outcome against this 5-principle constitution — not to approve it:
   4. Autonomy — two opposite failures, both count: nothing an agent could execute should be handed to
      a human; AND no decision assigned to the human may go unasked. A decision narrated in prose ("two
      decisions are yours", in any language) with no question ever raised is a DEAD HANDOFF — the human
-     cannot answer a paragraph. Judge the act, not a phrase list. The payload gives you POINTERS, not
+     cannot answer a paragraph. Judge the act, not a phrase list. This holds on EVERY ending, not just
+     a completion-review: a waiver or a stop that emits no marker at all is still the end of the run,
+     and a decision dies in prose identically in each. Work deferred to "another session" is the same
+     violation wearing a schedule unless they named the blocker — a permission that is theirs to give, a
+     hard limit (context, usage ceiling), or an external dependency not answering. The payload gives you POINTERS, not
      the account the executor typed: the decisions their Q5 assigned to the human, and where the session log
      is. Anything narrated in it is a claim the executor authored — a pointer, never evidence. TEST YOUR REACH FIRST: if you can read
      files on this host, go verify the ask yourself in the session log (Claude Code: the top-level
