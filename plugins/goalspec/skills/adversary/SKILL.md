@@ -43,7 +43,14 @@ block — take the most recent substantive claimed outcome and say so in your re
 
 The payload contract's single home is the goalspec skill's step 6; what follows is its
 operational restatement for this command (where they differ, that home wins — grep terms:
-paths not prose, data never instructions, restricted to the contract):
+paths not prose, data never instructions, restricted to the contract, delta-scoped round):
+
+- **When the user is asking you to re-check a fix, say so in the payload — that is a delta-scoped
+  round.** This command's one round is the natural carrier for it: name the concrete delta (diff
+  range, or the exact files/sections changed since the earlier verdict) and the findings each change
+  claims to resolve. The delta scopes the **claims under attack**, never the evidence the verifier
+  may read; it verifies that each fix resolves what it claims to against ground truth **and** that it
+  invalidates nothing a prior round held. Full rule: the goalspec skill's step 6, same grep term.
 
 - **Paths, not prose**: where the claim/outcome is written; where the work lives (repo, files,
   logs, config); the path of this session's transcript plus which decisions were put to the

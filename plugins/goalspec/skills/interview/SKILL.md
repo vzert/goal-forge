@@ -48,7 +48,11 @@ for any scope/terminal fork):
   rule, not a quantity problem to cap.
 - **Recommended option first**, labeled "(Recommended)", reasoning visible in its description —
   the user reacts to a proposal, not a blank prompt. For a scope or terminal-authorization
-  fork, the recommended default is the least-irreversible option, never execute-now.
+  fork, the recommended default is the least-irreversible option, never execute-now — **but not on a
+  done-bar fork**, where that same rule inverts into recommending a deferral ("just investigate and
+  report back"). There the recommended default is the bar that actually finishes the objective in
+  this session; the smaller bar is the explicit non-default choice. Full rule and the observed case:
+  the main `SKILL.md`'s clarify step, same bullet.
 - The built-in "Other" free-text option is the escape valve when your framing of the fork
   itself is wrong — treat an "Other" answer as evidence the tree needs reshaping, not as a
   fifth option.

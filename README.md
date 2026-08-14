@@ -300,7 +300,25 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.39.0** makes an unfinished run
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.40.0** gives the verification
+loop a terminal it can actually reach. Measured across every session log on one machine, in both
+languages the plain-language close gets written in (method and caveats in `CHANGELOG.md`, which owns
+these figures): **38 runs ended with "can this be considered closed?" answered as anything but a clean
+yes**, across 15 sessions in 5 projects, and in **13** the stated reason was not a live defect but
+*"nobody reviewed my last correction."* That is the method eating itself: `on break, fix and re-verify` asks
+for the **whole outcome** to be re-verified, so every corrective round hands the adversary the entire
+prior corpus **plus the prose just written** — the least verifiable material there is, which an
+adversary is instructed to resolve as `break` when it cannot verify it. Now, when the only unverified
+thing is the fixes themselves, that closes with **one delta-scoped round**: the payload names the
+concrete diff since that verdict and the findings each change claims to resolve, and the round
+verifies both that each fix resolves what it claims against ground truth **and** that it invalidates
+nothing a prior round held. The line that keeps it from becoming a rubber stamp: *the delta scopes
+the **claims under attack**, never the evidence the verifier may read* — its skepticism is untouched,
+and it emits an ordinary verdict, no new marker. Alongside it: a `hold` is no longer revoked by the
+agent's own later edits (that sentence names a delta round it didn't run), an ending is now detected
+by the answer to the plain-close's own last question rather than by self-classification, and the
+"least-irreversible default" rule is explicitly **not** applied to the done-bar fork, where it
+inverted into recommending a deferral. Before it, **v0.39.0** made an unfinished run
 say so. A run has three endings — the completion-review, `[GOAL-CLOSE-WAIVED]`, and a stop that emits
 no marker at all — but the rule that a human decision must be *asked* was written against only the
 first, so the other two shipped real dead handoffs: two agents (both correct in every other respect)

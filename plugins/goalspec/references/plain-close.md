@@ -59,6 +59,18 @@ additions come straight from failures above:
   decisions in a line and the **`AskUserQuestion` below the block** is where they are actually
   asked. The heading survives as the record of *what* was asked; the modal is the asking.
 
+  **v0.40.0 — Q6 is what tells you the modal is owed.** The v0.39.0 rule fired where the agent
+  classified its own turn as an ending, and missed where it did not. Measured across every session
+  log on one machine, in both languages this block gets written in: **11 stops ran with the rule
+  loaded and 2 raised no modal**, and both of those sat in sessions that raised it correctly at their
+  *other* endings — inconsistent classification, not ignorance of the rule. One followed a
+  `[GOAL-CLOSE-WAIVED …]`, more work, and a second ending; the other answered Q6 *"the cause yes, the
+  fix isn't applied, and nobody independent reviewed this"* with two live decisions named in Q5. So
+  the trigger stops asking for a classification that is exactly what went wrong: **anything but a
+  clean `Yes` in Q6 means you are in an ending**, and Q6 is written before the modal decision by
+  construction. The main `SKILL.md`'s
+  "Ending a run that did not finish" is the home of that test; this note records why it exists.
+
 ## What this block is not
 
 - **Not a second constitution audit.** Grounding and falsification are carried by the `## Goal-spec`,

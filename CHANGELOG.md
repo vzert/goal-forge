@@ -6,6 +6,87 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.40.0] - 2026-08-14
+
+**El loop de verificación ahora tiene una terminal alcanzable: tus propias correcciones se cierran
+con UNA ronda acotada al delta.** Reportado por el operador tras verlo repetidamente en un agente
+paperclip, con dos cierres reales pegados como evidencia. Medido sobre **todos** los logs de sesión
+de una máquina, en los dos idiomas en que se escribe el bloque llano: **38 paradas cuya última
+pregunta no es un `Sí` limpio**, en 15 sesiones de 5 proyectos — y en **13** la razón textual no es
+un defecto vivo del entregable sino *"nadie revisó mi última corrección"*.
+
+**Este archivo es el hogar de esas cifras**, y el método va aquí para que sean re-derivables: barrido
+de los logs de nivel superior bajo `~/.claude/projects/*/` (excluyendo `subagents/`), match de los
+dos encabezados posibles del bloque, conteo del modal por **estructura** (`tool_use` de
+`AskUserQuestion` — nunca grep de prosa: un agente que *narra* la pregunta matchea igual que uno que
+la hizo), dedup de re-citas del mismo bloque, y comprobación **por sesión** de si el texto de la
+regla estaba cargado. El corpus está vivo; cifras al 2026-08-14.
+
+La causa ya estaba diagnosticada (`memory/research/2026-07-25-adversary-loop-unbounded-diagnosis.md`)
+y no era un fallo del método: *"On `break`, address every confirmed violation and re-verify"* pide
+re-verificar el **outcome completo**, así que cada ronda correctiva entrega al adversario todo el
+corpus anterior **más la prosa recién escrita** — que es el material menos verificable que existe, y
+que el adversario está instruido a resolver como `break` cuando no puede verificarlo. El conjunto de
+salidas era `{hold, waiver}`, y el `hold` sólo lo alcanza una ronda que **encoge** el corpus.
+
+- **Ronda acotada al delta** (`SKILL.md` paso 6, `agents/goal-adversary.md`, `skills/adversary/`).
+  Cuando lo único sin verificar son los arreglos mismos, se corre **una** ronda cuyo payload nombra
+  el delta concreto (rango de diff, o archivos/secciones cambiados desde ese veredicto) y los
+  hallazgos que cada cambio dice resolver. Verifica dos cosas: que cada arreglo resuelve contra
+  ground truth el hallazgo que dice resolver, **y** que no invalida nada que una ronda previa
+  sostuvo. La línea que evita que degenere en aprobación: **el delta acota las AFIRMACIONES bajo
+  ataque, nunca la evidencia que el adversario puede leer** — su escepticismo y su regla de "una
+  afirmación load-bearing no verificable cuenta como violación" quedan intactos. No introduce
+  marcador nuevo: emite un `[ADVERSARY-VERDICT: …]` ordinario, así que el gate lo consume sin cambios.
+- **Un `hold` no se revoca por tus propias ediciones posteriores.** *"Nadie revisó mi último
+  arreglo"* nunca es razón para negar el cierre: nombra una ronda acotada que no corriste. Ediciones
+  no load-bearing → el `hold` las cubre, dilo y cierra; load-bearing → corre la ronda acotada y
+  cierra sobre su veredicto. Negarse a cerrar con un `hold` operativo no es prudencia: es una parada
+  que nunca declaraste, y le llega al humano como una corrida fallida que no falló.
+- **El test de final que sí se puede correr: cualquier cosa que no sea un `Yes` limpio en Q6 es un
+  final.** La regla de v0.39.0 (modal en toda parada) pedía clasificar el propio turno, y el turno
+  que falla es justo el que clasificaste mal. Medido con la sección **cargada**: **11 paradas, 2 sin
+  modal** — y las dos estaban en sesiones que **sí** levantaron el modal en sus otros finales. O sea
+  no es desconocimiento de la regla, es clasificación aplicada de forma inconsistente, que es
+  precisamente lo que arregla un disparador ya calculado y no arregla una taxonomía. Una de las dos
+  venía después de un `[GOAL-CLOSE-WAIVED]`, más trabajo, y un **segundo** final; la otra contestó
+  *"la causa sí, la corrección no está aplicada, y nadie independiente revisó esto"* con dos
+  decisiones vivas nombradas. Q6 ya está escrito cuando toca decidir el modal, así que sirve de
+  disparador.
+- **Una espera no es un final** (carve-out del test anterior, encontrado haciendo dogfooding de él en
+  la corrida que lo publica). Un turno que termina mientras **algo lo va a reanudar solo** —una
+  verificación en vuelo que el harness notifica, un trabajo en segundo plano que te re-invoca— es una
+  espera: no hay nada del humano ahí, así que el modal sería espurio y gastaría justo la señal que
+  Q6 acaba de cargar. Se dice en una línea (qué esperas, que nada se cerró) y ya. El carve-out es
+  estrecho por construcción: **si reanudar necesita que el humano haga algo, aunque sea pegar o
+  contestar, es un final** y debe el modal y el bloque de continuación.
+- **La regla de "default menos irreversible" NO aplica al fork de done-bar** (`SKILL.md` clarify,
+  `skills/interview/`). Ahí se invierte: "menos irreversible" se lee como *haz menos*, y el default
+  recomendado deriva a "investigo y te reporto" — un diferimiento, que la propia regla de finales ya
+  prohíbe sin bloqueador nombrado. Observado en vivo en la sesión que produjo este release: la
+  entrevista ofreció "diagnóstico y propuesta" como recomendado sin nada bloqueando el trabajo, y el
+  operador lo anuló. En un fork de done-bar el default es **la barra que termina el objetivo en esta
+  sesión**; la barra menor va como elección explícita no-default.
+
+**El release se verificó con su propio mecanismo, y ésa es su evidencia de validez.** La ronda 1
+(externa, otro proveedor) atacó el outcome completo y volvió `break` con dos hallazgos confirmados y
+reales: el checkpoint de esta corrida afirmaba en su sección autoritativa estado que no existía
+("publicado", "hold"), y la regla del `hold` delegaba en el ejecutor la clasificación
+load-bearing/no-load-bearing **sin fijar hacia dónde falla la duda** — una regresión funcional mal
+clasificada como "redacción" habría cerrado sobre un `hold` viejo. Ambos arreglados; el segundo
+endureció la regla que se publica (la duda resuelve a load-bearing; "redacción" es sólo texto sin
+consumidor máquina; no se clasifica un cambio que no se releyó). La ronda 2 fue **acotada al delta**
+—esos dos arreglos— y volvió `hold` con el trabajo mostrado, incluida la comprobación de que no
+invalidaba nada que la ronda 1 sostuvo. Dos rondas y terminal alcanzada, donde la forma anterior no
+tenía terminal.
+
+**Un hallazgo que no es un arreglo, medido al verificar el anterior: sesgo de versión dentro de una
+misma sesión.** La sesión `3fd55c14` del proyecto paperclip cargó `SKILL.md` desde la caché
+**0.36.0** mientras sus hooks corrían desde **0.39.0**. Sus dos "fallos" de la regla de modal no lo
+eran — esa regla no existía en el texto que ese agente tenía. Consecuencia general: **una regla nueva
+no alcanza a una sesión que empezó antes de la actualización, aunque sus hooks sí**. Queda como
+pendiente de observación, no tocado en este release.
+
 ## [0.39.0] - 2026-08-13
 
 **Una corrida que no terminó ahora lo dice — y la decisión se pregunta, no se narra.** Reportado con
