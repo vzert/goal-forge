@@ -39,10 +39,30 @@ Commits`) fail the same way: neither is organized around what the reader needs t
 not less detail — Agent B's round-by-round record is genuinely valuable — it is a fixed, plain
 block that **crowns** the detail.
 
-## Why these six questions and not others
+## Why these seven questions and not others
 
 The first draft had four. An external adversary and the operator between them added two, and both
-additions come straight from failures above:
+additions come straight from failures above; v0.41.0 added a seventh, at the top, from a third
+failure the operator reported (and says other users of the plugin hit too — that is the operator's
+report, not theirs):
+
+- **"What were we working on?" (Q0, v0.41.0)** — orientation, the one thing the six below assume
+  and never state. The operator runs several agents in parallel for hours, each on its own loop,
+  and reads each close cold: *"cuando termina y da el resumen de lo que hizo, es difícil saber qué
+  se supone que ese agente estaba haciendo."* Audited 2026-09-09 on that operator's own agent logs
+  (23 sessions; 38 close blocks authored by the agent across 17 of them, counted structurally as
+  assistant `text` blocks carrying the heading — a raw grep gives 88 lines, counting re-quotes and
+  tool inputs): **3 sessions read end to end, 9 closes, 0 name the task.** They open on results — *"corregí todo
+  lo que r6 y r10 encontraron"*, *"192 pruebas verdes"* — and the objective sits only in the
+  `## Goal-spec` written hours earlier, off screen. The fix is two lines: the ask **in the user's own
+  words** (what they remember typing, even after a 300-word "resume from…" prompt) and **what it
+  became** (the spec's objective), so a reframe is visible in the same breath; when the close is one
+  part of a longer session, the session's opening ask is named too — after five detours, "which was
+  the original thing" is the whole question. The words are **copied from the `## Goal-spec`'s new
+  `Asked (your words):` line, not recalled**: an agent at hour six reconstructing the request from
+  memory is exactly the reader who no longer has it, and a line that exists in the spec is one the
+  adversary can check against the transcript. Numbered Q0 on purpose — Q5 is referenced by a hook
+  and a test, and renumbering buys nothing.
 
 - **"What changed that is hard to undo?"** — principle 5 (no-harm) made legible. Agent B pushed to
   three repositories and deleted eight tools; a reader could not separate that from "I only read
@@ -86,7 +106,7 @@ additions come straight from failures above:
   carries no marker and no modal, so nothing there for the block to follow, and it leads instead.
 - **Not a replacement for the detail.** Everything technical stays above, in full.
 - **Not optional on small runs.** A block that appears only on "big" closes is a block nobody
-  learns to trust. A five-minute read-only lookup gets all six headings, most answered `Nothing`.
+  learns to trust. A five-minute read-only lookup gets all seven headings, most answered `Nothing`.
 
 ## Known limits (do not read this rule as more than it is)
 
@@ -96,7 +116,7 @@ additions come straight from failures above:
   caught a sibling change contradicting its own consuming gate — both were shipped-shaped mistakes
   a static check cannot see, which is the reason to keep the block's claims small.
 - **Nothing enforces it.** No hook checks for the block. It is prose discipline, like most of this
-  skill — a gate that greps for six headings would be gameable in exactly the way the audited
+  skill — a gate that greps for seven headings would be gameable in exactly the way the audited
   markers already were, which is the failure this rule exists to undo.
 - **Compaction survival: now measured, and the margin is the thing to watch.** Auto-compaction
   retains roughly the first 5,000 tokens of the skill, and this rule must survive it because closes
@@ -107,32 +127,40 @@ additions come straight from failures above:
 
   | Boundary | Cumulative tokens |
   | --- | --- |
-  | start of `## The plain-language close` (line 49) | 2695 |
-  | end of that section (= start of `## Ending a run that did not finish`) | 3840 |
-  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 4511 |
-  | end of the whole section, waiver paragraph included | 4845 |
+  | start of `## The plain-language close` (line 49) | 2751 |
+  | end of that section (= start of `## Ending a run that did not finish`) | 3971 |
+  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5024 |
+  | end of the whole section, waiver paragraph included | 5358 |
+
+  Method: the file's text from line 1 up to each boundary, encoded **as one string**. A per-line
+  sum overcounts by roughly 28 tokens here and was the instrument behind an earlier draft of this
+  table (caught by an adversary round); the row values above are the single-string figures.
 
   Read the third and fourth rows carefully — the `[GOAL-CLOSE-WAIVED]` paragraph sits **inside**
-  `## Ending a run that did not finish`, so 4511 is an internal boundary and **4845** is where that
+  `## Ending a run that did not finish`, so 5024 is an internal boundary and **5358** is where that
   section actually ends. **This table is the single authority for the current boundaries, and no other
   file restates them** — deliberately: a measured number with two homes is the stale-figure defect
   this same release names, and it bit the CHANGELOG twice before the rule took. Superseded
   measurements appear below *as history of how this section was sized*, never as current state; that
   is the same standing the run-state checkpoint's Rounds section has. An adversary round caught the first version of this table calling 4347 the
   section end; the numbers were right and the label was wrong, which in a table meant to be quoted
-  later is the same defect as a wrong number. The last row is the one that matters: every close-time
-  rule is inside the window, with **155** tokens of headroom (5000 − 4845) — write the subtraction,
-  not a round number; a later round caught an earlier version saying "~300" where its own table gave
-  281, which is the same class of defect one row up. That margin is thin, and against a proxy
-  tokenizer: treat the window as full. **This is measured and disclosed, not a guarantee** — the
-  budget is approximate and `cl100k_base` is not Claude's tokenizer, so no claim here says these
-  rules *will* survive compaction, only that this is the best evidence obtainable. **Measure before adding anything above or inside this
+  later is the same defect as a wrong number. The last row is the one that matters, and it says
+  something this table did not say before v0.41.0: **the region is over the 5000-token window, by
+  358** (5358 − 5000). v0.40.0 grew the ending section without re-measuring — this table still read
+  4845 with "155 of headroom" while the file measured 5367 — which is the stale-figure defect one
+  paragraph up, committed by the table that names it. v0.41.0 added Q0 and the `Asked` line (about
+  250 tokens of new text) and paid for them by compressing prose in both sections, ending 9 tokens
+  **below** the v0.40.0 figure, not below 5000: the window was already blown, and getting back under
+  it means cutting rules or moving them, which is a separate decision (recorded as a pending item in
+  the operator's own memory, which does not ship with the plugin). Treat "does the close survive compaction" as **unmeasured since v0.40.0** until that is
+  settled. The tokenizer caveat stands: `cl100k_base` is a proxy, not Claude's, so no claim here
+  says these rules *will* survive compaction, only that this is the best evidence obtainable. **Measure before adding anything above or inside this
   region** — and note the v0.39.0 lesson about *how* to check for a tokenizer: `import tiktoken`
   failing in the first `python3` on PATH proves nothing, because a host commonly has several
   (`type -a python3`; it was installed in the second one). If the region no longer fits, compress
   the prose rather than move a rule out of the window — v0.39.0's new section was written at 1167
   tokens, measured at 22 tokens of margin, and compressed to 536 with no rule dropped.
 
-- **Proportionality is a judgment, not a measurement.** Six mandatory headings on a trivial run is
+- **Proportionality is a judgment, not a measurement.** Seven mandatory headings on a trivial run is
   a real cost. The bet is that a fixed shape the reader never has to hunt through beats a shape
   that adapts; if usage shows otherwise, shrink the set — do not make it conditional.

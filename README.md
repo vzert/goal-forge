@@ -300,8 +300,18 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.40.0** gives the verification
-loop a terminal it can actually reach. Measured across every session log on one machine, in both
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.41.0** asks every close to say
+**what the task was** before it says what got done. The plain-language close gains a seventh heading
+at the top — `WHAT WERE WE WORKING ON?` — two lines: the ask **in the user's own words** (plus the
+session's opening ask, when this close is one part of it) and **what it became** (the spec's
+objective), copied from a new `Asked (your words):` line the `## Goal-spec` now opens with, never
+recalled at hour six. Reported by the operator, who says other users hit it too: run several agents
+in parallel for hours and each close arrives cold — audited on the operator's own agent logs, **3
+sessions read end to end, 9 closes, none named the task**; they opened on *"fixed everything rounds 6
+and 10 found"*. No new marker, no new gate — prose discipline, nothing enforces it
+(`references/plain-close.md`). The compaction-window table in that
+reference was also found stale since v0.40.0 and is re-measured — read its last row. Before it,
+**v0.40.0** gave the verification loop a terminal it can actually reach. Measured across every session log on one machine, in both
 languages the plain-language close gets written in (method and caveats in `CHANGELOG.md`, which owns
 these figures): **38 runs ended with "can this be considered closed?" answered as anything but a clean
 yes**, across 15 sessions in 5 projects, and in **13** the stated reason was not a live defect but

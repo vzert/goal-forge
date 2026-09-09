@@ -6,6 +6,58 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.41.0] - 2026-09-09
+
+**El cierre ahora pide decir en qué estábamos trabajando antes de decir qué quedó hecho.** Reportado
+por el operador, que dice que otros usuarios del plugin lo padecen igual (eso es lo que consta: su
+reporte, no el de ellos): los loops corren horas, en paralelo, varias
+instancias del mismo agente sobre tareas distintas, y cuando uno termina y entrega el resumen *"es
+difícil saber qué se supone que ese agente estaba haciendo"*. Auditado sobre los logs del propio
+agente del operador (`~/.claude/projects/<agente>/*.jsonl`, 23 sesiones; **38 bloques de cierre**
+autorados por el agente en 17 de ellas — conteo por estructura, bloques `text` de turnos `assistant`
+con el encabezado `WHAT GOT DONE?`; un grep crudo sobre el JSONL da 88 líneas porque cuenta re-citas
+y entradas de herramientas): se leyeron **3 sesiones de punta a punta, 9 cierres, y ninguno nombra
+la tarea**. El adversario externo cazó la primera versión de estas dos cifras (decía 102 y 12). Abren con resultados — *"corregí todo lo que r6 y r10 encontraron"*, *"192 pruebas
+verdes"* — y el objetivo vive sólo en el `## Goal-spec` escrito horas antes, fuera de pantalla. Cada
+sesión postea **un** `## Goal-spec` pero cierra varias veces sobre peticiones distintas (la más larga:
+5 cierres sobre 4 peticiones), así que "cuál era la cosa original" no es la misma pregunta que "cuál
+era esta parte". **Corrección en el registro**: la pregunta 3 de la entrevista de esta versión le dio
+al operador la premisa "entre 10 y 21 Goal-specs por sesión" — un `grep -c` que contaba líneas de
+mensajes de hook, no specs posteados (hay 1 por sesión). El subagente adversario lo cazó; la bifurcación
+(nombrar la petición de arranque además de la subtarea) sigue siendo real por los cierres múltiples,
+pero la decisión se tomó sobre una cifra falsa y se le vuelve a poner al operador en el cierre.
+
+- **Séptima pregunta, arriba de todo: `WHAT WERE WE WORKING ON?`** (`SKILL.md`, sección "The
+  plain-language close"; el bloque pasa de 16 a **18 líneas máximo**). Dos líneas: la petición **en
+  las palabras del usuario** — y, si este cierre es una parte de una sesión más larga, también la
+  petición de arranque de la sesión — y **en qué se convirtió** (el objetivo del spec), para que un
+  reencuadre quede visible en el mismo renglón. Se numera **Q0**: Q5 está referenciada por un hook y
+  un test (`external-adversary.sh`, `external-adversary-branches.py`) y renumerar no compra nada.
+- **El `## Goal-spec` abre con una línea `Asked (your words):`** (`SKILL.md`, scaffold): la petición
+  como la tecleó el usuario, citada corta (un prompt de "Retomamos: …" de 300 palabras se queda con
+  su primera oración). El cierre **copia** de ahí, no reconstruye de memoria: el agente en la hora
+  seis que reconstruye la petición es exactamente el lector que ya no la tiene, y una línea que existe
+  en el spec es una que el adversario puede cotejar contra el transcript.
+- **Sin marker nuevo, sin gate nuevo, sin matcher nuevo.** Igual que el resto del bloque: disciplina
+  de prosa. Un grep de encabezados sería gameable exactamente como los markers que el bloque vino a
+  deshacer (`references/plain-close.md`, "Nothing enforces it").
+- **La tabla de compactación de `references/plain-close.md` estaba desactualizada desde v0.40.0, y
+  se corrige.** Decía 4845 tokens con "155 de margen"; el archivo medía **5367** (v0.40.0 creció la
+  sección "Ending a run" sin re-medir — el defecto de cifra rancia cometido por la tabla que lo
+  nombra). Esta versión suma Q0 y la línea `Asked` (unos 250 tokens de texto nuevo) y los paga
+  comprimiendo prosa en las dos secciones sin quitar reglas: región final **5358** (texto desde la
+  línea 1 hasta el inicio de "A completion-review closes the spec", codificado como una sola cadena
+  con `cl100k_base` como proxy — una suma línea por línea da ~28 más, y ese fue el instrumento de un
+  borrador de esta cifra que un adversario cazó), 9 por debajo de v0.40.0 y **358 por encima** de la
+  ventana de 5000. Volver bajo la ventana implica quitar o mover
+  reglas: decisión aparte, no tomada aquí. Hasta entonces, "el cierre sobrevive la compactación" es
+  una afirmación **sin medir desde v0.40.0**, y la referencia lo dice en su última fila.
+- **Lo que no se hizo.** Nada obliga a que un cierre lleve Q0 — es prosa, como el resto del bloque —
+  y no hay observación en vivo en una sesión ajena todavía; el único cierre con Q0 al momento de
+  publicar es el de la sesión que lo escribió (dogfooding). Las ocho suites de
+  `test/` pasan sin cambios (el gate no se tocó). Frontmatter YAML del skill verificado (`name` +
+  `description` sobreviven); `claude plugin validate` exit 0.
+
 ## [0.40.0] - 2026-08-14
 
 **El loop de verificación ahora tiene una terminal alcanzable: tus propias correcciones se cierran
