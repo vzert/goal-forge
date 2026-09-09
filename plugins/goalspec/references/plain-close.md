@@ -64,6 +64,21 @@ report, not theirs):
   adversary can check against the transcript. Numbered Q0 on purpose — Q5 is referenced by a hook
   and a test, and renumbering buys nothing.
 
+  **v0.41.1 — the first live close under the rule failed it, and the rule was the cause.** Same
+  session that shipped v0.41.0, second cycle: the operator said *"hagamos el push"*, the agent
+  re-entered the loop for that terminal action, wrote a fresh `## Goal-spec` whose `Asked` line was
+  *"hagamos el push"*, and the close copied it — as instructed. Read cold, the operator's words:
+  *"pero si lo revisas y yo lo leo sin ningún contexto entre 10 agenes que tenga corriendo, no tengo idea nuevamente de manera general e inicial en qué estabamos trabajando"* (a verbatim excerpt of that turn — it opens "aquí por ejemplo justamente me pones el What were we working on? nuevo," — typos included). Two defects, both in the
+  v0.41.0 wording: (1) the session's opening ask was a **conditional** ("if the session opened with a
+  broader ask, name both"), and "copy, don't recall" from a later cycle's spec loses it by
+  construction; (2) nothing asked for the **project or system** — "publish 0.41.0" among ten agents
+  on ten repos names nothing. So Q0 is now a fixed order with no conditions: the project or system in
+  plain words, then the ask that opened the session, then this part if different and what it became;
+  and the scaffold's `Asked` line keeps the session's opening ask through every later cycle, so
+  copying cannot drop it. What the line should have read: *"El plugin goalspec (tu método de
+  goal-spec para Claude Code). Al inicio pediste que el resumen final de un agente diga en qué estaba
+  trabajando; esta parte fue publicar esa versión a GitHub."*
+
 - **"What changed that is hard to undo?"** — principle 5 (no-harm) made legible. Agent B pushed to
   three repositories and deleted eight tools; a reader could not separate that from "I only read
   things" without parsing a commit list. Users of this plugin span every level of technical skill,
@@ -127,17 +142,17 @@ report, not theirs):
 
   | Boundary | Cumulative tokens |
   | --- | --- |
-  | start of `## The plain-language close` (line 49) | 2751 |
-  | end of that section (= start of `## Ending a run that did not finish`) | 3971 |
-  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5024 |
-  | end of the whole section, waiver paragraph included | 5358 |
+  | start of `## The plain-language close` (line 49) | 2787 |
+  | end of that section (= start of `## Ending a run that did not finish`) | 4029 |
+  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5023 |
+  | end of the whole section, waiver paragraph included | 5357 |
 
   Method: the file's text from line 1 up to each boundary, encoded **as one string**. A per-line
   sum overcounts by roughly 28 tokens here and was the instrument behind an earlier draft of this
   table (caught by an adversary round); the row values above are the single-string figures.
 
   Read the third and fourth rows carefully — the `[GOAL-CLOSE-WAIVED]` paragraph sits **inside**
-  `## Ending a run that did not finish`, so 5024 is an internal boundary and **5358** is where that
+  `## Ending a run that did not finish`, so 5023 is an internal boundary and **5357** is where that
   section actually ends. **This table is the single authority for the current boundaries, and no other
   file restates them** — deliberately: a measured number with two homes is the stale-figure defect
   this same release names, and it bit the CHANGELOG twice before the rule took. Superseded
@@ -146,12 +161,13 @@ report, not theirs):
   section end; the numbers were right and the label was wrong, which in a table meant to be quoted
   later is the same defect as a wrong number. The last row is the one that matters, and it says
   something this table did not say before v0.41.0: **the region is over the 5000-token window, by
-  358** (5358 − 5000). v0.40.0 grew the ending section without re-measuring — this table still read
+  357** (5357 − 5000). v0.40.0 grew the ending section without re-measuring — this table still read
   4845 with "155 of headroom" while the file measured 5367 — which is the stale-figure defect one
   paragraph up, committed by the table that names it. v0.41.0 added Q0 and the `Asked` line (about
   250 tokens of new text) and paid for them by compressing prose in both sections, ending 9 tokens
-  **below** the v0.40.0 figure, not below 5000: the window was already blown. Getting back under it
-  needs another 358 tokens out of this region — whether more compression alone can pay that, or a
+  **below** the v0.40.0 figure, not below 5000: the window was already blown. v0.41.1 repeated the
+  trade (Q0's fixed order and the `Asked` carry-over, paid by compressing prose again: 5357, net
+  −1 against v0.41.0). Getting back under it needs another 357 tokens out of this region — whether more compression alone can pay that, or a
   rule has to move, has not been tried and is a separate decision (recorded as a pending item in
   the operator's own memory, which does not ship with the plugin). Treat "does the close survive compaction" as **unmeasured since v0.40.0** until that is
   settled. The tokenizer caveat stands: `cl100k_base` is a proxy, not Claude's, so no claim here

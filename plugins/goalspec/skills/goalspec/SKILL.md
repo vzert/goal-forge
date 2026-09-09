@@ -21,7 +21,7 @@ These 5 are **not** extended with new per-case rules. A new case is judged by th
 
 ## The scaffold — answer these 6 questions FOR THIS task
 
-Post the answers as a `## Goal-spec` block at the start of the run (structured prose; invent no new markers). Open it with one line, **`Asked (your words):`** — the request as the user typed it, quoted short (a long "resume from…" prompt gets its first sentence); the plain-language close copies its first heading from here instead of recalling it hours later. The questions are universal; your answers are specific to the task:
+Post the answers as a `## Goal-spec` block at the start of the run (structured prose; invent no new markers). Open it with one line, **`Asked (your words):`** — the request as the user typed it, quoted short (a long "resume from…" prompt gets its first sentence); the plain-language close copies its first heading from here instead of recalling it hours later. A spec written later in the same session (a re-entered cycle, a follow-up) keeps the session's opening ask on this line and adds the new one after it. The questions are universal; your answers are specific to the task:
 
 1. **Real objective** — what does this solve operationally? (Not the ticket's narrative; the business problem behind it.)
 2. **Measurable success** [Grounding] — ≥2 criteria, each with a **ground-truth source + baseline + target** (e.g. "test suite green on CI"; "p95 latency ≤ derived ceiling, not a fixed guess"). No subjective or proxy criteria. **Then game each one before you commit it**: *what would a lazy agent do to satisfy this without achieving the objective?* If the answer is "make the edit I was already going to make", it is a marker, not a criterion — *"marker present" ≠ done* (principle 1), and you have just written a test you cannot fail. The tell: your objective describes a **behaviour** while your criterion greps for **text**. Rewrite it so the cheapest way to pass is to actually do the work — name the observation that would have to happen (a run, a query, a real entity's state), not the artifact you'd author. **Then the mirror of Q1 — surface the minimal fix; don't let the systemic frame eat it:** Q1's "real objective behind the narrative" is right when the user *under*-scoped (shallow symptom, deep cause), and reframing a symptom into its real cause is the method working — but it has an opposite trap. Once you've reframed a symptom into a system-level cause, you can jump straight to the *systemic* fix (a migration, a rewrite) and never put the **minimal reversible fix for the reported symptom** on the table at all. The tell is subtle because you may still *offer choices* — but they're all sizes of the big fix. (Audited case: a "why does this timestamp display 6h off?" was reframed, correctly, into real per-row corruption; the agent then offered three *sizes* of production migration — but never the genuinely minimal option, a reversible read-layer fix for the one timestamp the user complained about, touching no prod data.) So name **both**: the smallest reversible change that resolves the *reported symptom*, and the systemic fix — and make sure the minimal one is a real option the user can pick (via the ratify gate), not one you pre-empted by framing everything as the big fix. This is **not** "always ship the band-aid": if the minimal fix is genuinely insufficient for a correctness the user needs, say so plainly. The point is an **honest fork with the blast-radius visible**, so *the user* chooses depth — rather than depth being chosen for them by omission. (The worked BAD/GOOD pair for this lens is in `references/spec-examples.md`.)
@@ -50,13 +50,13 @@ The adversary verdict grammar (emitted by the adversary, not by you):
 
 The marker above is for the gate; **this is for the human**. Mandatory on **every** close — after
 whichever marker closed it, `[COMPLETION-REVIEW: ...]` or `[GOAL-CLOSE-WAIVED ...]` — **and on a
-stop that is not a close**: when you hand an unconverged loop back (convergence guard, option (a)),
-there is no marker for it to follow, so it stands alone and is the entire report. Seven fixed
+stop that is not a close**: when you hand an unconverged loop back (convergence guard, option (a))
+it stands alone and is the entire report. Seven fixed
 questions, in the user's language, **two lines each, eighteen lines total maximum**:
 
 ```
-WHAT WERE WE WORKING ON?              <the ask in the user's own words (+ the session's opening ask,
-                                       if this close is one part of it) / what it became: the objective>
+WHAT WERE WE WORKING ON?              <line 1: the project or system, plainly, then the ask that opened
+                                       the session in the user's words; line 2: this part if different, and what it became>
 WHAT GOT DONE?                        <what is actually finished>
 WHAT DIDN'T I DO, AND WHY?            <what you skipped, and the reason>
 WHAT CHANGED THAT IS HARD TO UNDO?    <pushed, deleted, sent, published — or "nothing, I only read">
@@ -65,12 +65,13 @@ DO YOU NEED TO DECIDE ANYTHING?       <each decision written AS A QUESTION they 
 CAN THIS BE CONSIDERED CLOSED?        <Yes | No + the one reason>
 ```
 
-- **Q0 orients before anything reports — copy it, don't recall it.** Line 1 is the ask in the
-  user's own words, copied from the `## Goal-spec`'s `Asked` line, never reconstructed at hour six;
-  if the session opened with a broader ask than the spec you are closing, name both. Line 2 is what
-  it became — the spec's objective — so a reframe is visible in the same breath. It exists because
-  a reader who ran several agents for hours opens each close cold, and in the audited sessions no
-  close said what the task was.
+- **Q0 orients first — fixed order, no conditions.** Line 1: the project or
+  system in plain words (among ten agents, "the push" names nothing), then the ask that **opened the
+  session**, in the user's own words. Line 2: this part, if the close is one part of the session, and
+  what it became — the spec's objective — so a reframe is visible. Copy from the `## Goal-spec`'s
+  `Asked` line, never recall at hour six; that line carries the opening ask through every later cycle,
+  so copying cannot lose it — the first live close under v0.41.0 lost it exactly that way (a
+  re-entered cycle's `Asked: "hagamos el push"`, copied, project unnamed; `references/plain-close.md`).
 - **Words a 12-year-old reads without stopping.** No `break`/`hold`/waiver, no bracket markers, no
   paths, line numbers, commit hashes, tool or gate names, round counts. Say *"nadie de fuera lo
   revisó"*, not *"cero `hold`"*.
@@ -79,27 +80,27 @@ CAN THIS BE CONSIDERED CLOSED?        <Yes | No + the one reason>
   romperlo dos veces: la primera encontró un fallo real que corregí, la segunda no encontró nada" is
   just as plain and actually reports. The test is **could the reader say, in their own words, what
   was done and by whom?** Vague verifiers ("alguien", "se revisó") are the tell: say *who or what*
-  checked, *what they did*, *what came of it*. Plain counts — how many passes, how many things
-  checked — are information; the "no round counts" ban is about the method's internal bookkeeping,
-  never about telling a human how many times something was checked.
+  checked, *what they did*, *what came of it*. Plain counts (how many passes, how many things
+  checked) are information; the "no round counts" ban is about the method's internal bookkeeping only.
 - **Never drop a heading.** Nothing to report is the one-word answer `Nothing` — an absent heading
-  reads as an oversight, an explicit "nothing" is information. This holds for a 5-minute lookup too.
+  reads as an oversight, an explicit "nothing" is information — on a 5-minute lookup too.
 - **The last answer must agree with the marker you just emitted.** No adversary held → `No`. If
-  they disagree, the marker is right and your summary is wrong. If the work fought back, say so in
-  plain words — that is what tells the reader how much to trust it.
+  they disagree, the marker is right and your summary is wrong. If the work fought back, say so
+  plainly — that tells the reader how much to trust it.
 - **Question 5 asks, it does not report — and on any turn that ends the run, it asks in a modal.**
   "Yes, there are decisions pending" is a dead handoff, the exact failure principle 4 exists to
   prevent. Name each decision here in one line, then **raise them in an `AskUserQuestion` below the
   block** — the text names them, the modal is where they can answer. The trigger is every ending,
   not only a completion-review; see "Ending a run that did not finish".
-- **It crowns the detail, never replaces it.** Everything technical stays above, in full — the
-  block compresses nothing, it only makes the summary findable.
+- **It crowns the detail, never replaces it.** Everything technical stays above, in full; the
+  block only makes the summary findable.
 - **Position follows the reader — and the modal is the one thing that may follow the block.** In a
-  **conversation turn** it is the last thing on screen, so: marker, then block, then nothing *except* the `AskUserQuestion` that ending owes (next section);
-  the pasteable continuation block that same ending may owe is detail and goes **above**. A modal
+  **conversation turn** it is the last thing on screen, so: marker, then block, then nothing
+  *except* the `AskUserQuestion` that ending owes (next section); the continuation block that ending
+  may owe is detail and goes **above**. A modal
   under the block is what tells the reader the turn is a handoff and not a finish — nothing else
-  goes there. In a **written artifact** (session log, report, checkpoint) it leads at the top,
-  because a file is read from line 1, and it carries no marker and no modal. Same seven questions,
+  goes there. In a **written artifact** (session log, report, checkpoint) it leads at the top (a
+  file is read from line 1) and carries no marker and no modal. Same seven questions,
   opposite end.
 
 It is a human summary, **not** a second constitution audit — grounding and falsification stay with
@@ -111,17 +112,16 @@ that produced it: `references/plain-close.md`.
 
 A run has **three** endings — a completion-review, `[GOAL-CLOSE-WAIVED ...]`, and the convergence
 guard's stop with **no** marker — and the rule that a human decision is *asked* was written against
-only the first. Both dead handoffs observed in the wild (2026-08-13, two agents, correct in every
-other respect) went out through the other two: the decision was a well-formed question, in prose,
-and the human had nothing to answer. **The trigger is every turn that ends the run.** On each:
+only the first. Both dead handoffs observed (2026-08-13, two agents) went out through the other
+two: a well-formed question in prose, nothing to answer. **The trigger is every turn that ends the
+run.** On each:
 
 **The test you can actually run: if Q6 answers anything but a clean `Yes`, you are in an ending.** You
 have already computed that answer by the time you write the block, which is what makes it usable
-where classifying your own turn was not — the turn that misses is the one you misclassified. Measured (v0.40.0) across every session log
-on one machine: **11 stops ran with this section loaded, and 2 raised no modal** — both in sessions
-that raised it correctly at their other endings, so inconsistent classification, not ignorance of
-the rule. One came after a waiver, more work, and a *second* ending; the other answered Q6 `No`
-while naming two live decisions in Q5. **A turn that yields to the human with the goal-spec undischarged is an
+where classifying your own turn was not — the turn that misses is the one you misclassified. Measured
+(v0.40.0): **11 stops ran with this section loaded and 2 raised no modal**, both in sessions that
+raised it correctly elsewhere — inconsistent classification, not ignorance of the rule
+(`references/plain-close.md`). **A turn that yields to the human with the goal-spec undischarged is an
 ending**, whatever you were calling it — with one carve-out, about *resumption*, not about how
 finished you feel: **a turn that ends while something will resume it on its own is a wait, not an
 ending** (a verification in flight the harness will notify you about, a background job whose

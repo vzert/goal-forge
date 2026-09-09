@@ -6,6 +6,29 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.41.1] - 2026-09-09
+
+**Q0 ya no puede perder la petición de arranque, y nombra el proyecto.** El primer cierre en vivo bajo
+v0.41.0 falló la regla, en la misma sesión que la publicó: el operador dijo *"hagamos el push"*, el
+agente re-entró al loop para esa acción terminal con un `## Goal-spec` nuevo cuyo `Asked` era
+*"hagamos el push"*, y el cierre lo copió — como manda la regla. Leído en frío, en sus palabras (fragmento literal de ese turno, con sus erratas; el turno abre "aquí por ejemplo justamente me pones el What were we working on? nuevo,"): *"pero si lo revisas y yo lo leo sin ningún contexto entre 10 agenes que tenga corriendo, no tengo idea nuevamente de manera general e inicial en qué estabamos trabajando"*
+Dos defectos, los dos en la redacción de v0.41.0: la petición de arranque de la sesión era un
+**condicional** ("si la sesión abrió con algo más amplio, nombra las dos"), que "copiar, no recordar"
+desde una spec posterior pierde por construcción; y nada pedía **el proyecto o sistema** — "publicar
+0.41.0" entre diez agentes en diez repos no nombra nada.
+
+- **Q0 pasa a orden fijo sin condiciones** (`SKILL.md`, plantilla y regla): línea 1, el proyecto o
+  sistema en palabras llanas y luego la petición que **abrió la sesión** en palabras del usuario;
+  línea 2, esta parte si difiere, y en qué se convirtió.
+- **La línea `Asked (your words):` conserva la petición de arranque en toda spec posterior de la
+  misma sesión** (ciclo re-entrado, follow-up) y agrega la nueva después — así copiar no puede
+  perderla (`SKILL.md`, scaffold).
+- **El caso observado queda en `references/plain-close.md`**, con cómo debió leerse la línea.
+- **Tokens**: región de compactación 5357 (una sola cadena, `cl100k_base`), 1 por debajo de
+  v0.41.0, pagado comprimiendo prosa en las dos secciones sin quitar reglas. Sigue 357 por
+  encima de la ventana de 5000 (pendiente aparte, sin cambio).
+- Sin marker, gate ni matcher nuevos. Suites y manifiesto sin cambios de comportamiento.
+
 ## [0.41.0] - 2026-09-09
 
 **El cierre ahora pide decir en qué estábamos trabajando antes de decir qué quedó hecho.** Reportado

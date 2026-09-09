@@ -300,8 +300,11 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.41.0** asks every close to say
-**what the task was** before it says what got done. The plain-language close gains a seventh heading
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.41.1** fixes the first live
+close under the rule below, which failed it in the session that shipped it: the new heading now opens
+with **the project or system** and **the ask that opened the session**, in a fixed order, and a later
+spec in the same session carries the opening ask forward so copying cannot drop it. **v0.41.0** asks
+every close to say **what the task was** before it says what got done. The plain-language close gains a seventh heading
 at the top — `WHAT WERE WE WORKING ON?` — two lines: the ask **in the user's own words** (plus the
 session's opening ask, when this close is one part of it) and **what it became** (the spec's
 objective), copied from a new `Asked (your words):` line the `## Goal-spec` now opens with, never
