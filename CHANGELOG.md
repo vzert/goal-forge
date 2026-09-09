@@ -49,8 +49,8 @@ pero la decisión se tomó sobre una cifra falsa y se le vuelve a poner al opera
   línea 1 hasta el inicio de "A completion-review closes the spec", codificado como una sola cadena
   con `cl100k_base` como proxy — una suma línea por línea da ~28 más, y ese fue el instrumento de un
   borrador de esta cifra que un adversario cazó), 9 por debajo de v0.40.0 y **358 por encima** de la
-  ventana de 5000. Volver bajo la ventana implica quitar o mover
-  reglas: decisión aparte, no tomada aquí. Hasta entonces, "el cierre sobrevive la compactación" es
+  ventana de 5000. Volver bajo la ventana pide sacar otros 358 tokens de esta región; si alcanza con
+  comprimir más o hay que mover una regla no se probó: decisión aparte, no tomada aquí. Hasta entonces, "el cierre sobrevive la compactación" es
   una afirmación **sin medir desde v0.40.0**, y la referencia lo dice en su última fila.
 - **Lo que no se hizo.** Nada obliga a que un cierre lleve Q0 — es prosa, como el resto del bloque —
   y no hay observación en vivo en una sesión ajena todavía; el único cierre con Q0 al momento de

@@ -150,8 +150,9 @@ report, not theirs):
   4845 with "155 of headroom" while the file measured 5367 — which is the stale-figure defect one
   paragraph up, committed by the table that names it. v0.41.0 added Q0 and the `Asked` line (about
   250 tokens of new text) and paid for them by compressing prose in both sections, ending 9 tokens
-  **below** the v0.40.0 figure, not below 5000: the window was already blown, and getting back under
-  it means cutting rules or moving them, which is a separate decision (recorded as a pending item in
+  **below** the v0.40.0 figure, not below 5000: the window was already blown. Getting back under it
+  needs another 358 tokens out of this region — whether more compression alone can pay that, or a
+  rule has to move, has not been tried and is a separate decision (recorded as a pending item in
   the operator's own memory, which does not ship with the plugin). Treat "does the close survive compaction" as **unmeasured since v0.40.0** until that is
   settled. The tokenizer caveat stands: `cl100k_base` is a proxy, not Claude's, so no claim here
   says these rules *will* survive compaction, only that this is the best evidence obtainable. **Measure before adding anything above or inside this
