@@ -30,7 +30,8 @@ No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **all nine** branch suites: `python3 test/gate-branches.py` (Stop gate — includes the
+3. Run **the eight branch suites plus the carrier suite** (nine commands; the ninth drives no
+   hook branches — it asserts text): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`04`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
    `python3 test/verdict-nudge-branches.py` (PostToolUse verdict nudge),
@@ -44,8 +45,8 @@ No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-
    adversary hold; needs live git repos per case, built with the bare remote OUTSIDE the working
    tree), `python3 test/announce-checkpoint-branches.py` (SessionStart hook that announces the
    per-session checkpoint filename — hermetic, synthetic payloads; asserts what it emits, never
-   that the agent then uses it), `python3 test/claim-surface-carriers.py` (the claim-surface rule is present and
-   mutually consistent across its four carriers — hermetic, pure text assertions; it cannot show
+   that the agent then uses it), `python3 test/claim-surface-carriers.py` (**not a branch suite**: the claim-surface
+   rule is present and mutually consistent across its four carriers — hermetic, pure text assertions; it cannot show
    that an agent then applies the rule), and `python3 test/checkpoint-overwrite-branches.py` (PreToolUse
    Write|Edit gate that denies overwriting a checkpoint this session did not write — real files in
    a temp dir plus a synthetic transcript, no git).

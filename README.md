@@ -300,7 +300,14 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.41.1** fixes the first live
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.42.0** fixes a loop that could not
+reach a close: what the adversary may **count** is now bounded by the **claim surface** — the artifacts the
+spec's success criteria are checked against, fixed when the spec is written and never grown at close time.
+Everything else the run touches (the checkpoint, a session log, the plain-language close, a probe the agent
+built to convince itself) is evidence it may read and report as a note, not a claim under attack. Two guards
+keep that from burying defects: an artifact joins the surface the moment a criterion rests on it, and text a
+reader will act on breaks wherever it lives. A correction lying entirely off the surface no longer earns a
+delta round. **v0.41.1** fixes the first live
 close under the rule below, which failed it in the session that shipped it: the new heading now opens
 with **the project or system** and **the ask that opened the session**, in a fixed order, and a later
 spec in the same session carries the opening ask forward so copying cannot drop it. **v0.41.0** asks

@@ -6,6 +6,73 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.42.0] - 2026-09-10
+
+**Lo que está bajo ataque se fija al escribir el spec, no al cerrar.** Reportado por el operador sobre
+un agente suyo que lo repite: *"van varias veces que lo veo decir algo como Paro de verificar. Cuatro
+veredictos seguidos en contra, y los dos últimos rompieron solo sobre frases mías en el checkpoint, no
+sobre el código — que no se toca desde hace tres rondas."* Barrido sobre **las 33 sesiones** del
+directorio de ese agente (`~/.claude/projects/<agente>/*.jsonl`), filtrando a texto autorado por el
+asistente — eventos `.type=="assistant"`, bloques `.message.content[]` de tipo `text` — porque un grep
+crudo cuenta el `SKILL.md` inyectado y no al agente. **7 de las 33** contienen una auto-declaración del
+patrón; el patrón buscado, para que cualquiera lo reproduzca: `paro de verificar|mi propia prosa|el
+instrumento que añadí|en mi instrumento|sobre mi comentario|no sobre el código|andamio`. Una de ellas
+lo dice así: *"cada ronda encuentra un caso límite del instrumento que añadí en la anterior, y el
+entregable lleva sin romperse desde la primera"*.
+
+En otras sesiones del mismo corpus las rondas extra rompen sobre defectos reales encadenados del
+entregable — una variable borrada al reemplazar un bloque, un `trap` que falta, una guarda demasiado
+laxa. **El parche tenía que ser inerte sobre ésas**, y ésa fue la restricción de diseño, no una nota al
+pie: una regla que eximiera "superficie añadida" del ataque las habría tapado. Los cuatro casos de
+control quedaron escritos en los criterios del release, y dos backends independientes verificaron que
+siguen rompiendo.
+
+El defecto no era que faltara un terminal: v0.40.0 ya había shippeado la ronda acotada al delta. Es que
+**el delta, después de un turno correctivo, ES la prosa** — el mecanismo encoge el corpus correctamente
+y lo encoge sobre el material menos verificable que existe.
+
+- **La superficie de afirmaciones** (`SKILL.md`, paso 6, primer bullet): lo que está bajo ataque son los
+  artefactos contra los que se comprueban los criterios de éxito del spec. Ese conjunto se fija en el
+  paso 4. Lo demás que el agente toca al correr — el checkpoint, un session log, una línea del CHANGELOG
+  que narra la corrida en vez del release, el cierre en lenguaje llano, una sonda o herramienta de
+  auditoría que construyó para convencerse — es **evidencia que el adversario puede leer y reportar como
+  nota, nunca una afirmación bajo ataque**. Vincula desde la PRIMERA ronda.
+- **Dos guardas, obligatorias, para que no sea la exención que entierra defectos**: (1) un artefacto entra
+  en la superficie en cuanto un criterio se apoya en él, lo haya escrito quien sea y aparezca cuando
+  aparezca — un instrumento añadido a media corrida entra en cuanto la afirmación depende de lo que ese
+  instrumento midió, y **el conjunto sólo crece**; (2) un texto sobre el que un lector va a actuar es una
+  afirmación sobre el mundo y rompe donde sea que viva. La clasificación es del ejecutor, así que su
+  dirección de fallo queda fija: **en la duda, está dentro de la superficie**.
+- **El carve-out de conteos de proceso NO se ensancha** — se cita y se preserva literal, con su misma
+  prueba ("¿de qué habla el número: del trabajo, o de la contabilidad del método?").
+- **La ronda acotada al delta hereda la consecuencia** (`SKILL.md`, paso 6): una corrección que quedó
+  entera FUERA de la superficie **no gana ronda** — el veredicto anterior sigue en pie sobre la superficie
+  contra la que se emitió; se arregla el texto, se dice en una línea qué cambió y por qué estaba fuera, y
+  se cierra con ese veredicto.
+- **Cuatro portadores, que no pueden divergir**: `SKILL.md` (dueño), `agents/goal-adversary.md` y
+  `hooks/external-adversary.sh` (restatements inline, por necesidad — el subagente no resuelve la ruta del
+  reference en runtime y el partner externo no lee archivos de este host), y `references/durable-artifact.md`
+  (la autoridad por sección del checkpoint, declarada ahora como el caso particular de esta regla).
+- **`test/claim-surface-carriers.py` (nuevo, 33 checks — novena suite, y *no* una branch suite: no maneja
+  ramas de ningún hook, afirma texto)**: enumeración mecánica que mantiene
+  alineados los cuatro portadores, verifica que el bloque añadido al hook no traiga el riesgo de apóstrofo
+  /backtick/`$` del heredoc y que el archivo parsee, y fija el agujero que una ronda adversarial encontró
+  en el primer borrador de este mismo release (una frase listaba "la línea del documento" como narrativa
+  mientras la guarda 2 la pone dentro de la superficie). **Lo que esta suite NO puede mostrar, y lo dice de
+  sí misma**: que un agente que lee la regla luego la aplique. Una regla que instruye a un agente no tiene
+  rama que manejar; eso sólo cierra observando corridas reales.
+- **Tamaño y compactación, medidos**: `SKILL.md` pasa de 86 286 a 90 250 bytes. La región que debe
+  sobrevivir a la compactación queda en **5357 tokens** (2787 / 4029 / 5357 en las fronteras que
+  `references/plain-close.md` declara; `cl100k_base`, región codificada como una sola cadena), es decir
+  **sin cambio** contra v0.41.1: todo lo añadido cae por debajo de esa región. Sigue 357 por encima de
+  la ventana de 5000 — pendiente aparte, sin cambio. Un borrador de esta entrada afirmaba que no había
+  `tiktoken` en este entorno; era falso: está en `/usr/bin/python3`, no en el `python3` del PATH, que es
+  exactamente la lección que `plain-close.md` viene advirtiendo desde v0.39.0 (`type -a python3`). Esa
+  afirmación negativa la rompieron los dos adversarios antes de que se publicara, que es el trabajo de
+  la regla que este release añade.
+- Sin marker, gate ni matcher nuevos. Paridad de ramas del gate sin cambios en modo normal y con
+  `GOAL_GATE_ENFORCE=1`; paridad del hook externo sin cambios.
+
 ## [0.41.1] - 2026-09-09
 
 **Q0 ya no puede perder la petición de arranque, y nombra el proyecto.** El primer cierre en vivo bajo
