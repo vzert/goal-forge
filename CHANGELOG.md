@@ -6,6 +6,92 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.42.1] - 2026-09-11
+
+**El delta se acota por afirmación, no por archivo; y el backend es un default, no un techo.**
+
+**Procedencia, dicha primero porque cambia cuánto pesa cada cifra de abajo.** Se parte en dos, y el
+criterio es qué se pudo tocar desde aquí:
+
+*Reproducido aquí*: **todo lo medible en este repositorio y en esta máquina** — los conteos de versión
+(`grep -c "claim surface"`: **0** en 0.41.1, **6** en 0.42.0), los bytes, las fronteras de
+compactación, el conteo de checks de la suite, y los **seis payloads del fixture**, que existen como
+archivos locales y se leyeron enteros. Cada cifra de abajo que salga de aquí lleva su propia etiqueta.
+
+*Testimonio, no medición propia*: todo lo que describe la corrida ajena — las 17 rondas, los 11
+`break`, el comportamiento del cache a media sesión, las rachas. Sale de una auditoría que otro
+agente corrió sobre una sesión en un VPS. **No la re-derivé: no alcancé esa máquina desde aquí**, y
+leer el reporte que afirma esas cifras no es re-derivarlas.
+
+Según ese reporte: una sesión de dev gastó 17 rondas de adversario, 11 de ellas `break`, sin que el
+piso de convergencia parara nunca, y varias rondas se fueron atacando el checkpoint del propio
+ejecutor — una volvió con **un salto de línea al final del archivo**, y el ejecutor concluyó en su
+turno siguiente que el hallazgo era un artefacto de su reconstrucción. Esa sesión cargó **0.41.1**
+(el reporte lo verificó sobre el skill que realmente resolvió), así que es una medición del **antes**
+y no refuta v0.42.0. Dato de calibración del mismo reporte: el cache de esa máquina saltó a 0.42.0 a
+media sesión y la sesión siguió con 0.41.1 hasta el final — **el skill se resuelve una vez al
+arrancar**, así que la adopción se mide por sesiones que resolvieron cada versión, nunca por máquinas
+con el cache al día.
+
+El fixture fueron **seis payloads reales** de esa corrida, tres enfermos y tres sanos. Lo que los separa
+no es tener delta o no —cinco de los seis lo tienen— sino a qué apunta: los tres enfermos declaran «un
+archivo cambió, el checkpoint», y **uno de ellos ya nombraba la sección que había editado y rompió igual**.
+
+- **El test del delta es por afirmación, no por archivo** (`SKILL.md`, paso 6). Nombrar el archivo no
+  decide nada en ninguna dirección: *"es solo el checkpoint"* nunca exime una afirmación que la guarda 2
+  pone en la superficie, y *"el checkpoint es donde vive el outcome"* nunca convierte un byte que nadie
+  lee en una violación. Lo que decide es si el **texto** que cambió lleva una afirmación comprobable
+  contra verdad de terreno **fuera** de tu registro: una fila de la tabla de cobertura, una cifra medida,
+  el estado de una entidad, una autorización que le declaraste a un humano. No la llevan el wording, el
+  formato, un salto de línea, una línea de `Rounds` ni el puntero de `Next`.
+- **Cuando la ronda se debe, va acotada a la sección que cambió — y ese acotamiento, no una exención, es
+  lo que termina el bucle.** Una ronda acotada a un párrafo no puede volver con un hallazgo sobre el
+  espacio en blanco del final; una acotada al archivo sí, y volvió.
+- **Cuando el payload apunta a un `.goalspec/checkpoint*.md`, el archivo no es la superficie: dos de sus
+  secciones lo son, y se nombran** — el goal-spec vivo y la tabla de cobertura. `Rounds` es historia y
+  `Next` un puntero. Nombrar la sección es **necesario y no suficiente**, por el payload citado arriba.
+- **La superficie crece por CRITERIOS, nunca por lo que un veredicto haya golpeado.** Un break que
+  aterriza sobre tu *registro* te dice que el registro está mal; no promueve el registro a superficie.
+  Sin esa asimetría el bucle se alimenta solo **desde un arranque honesto**: un hallazgo correcto sobre el
+  checkpoint lo arrastra a la superficie, el arreglo queda confinado ahí, y de ahí en adelante cada ronda
+  es prosa atacando prosa. Es lo que se midió en el VPS, y los dos hallazgos que lo iniciaron eran
+  legítimos: el checkpoint se contradecía sobre si una acción terminal estaba autorizada, y difería
+  trabajo ejecutable por un agente sin nombrar a nadie.
+- **Dos breaks seguidos del mismo backend obligan al otro en la ronda siguiente** (`SKILL.md`, paso 6).
+  `adversary.backend` fija el **default**, nunca el techo, y ningún valor de config lo suspende. Con el
+  umbral en dos, el tercer break —el que dispara el piso de convergencia— llega de un modelo distinto, y
+  entonces el piso significa *"el diseño está mal"* y no *"este proveedor sigue mordiendo"*. Motivo, **según el mismo reporte de campo y no medido aquí**: esas 17 rondas corrieron contra una
+  sola voz, porque el config del proyecto fijaba
+  `backend: external`; cero spawns de subagente, cero líneas `[ADVERSARY-MODEL:]` reales, y un cierre que
+  lo declaró correctamente como `model=same backends=external-only`. Un backend que de verdad no puede
+  correr es una **degradación que se declara**, nunca un paso que se salta.
+- **Cinco portadores, no uno**: `SKILL.md` (dueño), `references/external-adversary-setup.md`,
+  `references/adaptation-guide.md`, `goal.config.example.json` y el aviso de
+  `hooks/route-external-adversary.sh`, que ya no describe como descuido un cambio de backend que la regla
+  **obliga**, y dice que no puede ver tu racha. `references/durable-artifact.md` declara las dos
+  obligaciones que caen sobre el payload.
+- **`test/claim-surface-carriers.py`: 33 → 59 checks.** Vigila cinco formulaciones superadas en ocho
+  archivos —los siete que la superficie de afirmaciones de esa corrida nombra, más
+  `agents/goal-adversary.md`, que porta la regla aunque no estuviera en esa superficie— y un fallo
+  nombra el portador y la frase. **Control negativo**: plantar
+  una frase prohibida en un portador pone la suite en rojo; quitarla la devuelve a verde. La versión
+  anterior leía un solo portador por check y pasaba en verde mientras cuatro estaban viejos.
+- **Tamaño y compactación, medidos**: `SKILL.md` pasa de 90 250 a 96 453 bytes. La región que debe
+  sobrevivir a la compactación sigue en **5357 tokens** (2787 / 4029 / 5357; `cl100k_base`, región
+  codificada como una sola cadena, `tiktoken` desde `/usr/bin/python3`) — **sin cambio**: todo lo añadido
+  cae por debajo de esa región. Sigue 357 por encima de la ventana de 5000, pendiente aparte.
+- Sin marker, gate ni matcher nuevos. Paridad de ramas del gate sin cambios en modo normal y con
+  `GOAL_GATE_ENFORCE=1`; paridad del hook externo sin cambios.
+- **Lo que este release NO arregla, y según el reporte causó el resto del costo en el VPS**: el piso de
+  convergencia vive en un `Stop` hook, así que no corre mientras un ejecutor encadena rondas sin ceder
+  el turno, y una compactación le borra el conteo que desde v0.36.0 lleva él mismo. Ese reporte describe
+  tres rachas que alcanzaron o pasaron el tope (3, 5 y 3 breaks seguidos) sin que el bucle parara.
+  **Queda abierto a propósito, y lo que aquí se afirma es lo que se hizo, no una imposibilidad**: no se
+  intentó ni se auditó una vía de aplicación dentro del turno —las opciones documentadas de los hooks,
+  otras banderas, otro punto de enganche—, así que este release no sostiene que no exista, solo que no
+  se buscó. Escribir la regla mejor, eso sí, no la habría disparado: ya está escrita igual en 0.40.0,
+  0.41.1 y 0.42.0.
+
 ## [0.42.0] - 2026-09-10
 
 **Lo que está bajo ataque se fija al escribir el spec, no al cerrar.** Reportado por el operador sobre

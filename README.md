@@ -300,14 +300,22 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.42.0** fixes a loop that could not
-reach a close: what the adversary may **count** is now bounded by the **claim surface** — the artifacts the
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.42.1** closes the door v0.42.0 left
+open, found by a field report on a real run: a delta round is scoped **by claim, not by file**. Naming the
+file settles nothing in either direction — "it is only the checkpoint" never exempts a claim, and "the
+checkpoint is where the outcome lives" never turns a byte nobody reads into a violation. What decides is
+whether the changed text carries a claim checkable against ground truth outside your record; when a round is
+owed it is scoped to the **section** that changed, and that scope — not an exemption — is what lets the loop
+end. The claim surface also grows **by criteria, never by whatever a verdict happened to hit**, so a correct
+finding about your own checkpoint no longer drags the checkpoint onto the surface and feeds the loop from an
+honest start. And `adversary.backend` is now a **default, not a ceiling**: two consecutive breaks from one
+backend make the other mandatory for the next round. **v0.42.0** fixes a loop that could not
+reach a close: what the adversary may **count** is bounded by the **claim surface** — the artifacts the
 spec's success criteria are checked against, fixed when the spec is written and never grown at close time.
 Everything else the run touches (the checkpoint, a session log, the plain-language close, a probe the agent
 built to convince itself) is evidence it may read and report as a note, not a claim under attack. Two guards
 keep that from burying defects: an artifact joins the surface the moment a criterion rests on it, and text a
-reader will act on breaks wherever it lives. A correction lying entirely off the surface no longer earns a
-delta round. **v0.41.1** fixes the first live
+reader will act on breaks wherever it lives. **v0.41.1** fixes the first live
 close under the rule below, which failed it in the session that shipped it: the new heading now opens
 with **the project or system** and **the ask that opened the session**, in a fixed order, and a later
 spec in the same session carries the opening ask forward so copying cannot drop it. **v0.41.0** asks
