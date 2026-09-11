@@ -11,6 +11,7 @@ needs history.
 
 ```sh
 python3 test/gate-branches.py                                  # run against the repo's gate
+python3 test/claim-surface-carriers.py         # claim-surface rule present + consistent across its 4 carriers
 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh  # regression parity vs a pre-edit copy
 GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh
 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh --expected 16-hold,26-floor

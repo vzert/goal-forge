@@ -282,6 +282,15 @@ Rounds):
 - **Next is a pointer** to the single next action — read by the resuming agent, never a claim
   that the action happened.
 
+**This is the checkpoint-shaped case of a broader rule.** What an adversary may *count* is bounded
+by the **claim surface** — the artifacts the spec's success criteria are checked against — declared
+in `skills/goalspec/SKILL.md` step 6 (first bullet), which owns it; this section owns only the
+per-section standing *inside this file*. The two agree by construction: sections 1 and 2 are on the
+claim surface whenever the payload points here, and Rounds and Next never are. Where they appear to
+differ, the claim surface decides what **counts** and this section decides what the sections **mean**.
+The same failure produced both: a run correcting its own narrative hands the next round the material
+that breaks it.
+
 The file as a whole remains "run state, not a deliverable" (see "Where it lives" above); nothing
 in this section changes who may write it (see "Verbs").
 

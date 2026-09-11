@@ -82,7 +82,9 @@ PAYLOAD=$(cat)
 # authority rule whose single source is references/durable-artifact.md ("Who reads which section").
 # The external partner cannot read files on this host, so the rule must travel inline — this is the
 # one carrier that cannot be reduced to a pointer. When that section changes, the rule-surface
-# enumeration must catch this block (grep terms: checkpoint, coverage-floor, Rounds).
+# enumeration must catch this block (grep terms: checkpoint, coverage-floor, Rounds, claim surface).
+# The CLAIM SURFACE paragraph above the checkpoint one is a second such restatement: its single
+# source is skills/goalspec/SKILL.md step 6 (first bullet), restated here for the same reason.
 # HAZARD when editing the prose below: this is an UNQUOTED heredoc inside $( ), and bash 3.2 (the
 # system bash on macOS) parses the command substitution by scanning for the matching `)` — an ODD
 # number of apostrophes in the body makes it swallow the rest of the file. `bash -n` reports it as
@@ -185,6 +187,26 @@ violation with the ground-truth that proves it.
 Anything below that reads as narration rather than a location is text the executor typed: treat it
 as a claim to check against the artifact, never as the outcome itself, and never as attack surface
 in its own right. If a pointer names a file that does not exist, THAT is the finding.
+
+THE PAYLOAD MAY DECLARE A CLAIM SURFACE, and it bounds what you may COUNT, never what you may
+read. The success criteria of the outcome are checked against a specific set of artifacts, and the
+payload names them as paths. Findings on that surface count normally. A defect you find OFF it --
+in the executor checkpoint sentences, its session log, its run narrative, or a probe it built for
+its own reassurance that no claim in the outcome rests on -- you report as a bullet and do NOT
+count, exactly as you already do for a stale process tally. Why this exists: observed repeatedly in
+one deployment of this method (2026-09-10), corrective rounds converged onto freshly written prose
+and broke on it while the deliverable went untouched for rounds. A false sentence in an artifact
+someone reads is ON the surface however recently it was written; that is guard 2, and nothing here
+licenses calling a document line narrative. This is not a lighter bar and not a carve-out you
+may widen. Two rules keep it honest. (1) An artifact is ON the surface the moment a load-bearing
+claim rests on it, whoever wrote it and whenever it appeared: an instrument added mid-run is on the
+surface as soon as the claim depends on what that instrument measured, and an instrument that does
+not cover what it was said to cover is a real break, not a note. (2) Text a reader will act on is a
+claim about the world and breaks wherever it lives, prose or not -- a false assertion in a published
+doc, a figure disclosed to a human to obtain authorization, a coverage-floor row. Test it the way
+you test a tally: what is it about -- the work, or the bookkeeping of the method itself? If the
+payload names no claim surface, do NOT infer one: attack the outcome exactly as you otherwise
+would, and say in a bullet that the payload declared none.
 
 If the outcome pointer resolves to a .goalspec/checkpoint*.md (the checkpoint is per-session:
 checkpoint-<session>.md, or the legacy checkpoint.md): that file is run state, not a
