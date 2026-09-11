@@ -291,6 +291,17 @@ differ, the claim surface decides what **counts** and this section decides what 
 The same failure produced both: a run correcting its own narrative hands the next round the material
 that breaks it.
 
+**Two obligations fall on the executor's payload, not on this file's readers** (both declared in
+`skills/goalspec/SKILL.md` step 6, which owns them). When a payload points an adversary here, it
+names the **sections** that carry claims — the live goal-spec and the coverage-floor table — and not
+the file. And a delta confined to this file is **not** thereby exempt from a round: which file changed
+settles nothing. What decides is whether the text that changed carries a claim checkable against ground
+truth outside this file — a coverage-floor row, an entity's status, an authorization state disclosed to
+a human all do, and a `Rounds` line, the `Next` pointer, wording and whitespace do not. When a round is
+owed, it is scoped to the section that changed, and that scope is what lets the loop end. Measured
+2026-09-11 on a real run under the older rule: three consecutive rounds whose delta was declared as this
+whole file, the last ending on a trailing newline.
+
 The file as a whole remains "run state, not a deliverable" (see "Where it lives" above); nothing
 in this section changes who may write it (see "Verbs").
 

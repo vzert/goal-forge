@@ -42,7 +42,9 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
    can't give you a capable one; the external CLI runs as a shell command, not a subagent, and sidesteps
    that entirely). A project file can then override just one key (point at a different CLI, or set
    `backend: "subagent"` to opt out) **or** add only `sweep_files` **without** nulling the global
-   adversary. Both surfaces use this same per-key fallback — `/goalspec` step 6 reads `adversary.backend`,
+   adversary. **Whatever `backend` resolves to is a default, never a ceiling**: the skill requires the
+   *other* backend for the next round after two consecutive breaks from one of them (step 6), and no
+   value here suspends that. Both surfaces use this same per-key fallback — `/goalspec` step 6 reads `adversary.backend`,
    `external-adversary.sh` reads `external_cmd` — so the routing decision and the command invoked are
    drawn from the same resolution and never disagree.
 3. `/goalspec` step 6 will then run `hooks/external-adversary.sh`, which pipes the pointer payload +

@@ -52,6 +52,10 @@ def main():
         checks.append((label, bool(ok), detail))
 
     skill, agent, external, durable = read(SKILL), read(AGENT), read(EXTERNAL), read(DURABLE)
+    setup = read(os.path.join(P, "references", "external-adversary-setup.md"))
+    adapt = read(os.path.join(P, "references", "adaptation-guide.md"))
+    example = read(os.path.join(P, "goal.config.example.json"))
+    route = read(os.path.join(P, "hooks", "route-external-adversary.sh"))
 
     # --- 1. The owner carries the rule and both guards -------------------------------------
     check("skill:rule-present", "claim surface" in skill)
@@ -135,6 +139,88 @@ def main():
           or "never a licence to call a document line narrative" in skill)
     check("external:anti-loophole-clause",
           "nothing here\nlicenses calling a document line narrative" in external)
+
+    # --- 7c. The checkpoint feedback loop, pinned to the payloads that produced it -----------
+    # Measured on six real payloads from one run (2026-09-11): the three that broke on the
+    # executor's own record all carried a delta reading "one file changed - the checkpoint", and
+    # one of them already named the section it had edited. Naming is not the test; touching the
+    # work is. And the loop started from a LEGITIMATE break, so the surface must not grow just
+    # because a verdict landed on the record.
+    check("skill:payload-names-checkpoint-sections",
+          "the file is not the claim surface" in skill and "coverage-floor table" in skill)
+    check("skill:naming-a-section-is-not-sufficient",
+          "necessary and **not sufficient**" in skill)
+    check("skill:delta-test-is-by-claim-not-by-file",
+          "The test is not which FILE changed" in skill
+          and "whether the text that changed carries a claim" in skill)
+    check("skill:owed-round-is-scoped-to-the-section",
+          "scoped to the section that changed" in skill)
+    # The defect two backends broke on: a FILE-level exemption silently overrides the
+    # section-level rule the payload bullet and guard 2 declare, three paragraphs above it.
+    # Both halves of the banned phrasing stay out.
+    check("skill:no-file-level-exemption",
+          "however precisely you name the section you edited" not in skill
+          and "the round is not owed, however" not in skill)
+    # A round found the superseded phrasing surviving in TWO places after the first fix: guard 1's
+    # own closing clause in SKILL.md, and an unqualified file-level exemption in durable-artifact.
+    # A check that reads one carrier cannot see that, so this one reads every carrier of the rule.
+    # Every superseded formulation, checked in EVERY carrier. A round found the first version of
+    # this loop watching three phrases while the two file-level ones from the check above were
+    # watched only in SKILL.md — so a carrier could have carried them and the suite would have
+    # passed. An instrument that guards a phrase in one file guarantees nothing about the others.
+    BANNED = (
+        "fix rather than re-verify",
+        "corrected and closed on the prior verdict",
+        "delta confined to this file earns no round",
+        "however precisely you name the section you edited",
+        "the round is not owed, however",
+    )
+    # The sweep must cover every file the round's own claim surface names. A round found it
+    # covering six while the declared surface named eight — `goal.config.example.json` and
+    # `route-external-adversary.sh` went unswept while C3 claimed "any carrier".
+    for _n, _t in (("skill", skill), ("agent", agent), ("external", external), ("durable", durable),
+                   ("setup", setup), ("adaptation", adapt), ("example-config", example),
+                   ("route-hook", route)):
+        _hit = [b for b in BANNED if b in _t]
+        check("%s:no-superseded-formulation-survives" % _n, not _hit, ",".join(_hit))
+    check("durable:decides-by-claim-not-by-file",
+          "which file changed" in durable and "settles nothing" in durable)
+    # The splice defect: an inserted clause orphaned the tail of a pre-existing sentence, and a
+    # bare substring check passed over the wreckage. Assert the original sentence survives whole.
+    check("setup:original-per-key-sentence-intact",
+          "to opt out) **or** add only `sweep_files` **without** nulling the global" in setup)
+    check("skill:naming-the-file-settles-nothing-either-way",
+          "never exempts a claim guard 2 puts on the surface" in skill
+          and "never turns a byte nobody reads into a violation" in skill)
+    check("skill:surface-grows-by-criteria-not-by-hits",
+          "grows by CRITERIA" in skill and "does not promote the record onto the surface" in skill)
+    check("durable:names-the-two-payload-obligations",
+          "Two obligations fall on the executor" in durable)
+
+    # --- 7d. Backend alternation: the config is a default, not a ceiling --------------------
+    check("skill:two-breaks-force-the-other-backend",
+          "make the other one mandatory" in skill)
+    check("skill:backend-config-is-not-a-ceiling",
+          "your default, never your ceiling" in skill)
+    check("skill:unavailable-backend-is-a-declared-degradation",
+          "degradation you declare" in skill)
+    check("skill:floor-option-c-points-at-the-mandatory-switch",
+          "make the other mandatory (step 6)" in skill)
+
+    # --- 7e. The backend rule has FIVE carriers, not one --------------------------------------
+    # A round found the first version of this rule written only into SKILL.md while four other
+    # surfaces still described `adversary.backend` as a plain preference or opt-out. The suite
+    # passed anyway, because it only read SKILL.md: an anti-drift instrument that enumerates one
+    # carrier measures nothing about drift.
+    check("setup:backend-is-a-default-not-a-ceiling",
+          "a default, never a ceiling" in setup)
+    check("adaptation:backend-is-not-a-cap",
+          "not a cap" in adapt and "mandatory for the next round" in adapt)
+    check("example-config:backend-is-not-a-ceiling",
+          "not a ceiling" in example)
+    check("route-hook:does-not-call-a-mandated-switch-an-oversight",
+          "UNLESS this round is the mandated switch" in route
+          and "cannot see your streak" in route)
 
     # --- 8. No carrier claims ownership it does not have ------------------------------------
     for name, text in (("agent", agent), ("external", external)):

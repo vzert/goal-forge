@@ -84,7 +84,11 @@ msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). R
        "(it runs `" + ext_cmd + "`, a different vendor) and read its "
        "[ADVERSARY-VERDICT:]/[ADVERSARY-MODEL:] from there. Running the subagent too is fine (both "
        "backends is stronger); routing to ONLY the subagent silently skips the independence you "
-       "configured. If the external binary is unreachable it fails open to an UNVERIFIED hold — not a block.")
+       "configured — UNLESS this round is the mandated switch: after two consecutive breaks from one "
+       "backend the skill requires the NEXT round to run on the other one (step 6), and this nudge "
+       "cannot see your streak, so it fires the same either way. If you are switching because of a "
+       "streak, you are following the rule, not skipping it. If the external binary is unreachable it "
+       "fails open to an UNVERIFIED hold — not a block.")
 
 print(json.dumps({
     "systemMessage": msg,
