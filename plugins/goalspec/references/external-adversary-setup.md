@@ -121,8 +121,12 @@ writes into an ignored directory is not caught. Widening it to every ignored pat
 signal in build output and `node_modules`, so the choice is deliberate — but it is a gap, not a
 guarantee, and a clean run means "nothing changed where this looks". Nothing is reverted —
 this hook does not touch files it does not own; what to keep is yours to decide. The subagent backend
-carries the same rule (`agents/goal-adversary.md`) with its own consumer,
-`hooks/watch-adversary-writes.sh` on `SubagentStart`/`SubagentStop`.
+carries the same rule (`agents/goal-adversary.md`) with its own consumer, split across two hooks:
+`hooks/watch-adversary-writes.sh` measures on `SubagentStart`/`SubagentStop` and records, and
+`hooks/report-adversary-writes.sh` reports to the executor on `Stop`. The split exists because a
+`SubagentStop` hook's output is delivered to the subagent that just stopped and never to the
+executor — measured on 2026-09-12 — so v0.44.0, which emitted there, sent a second-person warning to
+the very adversary it was about, and one of them read it as a role change and wrote to five files.
 
 - **One backend → announce it.** When only one of the two actually ran, the completion-review says
   `backends=subagent-only` or `backends=external-only` (rather than `backends=both`). It asserts

@@ -97,15 +97,15 @@ CASES = [
     # or the rail fires on every honest review and gets ignored.
     ("01-clean-run-dirty-repo", noop, None, "silent"),
     # THE discriminating case — invisible to a `git status` fingerprint.
-    ("02-appends-to-dirty-file", append_dirty, None, "reported:tracked.txt"),
-    ("03-creates-new-file", new_file, None, "reported:adversary-notes.md"),
+    ("02-appends-to-dirty-file", append_dirty, None, "recorded:tracked.txt"),
+    ("03-creates-new-file", new_file, None, "recorded:adversary-notes.md"),
     # .goalspec/ is gitignored, so `ls-files --exclude-standard` never lists it; hashed explicitly.
-    ("04-touches-gitignored-runstate", touch_runstate, None, "reported:.goalspec/checkpoint-suite.md"),
+    ("04-touches-gitignored-runstate", touch_runstate, None, "recorded:.goalspec/checkpoint-suite.md"),
     # `git add` moves the path out of the unstaged scan — the staged-diff hash is the only thing
     # that still sees it. The index line carries no path of its own, so it must be NAMED, not
     # stripped: the first run of this case reported a bare 40-char hash as a modified file.
     ("05-stages-the-change", stage_it, None,
-     "reported:(the git index: content was staged or unstaged),tracked.txt"),
+     "recorded:(the git index: content was staged or unstaged),tracked.txt"),
     # Changed and changed back is not a finding, and saying so is the point: the rail reports what
     # was LEFT modified, not every transient write.
     ("06-changed-and-reverted", revert_it, None, "silent"),
@@ -117,6 +117,12 @@ CASES = [
     # No SubagentStart was seen (installed mid-run, event skipped). Claiming "no writes detected"
     # from a measurement that never ran is the broken instrument this rail is about, so: silent.
     ("09-stop-without-start", append_dirty, None, "silent"),
+    # RE-ARM (0.44.1). The agent stops, then keeps going and writes again. 0.44.0 DELETED the
+    # snapshot on the first stop, so everything after it was unmeasured — which is precisely how the
+    # real 2026-09-12 writes escaped: they landed after the first stop and no firing could see them.
+    # Two rounds must be recorded, naming both paths.
+    ("10-second-stop-after-more-writes", append_dirty, None,
+     "recorded:adversary-notes.md,tracked.txt|rounds=2"),
 ]
 
 
@@ -131,39 +137,45 @@ def run_case(hook, workdir, name, mutate, agent_type, skip_start):
         subprocess.run(["bash", hook, "start"], input=payload("SubagentStart", root, **kw),
                        capture_output=True, text=True, env=env, cwd=root, timeout=30)
     mutate(root)
-    return subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
-                          capture_output=True, text=True, env=env, cwd=root, timeout=30)
+    res = subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
+                         capture_output=True, text=True, env=env, cwd=root, timeout=30)
+    return res, tmp, root, env, kw
 
 
-def classify(res):
+def classify(res, findings_dir, session="sess-abc"):
+    """0.44.1: a `stop` that EMITS is the bug. It must be silent on stdout and leave the finding in
+    the per-session findings file instead.
+
+    Why this is the discriminating assertion: a SubagentStop hook's output is delivered to the
+    SUBAGENT that just stopped, not to the executor (measured 2026-09-12, real session — it lands in
+    the agent's own transcript as `isSidechain: true` and appears ZERO times in the executor's). The
+    0.44.0 message was written in the second person for the executor, so the adversary read it as a
+    role change and wrote to five files. Emitting here is not a cosmetic defect; it is the defect."""
     out = res.stdout.strip()
-    if not out:
+    if out:
+        return "EMITTED-TO-SUBAGENT"
+    fpath = os.path.join(findings_dir, "goalspec-adversary-snap", session + ".findings")
+    if not os.path.isfile(fpath):
         return "silent"
-    try:
-        msg = json.loads(out).get("systemMessage") or ""
-    except Exception:
-        return "malformed-json"
-    if "repository content changed" not in msg:
-        return "reported-without-the-claim"
-    # Both halves are required: saying a change happened AND naming the path. A warning that cannot
-    # name what changed sends the operator to a blank `git status` on an already-dirty tree, which is
-    # the blindness the content fingerprint exists to remove.
-    paths = [ln.strip()[2:] for ln in msg.splitlines() if ln.strip().startswith("- ")]
+    body = open(fpath).read()
+    paths = sorted({ln[5:].strip() for ln in body.splitlines() if ln.startswith("path ")})
     if not paths:
-        return "reported-unnamed"
-    # Both readings must be offered — an accusation the executor cannot have caused is a rail that
-    # gets argued with instead of acted on.
-    if "YOU edited under an in-flight verifier" not in msg:
-        return "reported-one-reading-only:" + ",".join(sorted(paths))
-    return "reported:" + ",".join(sorted(paths))
+        return "recorded-unnamed"
+    rounds = body.count("ts=")
+    tag = "recorded:" + ",".join(paths)
+    return tag + ("" if rounds == 1 else "|rounds=%d" % rounds)
 
 
 def suite(hook, workdir):
     rows = []
     for name, mutate, agent_type, expect in CASES:
-        res = run_case(hook, workdir, name, mutate, agent_type,
-                       skip_start=name.startswith("09"))
-        rows.append((name, classify(res), expect))
+        res, tmp, root, env, kw = run_case(hook, workdir, name, mutate, agent_type,
+                                           skip_start=name.startswith("09"))
+        if name.startswith("10"):
+            new_file(root)
+            res = subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
+                                 capture_output=True, text=True, env=env, cwd=root, timeout=30)
+        rows.append((name, classify(res, tmp), expect))
     return rows
 
 

@@ -100,8 +100,13 @@ def selftest():
         control_failures = set()
         for label, expect, mutate in ordered:
             d = tempfile.mkdtemp(dir=work)
-            listed = subprocess.run(["git", "-C", REPO, "ls-files", "-z"],
-                                    capture_output=True, check=True)
+            # Tracked AND untracked-not-ignored: "what you are about to commit" includes files you
+            # just created. A plain `ls-files` copies only tracked ones, so a new hook plus its
+            # hooks.json entry made the CONTROL fail — the tool broke on exactly the change it was
+            # written to guard. Caught by its own control case, which is the point of having one.
+            listed = subprocess.run(
+                ["git", "-C", REPO, "ls-files", "-z", "-c", "-o", "--exclude-standard"],
+                capture_output=True, check=True)
             for rel in listed.stdout.decode().split("\0"):
                 if not rel:
                     continue

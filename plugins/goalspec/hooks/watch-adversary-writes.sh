@@ -21,15 +21,14 @@
 #
 # What it does:
 #   start -> fingerprint the repository CONTENT, stash it under $TMPDIR keyed by agent_id.
-#   stop  -> fingerprint again, diff, and if anything changed, tell the executor which paths and
-#            what the two readings of that fact are.
+#   stop  -> fingerprint again, diff, RE-ARM the snapshot, and if anything changed RECORD the paths
+#            to a per-session findings file. It emits NOTHING.
 #
-# TWO READINGS, BOTH FINDINGS — the message says so rather than accusing:
-#   (a) the adversary wrote to the tree it was reviewing; or
-#   (b) the executor edited under an in-flight verifier, which the project discipline forbids for the
-#       same reason (the verdict then describes a state that no longer exists).
-# A background round genuinely can produce (b) as a false alarm for the rail but not for the method:
-# a synchronous closing round cannot.
+# IT EMITS NOTHING, AND THAT IS THE POINT (0.44.1). A SubagentStop hook's output goes to the subagent
+# that just stopped, never to the executor — measured, see the long note at the bottom of this file.
+# 0.44.0 emitted here, so the warning reached only the party it was about, written in the second
+# person, and one goal-adversary read it as a role change and started editing. The reporting half now
+# lives in hooks/report-adversary-writes.sh, on `Stop`, whose output does reach the executor.
 #
 # Deliberately NOT a revert and NOT a block: SubagentStop cannot un-write anything, undoing a change
 # the human may have made themselves is precisely the no-harm violation this checks for, and the
@@ -67,15 +66,19 @@ if not (isinstance(at, str) and re.search(r"(^|:)goal-adversary$", at.strip().lo
     sys.exit(0)
 aid = d.get("agent_id") or d.get("session_id") or ""
 cwd = d.get("cwd") or ""
+sid = d.get("session_id") or ""
 if not aid:
     sys.exit(0)
-# Key must be filesystem-safe: agent ids are harness-generated, so this is hygiene, not distrust.
-print(re.sub(r"[^A-Za-z0-9_.-]", "_", str(aid))[:120] + "\t" + str(cwd))
+# Keys must be filesystem-safe: ids are harness-generated, so this is hygiene, not distrust.
+safe = lambda v: re.sub(r"[^A-Za-z0-9_.-]", "_", str(v))[:120]
+print(safe(aid) + "\t" + str(cwd) + "\t" + safe(sid))
 ' 2>/dev/null)
 
 [ -z "$FIELDS" ] && exit 0
-AGENT_KEY=${FIELDS%%	*}
-PAYLOAD_CWD=${FIELDS#*	}
+AGENT_KEY=$(printf '%s' "$FIELDS" | cut -f1)
+PAYLOAD_CWD=$(printf '%s' "$FIELDS" | cut -f2)
+SESSION_KEY=$(printf '%s' "$FIELDS" | cut -f3)
+[ -n "$SESSION_KEY" ] || SESSION_KEY="$AGENT_KEY"
 
 # Resolve the repo from the payload cwd, not from this process cwd: a hook runs wherever the harness
 # puts it, and the payload states where the session actually is.
@@ -127,7 +130,13 @@ fi
 
 AFTER=$(fingerprint 2>/dev/null || true)
 BEFORE=$(cat "$SNAP" 2>/dev/null || true)
-rm -f "$SNAP" 2>/dev/null || true
+# RE-ARM, do not delete. A subagent can stop and then keep going (a harness that resumes it, a
+# teammate message, a hook that hands it more context), and 0.44.0 deleted the snapshot on the first
+# stop — so everything the agent did afterwards was unmeasured, silently. That is exactly what
+# happened in the recorded 2026-09-12 incident: the writes this rail exists to catch landed AFTER
+# the first stop and no second firing could see them. Making AFTER the new baseline means the next
+# stop measures only the new delta.
+printf '%s\n' "$AFTER" > "$SNAP" 2>/dev/null || true
 
 [ "$BEFORE" = "$AFTER" ] && exit 0
 
@@ -144,15 +153,27 @@ CHANGED=$(diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") 2>/dev/null 
           | grep -v '^$' | sort -u || true)
 [ -z "$CHANGED" ] && CHANGED="(content changed but no path could be named — inspect \`git status\` by hand)"
 
-MSG="A goal-adversary subagent just finished, and the repository content changed while it was running. Paths whose bytes differ between the start and the end of its run:
-$(printf '%s\n' "$CHANGED" | sed 's/^/  - /')
-
-There are exactly two readings and both are findings, so do not wave it through. (1) The adversary WROTE to the work it was sent to measure — it was told not to, and a verdict it returns now describes a state it created, so treat that verdict as UNVERIFIED rather than a pass: decide what to keep or revert, then re-run the review over a tree nobody edited mid-flight. (2) YOU edited under an in-flight verifier — which the executor discipline forbids for the same reason: its verdict is about a tree that no longer exists. A background round can produce (2) innocently; a synchronous closing round cannot. Say in your close which of the two it was, with the evidence, instead of leaving it implied. This hook never reverts anything and never blocks: it only reports what it measured."
-
-printf '%s' "$MSG" | "$PY" -c '
-import json, sys
-m = sys.stdin.read()
-print(json.dumps({"systemMessage": m,
-                  "hookSpecificOutput": {"hookEventName": "SubagentStop", "additionalContext": m}}))
-' 2>/dev/null || true
+# DO NOT EMIT HERE. This is the half of 0.44.0 that was wrong, and it was worse than useless.
+# MEASURED on 2026-09-12 in a real session (3-tier-memory, session 035edc21): a SubagentStop hook
+# emitting `systemMessage`/`additionalContext` has its output delivered to the SUBAGENT THAT JUST
+# STOPPED, not to the executor — it lands in that agent's own transcript as
+# `type: attachment, isSidechain: true`, and the executor's transcript contains it ZERO times. So the
+# party that needed the warning never saw it, and the party the warning is ABOUT received a text
+# written in the second person ("YOU edited under an in-flight verifier... decide what to keep or
+# revert"). The goal-adversary read it as addressed to itself, concluded it had become the executor,
+# and wrote to five files in the repo under review. The detector of adversary writes had become their
+# trigger.
+#
+# So the finding is RECORDED here and REPORTED from a hook whose output does reach the executor:
+# hooks/report-adversary-writes.sh, on `Stop`. That routing is measured too, in the same transcript:
+# a `hookName: "Stop"` attachment lands with `isSidechain: false` in the executor's own file.
+#
+# One record per firing, append-only, keyed by SESSION so a different session never picks it up. The
+# reporter reads, emits, and deletes.
+FINDINGS="$SNAP_DIR/$SESSION_KEY.findings"
+{
+  printf 'ts=%s agent=%s repo=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_KEY" "$REPO_ROOT"
+  printf '%s\n' "$CHANGED" | sed 's/^/path /'
+  printf 'end\n'
+} >> "$FINDINGS" 2>/dev/null || true
 exit 0

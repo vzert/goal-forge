@@ -39,7 +39,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **the nine branch suites plus the carrier suite** (ten commands; one of them drives no
+3. Run **the ten branch suites plus the carrier suite** (eleven commands; one of them drives no
    hook branches — it asserts text): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`04`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
@@ -60,7 +60,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    Write|Edit gate that denies overwriting a checkpoint this session did not write — real files in
    a temp dir plus a synthetic transcript, no git), and `python3 test/adversary-writes-branches.py`
    (SubagentStart/Stop read-only rail for the subagent adversary — throwaway git repos, synthetic
-   payloads, `TMPDIR` redirected per case).
+   payloads, `TMPDIR` redirected per case), and `python3 test/adversary-report-branches.py` (the Stop
+   hook that reports that rail's findings to the executor — fully hermetic, no git).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and

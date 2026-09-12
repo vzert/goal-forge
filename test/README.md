@@ -1,6 +1,6 @@
 # test/
 
-**Nine** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Ten** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a text-consistency check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -284,6 +284,33 @@ python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
 baseline copy; `--compare` works like the gate suite's when the hook is edited again.
 
+## `adversary-report-branches.py` — the Stop hook that reaches the executor
+
+For `hooks/report-adversary-writes.sh` (0.44.1). Fully hermetic: no git, no network. Each case
+writes a synthetic findings file the way `watch-adversary-writes.sh` would, feeds the hook a `Stop`
+payload, and classifies.
+
+**Why the hook exists** is what the suite pins. In 0.44.0 the `SubagentStop` hook both measured and
+emitted. Measured on 2026-09-12 in a real session: a `SubagentStop` hook's output is delivered to the
+**subagent that just stopped** — it lands in that agent's transcript as `isSidechain: true` and
+appears **zero** times in the executor's. The message was written in the second person for the
+executor ("YOU edited under an in-flight verifier … decide what to keep or revert"), so the adversary
+that received it recorded that it "misread it as a cue that I had become the executor" and wrote to
+five files in the repo under review. `Stop` output, by contrast, lands in the executor's own
+transcript with `isSidechain: false` — verified in that same file.
+
+Two cases carry that lesson and must not be softened. **08** requires the message to open with an
+audience line AND to disarm an adversary reading it in a transcript (the executor's transcript is
+exactly what an adversary reads for its principle-4 check, so this text *will* land in front of one);
+removing either half flips the case to `reported-no-audience-line`. **09** requires the findings file
+to be consumed, or every later turn re-reports a stale finding as new. **04** pins the session
+keying, **05** that garbage is skipped rather than fatal, **03/06/07/10** the fail-open paths.
+
+```sh
+python3 test/adversary-report-branches.py
+python3 test/adversary-report-branches.py --compare /tmp/report-BASELINE.sh --expected 08
+```
+
 ## `adversary-writes-branches.py` — the subagent read-only rail
 
 For `hooks/watch-adversary-writes.sh` (0.44.0), the subagent half of the same rail. Hermetic apart
@@ -306,7 +333,10 @@ changed and changed back is nothing left modified. **01** is the control against
 detector; **07/08** pin the `agent_type` re-check (including `not-goal-adversary-example`, the
 fabricated form that slipped a bare substring check once in this project); **09** pins that a
 `stop` with no `start` stays silent — claiming "no writes detected" from a measurement that never
-ran is the broken instrument this rail is about.
+ran is the broken instrument this rail is about. **10** (0.44.1) pins the re-arm: the agent stops and
+then writes again, and 0.44.0 deleted the snapshot on that first stop, so everything afterwards was
+unmeasured — which is exactly how the real 2026-09-12 writes escaped. Against the 0.44.0 hook, 02-05
+come back `EMITTED-TO-SUBAGENT` and 10 comes back `silent`.
 
 ```sh
 python3 test/adversary-writes-branches.py
