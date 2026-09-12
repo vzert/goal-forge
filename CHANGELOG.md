@@ -11,9 +11,14 @@ version bump are never delivered to already-installed users.
 ### El adversario verifica, no repara — y ahora se mide
 
 Reporte de campo: el backend externo no es de sólo lectura y a veces hace cambios no solicitados.
-Corre con un sandbox de escritura (`codex exec -s workspace-write …`) porque lo necesita — uno de
-sólo lectura le hace fallar las suites y devuelve esas fallas disfrazadas de `ungrounded`, y por eso
-el arreglo registrado fue ampliar el sandbox, no encogerlo. Pero un verificador que **repara** lo que
+Corre con un sandbox de escritura (`codex exec -s workspace-write …`) porque **en la configuración
+que este proyecto midió**, uno de sólo lectura le hizo fallar las suites y devolvió esas fallas
+disfrazadas de `ungrounded` — por eso el arreglo registrado fue ampliar el sandbox. Eso es una
+configuración medida, no una prueba de que ningún sandbox restrictivo sirva; el espacio de opciones
+(`--sandbox read-only`, perfiles, `--add-dir`, wrappers, sandbox del sistema operativo) nunca se
+agotó. Lo que sí se sostiene es más angosto: `external_cmd` es del operador, así que este hook no
+puede imponer un modo de sandbox de forma portable entre CLIs que no controla. Pero un verificador
+que **repara** lo que
 fue a medir después verifica un estado que él creó: el principio 1 vuelto contra el verificador, y el
 `hold` limpio que sigue es indistinguible de uno honesto.
 
@@ -111,6 +116,29 @@ reconstruido por el partner desde cero), el C (los eventos `SubagentStart`/`Suba
 del matcher existen y están documentados — el ataque de mayor valor contra este cambio), el E (las
 diez suites, `bash -n` y `claude plugin validate` reproducidos con rc=0) y el de autonomía (las
 cuatro decisiones aparecen como pares `AskUserQuestion`/`tool_result` en el log de sesión).
+
+### Ronda 2 (delta): los cinco arreglos se sostienen, dos copias quedaron atrás
+
+`break ungrounded=2 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0`. Los cinco arreglos de
+la ronda 1 fueron **refutados uno por uno** contra ground truth: el `break` con exit distinto de cero
+sobrevive y el `hold` con exit distinto de cero sigue degradando (caso 20 reconstruido desde cero y
+verificado como discriminante contra la copia pre-edición); nueve suites; la divulgación del hueco de
+paths ignorados coincide con lo que el código hace; la afirmación angosta de portabilidad se sostiene
+contra `codex --help` y `claude --help`; el comentario nuevo de la línea 83 es correcto.
+
+Los dos hallazgos nuevos son la **misma clase** que los hallazgos 4 y 5: copias de esas dos
+afirmaciones que el barrido de portadores no alcanzó.
+
+1. `CHANGELOG.md` seguía afirmando en su párrafo de apertura, en absoluto, que un sandbox de sólo
+   lectura hace fallar las suites — contradiciendo la sección de más abajo de este mismo archivo, que
+   admite que se midió una sola configuración.
+2. El **prompt emitido** al partner (no el comentario ya corregido) seguía diciéndole «no podés leer
+   ese archivo desde donde corrés». Arreglar la línea 83 no tocó esa copia.
+
+Un barrido propio posterior encontró dos más que la ronda no marcó: la misma frase falsa en
+`references/durable-artifact.md`, y la versión ancha del reclamo del sandbox en un comentario nuevo
+del propio `external-adversary.sh`. Las cuatro corregidas. **La lección, registrada**: cuando la
+corrección de un hallazgo es cambiar una frase, el trabajo no es la frase — es `grep` de la frase.
 
 ### Portadores tocados
 `hooks/external-adversary.sh`, `hooks/watch-adversary-writes.sh` (nuevo), `hooks/hooks.json`,

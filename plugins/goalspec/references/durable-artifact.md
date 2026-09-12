@@ -254,8 +254,8 @@ So, in sections 1 and 2 — the two that carry authority:
 The four sections do not share a reader or a standing, and this section is the **declaration of
 both** — the single source every carrier elsewhere is subordinate to. Both carriers restate the
 per-section rule inline **by necessity** rather than pointing here and stopping: the external
-backend's prompt because the partner cannot read files on this host, and the adversary's
-definition because the spawned subagent cannot reliably resolve this reference's path at runtime
+backend's prompt and the adversary's definition alike because neither the external partner nor the
+spawned subagent can reliably resolve this reference's path at runtime
 (its cwd is the project, the installed cache holds many plugin versions, and other harnesses
 relocate the plugin root). Each declares itself a citation of this section, never an owner: where
 a carrier's restatement and this section differ, this section wins, and the rule-surface

@@ -228,9 +228,10 @@ would, and say in a bullet that the payload declared none.
 If the outcome pointer resolves to a .goalspec/checkpoint*.md (the checkpoint is per-session:
 checkpoint-<session>.md, or the legacy checkpoint.md): that file is run state, not a
 deliverable, and the per-section authority that follows is DECLARED in the plugin reference
-references/durable-artifact.md (section: Who reads which section) — you cannot read that file from
-where you run, so it is restated here as a citation of that declaration, not as a rule this prompt
-owns. The live goal-spec and the coverage-floor table are the authoritative current state: verify
+references/durable-artifact.md (section: Who reads which section) — restated here because you cannot
+reliably RESOLVE that path from where you run (your cwd is the project, not the plugin, and an
+installed cache holds many plugin versions), so this is a citation of that declaration, not a rule
+this prompt owns. If you CAN locate the file, read it: it wins where it and this paragraph differ. The live goal-spec and the coverage-floor table are the authoritative current state: verify
 them exactly as you would any other load-bearing figure in the outcome — a row claiming done for an
 entity you can show is not done, or two rows that contradict each other, is a normal, reportable
 finding. Rounds is append-only history and Next is a pointer, neither with authority over current
@@ -270,8 +271,10 @@ if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || ec
 # READ-ONLY RAIL (measuring half; the rule itself is a paragraph in the prompt above).
 # A partner that REPAIRS what it was sent to measure then verifies a state it created — principle 1
 # turned on the adversary. Observed in the field: partners run with a write-capable sandbox (they
-# need it; a read-only sandbox failed their suite runs and fabricated ungrounded counts, which is
-# why the recorded fix was to widen the sandbox, not to narrow it) and some of them take the
+# need it: in the ONE configuration this project measured, a read-only sandbox failed their suite runs
+# and fabricated ungrounded counts, which is why the recorded fix was to widen the sandbox. Read that
+# as a measurement, not as proof that no restrictive sandbox can work — the option surface was never
+# exhausted, and an external partner broke that overreach in review) and some of them take the
 # initiative to fix what they find. The rule alone would be an emission with no consumer — exactly
 # the instrument-validity defect this prompt warns about — so it is measured here.
 #
