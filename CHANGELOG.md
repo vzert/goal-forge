@@ -6,6 +6,109 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.43.0] - 2026-09-11
+
+### El piso de convergencia vuelve a hablarle al agente — y el contador se vuelve una racha de verdad
+
+Dos cambios en `hooks/gate-goal-close.sh`, los dos medidos antes de escribirlos.
+
+**1. El piso tenía cero consumidores del lado del agente, en LOS DOS modos.** Desde v0.36.0 la rama
+del piso emite `systemMessage` y nada más, y la rama de dientes está guardada con `STREAK -lt 3`.
+Combinadas, eso deja al piso emitiendo nada que el agente pueda leer y nada que bloquee — un check
+cuya única audiencia es un humano que puede no estar. Es el hueco #5 de este mismo proyecto, sentado
+sobre el piso. Medido en una sesión de campo desatendida corriendo 0.41.1: tres rachas de 3, 5 y 3
+`break`, el `Stop` hook corriendo todo el tiempo, nada paró.
+
+Ahora el piso emite **dos cadenas distintas, una por audiencia**:
+
+* `systemMessage` — la línea humana, sin cambios, una oración corta en español que termina en «La
+  decisión es tuya».
+* `hookSpecificOutput.additionalContext` — una línea de cara al agente cuya única instrucción es
+  **dejar de gastar rondas** y devolverle la decisión al humano. No ofrece «una ronda más» y **no
+  nombra el waiver**: ése es el puntero que 0.18.0 quitó de esta rama a propósito, porque un piso que
+  puede sobre-contar es seguro sólo mientras su mensaje ruta a «pará y devolvé» en vez de al waiver —
+  con el waiver, un falso tres-breaks empuja a cerrar sobre un break en vez de a parar. El contador
+  todavía sobre-cuenta con re-citas, así que la propiedad está viva. La primera versión de esta línea
+  **sí** nombraba el waiver y la suite lo **fijaba**, o sea aseveraba el defecto; lo cazó una revisión,
+  no una suite, y ahora la suite fija su **ausencia** (`FLOOR_AGENT_MUST_NOT`).
+
+Por qué dos cadenas y no una: v0.36.0 quitó el canal sobre una base medida real — el texto del piso
+había **reanudado** dos veces un bucle que el ejecutor ya había parado. **Esa evidencia es sobre la
+copia vieja por ese canal, y eso es todo lo que establece.** Que una copia cuyo único contenido es
+«pará» se comporte distinto es un **juicio razonado, no una medición**, y queda **sin observar** hasta
+que una sesión en vivo lo muestre — lo mismo que la obediencia. Lo que sí está mecanizado es que la
+cadena humana nunca puede ser la del agente: la línea humana termina en «La decisión es tuya», que un
+modelo lee como permiso para seguir, y la suite lo asevera (`FLOOR_AGENT_MUST_NOT`). El adversario
+externo levantó exactamente esta sobreafirmación en la primera ronda de este release y tenía razón. La mitad de cara al agente se emite **sólo en un `Stop` no re-entrante**,
+así que el límite de un re-ask por prompt de 0.18.1 sigue intacto; en un `Stop` re-entrante el humano
+igual recibe el anuncio, que es el agujero que la segunda ronda del adversario de 0.36.0 encontró.
+
+Lo que sigue **sin observar**: que el agente *obedezca* la línea. Eso es comportamiento fuera del
+hook. Ninguna suite puede mostrarlo.
+
+**2. El contador no era una racha; era un tally de sesión.** La caminata salteaba los turnos
+hold-only anteriores (decisión deliberada de 0.18.0), así que acumulaba **todos** los turnos con
+`break` distintos de la sesión entera. Medido en cinco transcripts locales reales: un **pico de 15**
+en una sesión con 22 breaks. El encabezado del hook afirmaba «sin ningún turno hold-only entre
+ellos» — una afirmación que el código no comprobaba.
+
+Dos arreglos:
+
+* **Cualquier turno hold-only corta la racha.** Revierte el salto de 0.18.0. La mitad de esa
+  preocupación que NO se entrega: un turno que cita **los dos** backends, uno hold y uno break, sigue
+  siendo una ronda no convergida y sigue sin resetear (caso 17).
+* **La ventana arranca en el último `## Goal-spec`.** Una sesión con dos ciclos (un parche y su
+  release) ya no arrastra los breaks del primero al segundo. Mismo marcador que el gate ya usa como
+  precondición; sin vocabulario nuevo.
+
+Re-medido en los mismos cinco transcripts antes de shippear: el pico cae **15 → 10, 8 → 4, 9 → 9**, y
+el piso **sigue llegando a 3 en todas las sesiones donde llegaba** bajo la regla vieja, y sigue
+callado en las dos donde callaba. La regla honesta no cuesta ningún disparo en este corpus.
+
+### Lo que este release NO construyó, y por qué
+
+El diseño en revisión proponía un `PreToolUse` con `permissionDecision: deny` que negara la ronda
+siguiente. **Su premisa era falsa**: decía que el piso no dispara porque vive en un `Stop` hook y el
+agente encadena rondas dentro del turno. El código dice otra cosa (ver arriba), y el reporte de campo
+dice que el `Stop` hook corrió al menos 9 veces durante la racha de 5. El agente sí cedía el turno.
+
+El radio de daño de ese hook se midió por replay contra la sesión que publicó v0.42.1: 26 rondas
+detectadas por forma de invocación (13 `Task` + 13 `external-adversary.sh`, que coincide exactamente
+con las 26 apariciones de veredicto), y **17 denegaciones de 26** con la regla tal como estaba
+escrita. La realidad fue **2** autorizaciones humanas. Se decidió no construirlo; la revisión completa
+y las cuatro decisiones del humano quedan registradas fuera del repo.
+
+Lo que sí quedó verificado de ese diseño, para cuando se retome:
+
+* **`permissionDecision: deny` no deja al agente sin poder parar ni cerrar.** Observado en vivo: un
+  deny de `precheck-terminal-push.sh` llegó **como `tool_result`** y el agente emitió otro `Bash` dos
+  registros después. La barra de `continue:false` **no aplica** — es un mecanismo distinto (campo
+  universal, precede a los campos de decisión por evento, detiene el procesamiento entero, mensaje al
+  usuario), no una versión suave del mismo.
+* **Contar desde el transcript sí es inmune a la compactación.** Un transcript compactado real
+  conserva en disco los 724 turnos de asistente anteriores a la frontera. El JSONL es append-only.
+* **`origin.kind` distingue de verdad**, pero **ningún hook lo lee hoy** — es una medición, no una
+  costura de producción. Los turnos `user` sin el campo son `tool_result`, inyecciones de skill
+  (`isMeta`) y `[Request interrupted by user]`; **ningún turno tecleado por el humano carece del
+  campo**. Dos límites: un ESC del humano es invisible, y presencia ≠ autorización.
+
+### Suites
+
+`test/gate-branches.py` pasa de 42 a **44 casos de rama** (43 y 44 son la ventana por ciclo, en par:
+sin la ventana el 43 reportaría `CONV!`, y el 44 tiene que seguir reportándolo con ella) y la sección
+de forma de payload pasa de 4 a **6 casos**, con aserciones de contenido sobre la línea del agente.
+Control negativo reproducido: contra el script pre-edit la suite sale **exit 1**, con dos fallos de
+aserción de rama (`16-hold-resets` y `43-second-goal-spec-restarts-the-window`, los dos con
+`want conv -`, obtenido `CONV!`); la corrida aborta ahí, antes de la sección de forma de payload, que
+por su cuenta falla los dos casos de piso contra ese mismo script.
+
+**Esa aserción de celda `conv` es nueva, y la primera versión de estos casos no la tenía** — la cazó
+el adversario externo: `expect` sólo fija la celda `decision`, y el cambio del contador mueve **sólo**
+la celda `CONV`, así que los casos 16, 43 y 44 no aseveraban nada por su cuenta y sólo se veían como
+`DIFFERS` bajo `--compare` contra una copia del script viejo. Una suite cuyo comportamiento nuevo sólo
+se ve difeando contra el script viejo no es un control negativo; es la misma clase de defecto que un
+barrido de portadores que lee un portador.
+
 ## [0.42.1] - 2026-09-11
 
 **El delta se acota por afirmación, no por archivo; y el backend es un default, no un techo.**

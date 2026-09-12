@@ -300,7 +300,21 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.42.1** closes the door v0.42.0 left
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.43.0** gives the convergence
+floor back a line the **agent** can read, and turns its counter into a real streak. Since v0.36.0 the
+floor emitted one line to the human and nothing to the model, and the opt-in teeth are suspended at
+the floor — so the floor emitted nothing agent-facing and nothing blocking, in *either* mode: a check
+whose only audience is a human who may not be there. Measured on an unattended field session running
+v0.41.1: three streaks of 3, 5 and 3 breaks, the Stop hook running throughout, nothing stopped. It now
+sends **two different strings** — the same short human line, plus an agent-facing line whose only
+instruction is to stop spending rounds — the second only on a non-re-entrant Stop, so the one-re-ask
+bound still holds. And the counter: it used to skip earlier hold-only turns, which made it a
+session-wide tally of every distinct break turn rather than a streak (measured peak **15** in a session
+with 22 breaks, while the hook's own header claimed "no hold-only turn between them"). Now any
+hold-only turn resets it, a turn quoting **both** backends still does not, and the window starts at the
+most recent `## Goal-spec` so a session with two cycles stops carrying the first one's breaks into the
+second. Re-measured on five real transcripts: the peak drops 15→10, 8→4, 9→9, and the floor still
+reaches 3 in every session where it reached it before. **v0.42.1** closed the door v0.42.0 left
 open, found by a field report on a real run: a delta round is scoped **by claim, not by file**. Naming the
 file settles nothing in either direction — "it is only the checkpoint" never exempts a claim, and "the
 checkpoint is where the outcome lives" never turns a byte nobody reads into a violation. What decides is
@@ -383,8 +397,8 @@ both times. Both were re-derived from a real session where three consecutive rou
 without ever touching the premise the whole outcome rested on.
 
 Earlier: **v0.36.0** stops the convergence
-floor from talking over the human. At the floor the Stop hook now emits one human-readable line and
-nothing to the model, so it never costs the agent a turn — the plain-language close stays the last
+floor from talking over the human. At the floor the Stop hook emitted one human-readable line and
+nothing to the model, so it never cost the agent a turn — the plain-language close stays the last
 thing on screen — and it is silent altogether on a turn that neither attempted a close nor ran a
 round, so a parked loop stops re-firing it for the rest of the session. Both defects were reported
 from real sessions, and both survived two previous rewrites of the floor's *wording*: this is the
@@ -395,9 +409,10 @@ runaway — 22 adversary invocations to decide to change nothing, 19 of the 20 b
 *record* of the decision rather than the decision. The adversary is now spawned with **paths, not a
 narrated payload** (so each round stops manufacturing the surface that breaks the next), and the
 convergence floor stops pointing back into the loop: it said, to the agent, that stopping and
-handing back to the human is legitimate, and never blocked it. (That message no longer goes to the
-agent at all — v0.36.0 moved it to you and left the guidance in the skill; the floor's behavior today
-is described under "The completion gate" below.) The exit-set defect itself stays open.
+handing back to the human is legitimate, and never blocked it. (v0.36.0 moved that message to you and left the
+guidance in the skill; v0.43.0 gives the agent a line again — a different one — after measuring what
+"human only" costs on an unattended session. The floor's behavior today is described under "The
+completion gate" below.) The exit-set defect itself stays open.
 
 ## The completion gate
 
@@ -414,7 +429,8 @@ guard added in 0.18.1 runs ahead of the teeth, so the Stop that follows a block 
 "you may not stop until you close." Read the two payloads, not their adjectives: the default emits
 `systemMessage` + `hookSpecificOutput.additionalContext`, and the harness feeds that context back to
 the model, so **the default also re-enters the turn exactly once, with the same text** — everywhere
-except the convergence floor, which since v0.36.0 re-enters in neither mode. The entire
+except the convergence floor, which re-enters at most once per prompt with a line of its own
+(v0.43.0; between v0.36.0 and v0.42.1 it re-entered in neither mode). The entire
 measured delta is that the Stop record carries `preventedContinuation:true` instead of `false`, and
 that the block payload now also sets `systemMessage` (until 0.19.0 it omitted that field, which made
 opting into teeth strictly *worse* than the default in one user-facing respect).
@@ -427,20 +443,36 @@ the turn, and re-entry is what produced the 0.18.1 runaway. The one shape with t
 loop is `continue:false` + `stopReason`, which **halts** rather than holds; it is deliberately not
 shipped — see the 0.19.0 CHANGELOG entry for the evidence bar it has to clear first.
 
-The gate also carries a **convergence floor**: when at least three verdict-carrying turns each
-contain a `break` and the most recent one is among them, it says so — on its own branch if nothing
-else objected. Since **v0.36.0** it says it *to you, in one line (in Spanish — the plugin's only
-localized string, and a deliberate choice: see CHANGELOG 0.36.0), and never to the agent*: the floor
-is the one branch whose payload carries nothing addressed to the model (no
-`hookSpecificOutput.additionalContext`), because that field is what made the agent answer the hook
-after its own plain-language close, so the summary stopped being the last thing you read. What is
-verified is the payload; that the harness then generates no follow-up turn is the expected
-consequence and is declared unobserved in CHANGELOG 0.36.0 until a live session shows it. It
-is also silent on a turn that neither attempted a close nor ran a round — a checkpoint, a report,
-an unrelated request — since a parked loop otherwise re-triggered it on every remaining turn of the
-session. What the floor used to tell the agent (that **stopping is legitimate**: end the turn with
-no completion-review, say what is unresolved and how many rounds it ran, and hand the decision back
-to you) now lives only in the skill, which the agent already carries. It never blocks that, not
+The gate also carries a **convergence floor**: when at least three verdict-carrying turns since the
+most recent `## Goal-spec` each contain a `break`, with no hold-only turn between them, it says so —
+on its own branch if nothing else objected. Since **v0.43.0** it says it to **both** audiences, with
+two different strings:
+
+* to you, one line in Spanish (the plugin's only localized string, and a deliberate choice: see
+  CHANGELOG 0.36.0), ending in "the decision is yours";
+* to the agent, a separate line whose only instruction is to **stop spending rounds** and hand the
+  decision to you — emitted only on a non-re-entrant Stop, so it is at most one re-ask per prompt. It
+  deliberately does **not** name `[GOAL-CLOSE-WAIVED …]`: that is the pointer v0.18.0 removed from
+  this branch on purpose, because an over-counting floor is safe only while its message routes to
+  "stop and hand back" rather than to the waiver — the counter can still over-count on re-quotes, so
+  a false three-breaks must cost an unnecessary suggestion to stop, not a nudge toward closing over a
+  break. The waiver stays reachable; the skill carries it. The suite pins the line's **absence** of it.
+
+Why two strings and not one: v0.36.0 sent the model nothing at all, on the measured ground that the
+floor's text had twice *resumed* a loop the executor had already stopped by itself. That evidence is
+about the **old copy through that channel**, and that is all it establishes; that a copy whose only
+instruction is "stop" behaves differently is a reasoned judgement, **not a measurement**, and stays
+unobserved. What is mechanized is that the human line can never be the agent-facing one (it ends in
+"the decision is yours", which a model reads as permission to continue) — the suite asserts it. What
+removing the channel *did* do is leave this check with **no consumer on the agent side in either
+mode** (the teeth branch is suspended at the floor). Measured on
+an unattended field session running v0.41.1: three streaks of 3, 5 and 3 breaks, the Stop hook
+running throughout, nothing stopped, because the only audience was a human who was not reading. What
+is verified is the payload; that the agent then *obeys* the line is behavior outside the hook and
+stays unobserved. The floor is also silent on a turn that neither attempted a close nor ran a round —
+a checkpoint, a report, an unrelated request — since a parked loop otherwise re-triggered it on every
+remaining turn of the session. The fuller guidance (which of the four endings to take) still lives
+only in the skill, which the agent already carries. It never blocks that, not
 even under `GOAL_GATE_ENFORCE=1`, which is suspended on this one branch: "you may not stop until you close" plus "you may not close over a break" is an unterminable
 loop, and mechanizing it was the failure this floor exists to end. **v0.20.0** gave the agent a
 second, non-mechanical way to reach that same exit — a round cap *you* fix in writing before it
