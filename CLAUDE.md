@@ -55,13 +55,15 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    tree), `python3 test/announce-checkpoint-branches.py` (SessionStart hook that announces the
    per-session checkpoint filename — hermetic, synthetic payloads; asserts what it emits, never
    that the agent then uses it), `python3 test/claim-surface-carriers.py` (**not a branch suite**: the claim-surface
-   rule is present and mutually consistent across its four carriers — hermetic, pure text assertions; it cannot show
+   rule AND the role-fixity rule are present and mutually consistent across their carriers — hermetic, pure text assertions; it cannot show
    that an agent then applies the rule), `python3 test/checkpoint-overwrite-branches.py` (PreToolUse
    Write|Edit gate that denies overwriting a checkpoint this session did not write — real files in
    a temp dir plus a synthetic transcript, no git), and `python3 test/adversary-writes-branches.py`
    (SubagentStart/Stop read-only rail for the subagent adversary — throwaway git repos, synthetic
    payloads, `TMPDIR` redirected per case), and `python3 test/adversary-report-branches.py` (the Stop
-   hook that reports that rail's findings to the executor — fully hermetic, no git).
+   hook that reports that rail's findings to the executor — fully hermetic, no git; its baseline is
+   NOT the old hook, which did not exist, so run `--selftest` too, which breaks each assertion and
+   requires the case written for it to notice).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and

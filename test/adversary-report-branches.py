@@ -24,8 +24,15 @@ Two assertions carry that lesson and must not be softened:
   * a finding is reported ONCE and the file is deleted (case 09), or every later turn re-reports a
     stale finding as if it were new.
 
+THE BASELINE FOR THIS SUITE IS NOT 0.44.0, and saying so matters. This hook did not exist in
+0.44.0, so "the case fails against the old hook" says nothing about it — an external partner caught
+exactly that: case 09 passes against the 0.44.0 watcher for the WRONG reason (that hook never
+reports anything, so "silent on the second call" is trivially true). The discriminating baseline is a
+MUTATION of this hook, and `--selftest` runs them: break the assertion, require the case that names
+it to fail. A check that has never been seen to fail is not yet a check.
+
     python3 test/adversary-report-branches.py
-    python3 test/adversary-report-branches.py --compare <pre-edit.sh> --expected 08
+    python3 test/adversary-report-branches.py --selftest
 """
 import argparse, json, os, subprocess, sys, tempfile
 
@@ -160,12 +167,65 @@ def suite(hook, workdir):
     return rows
 
 
+# Each entry: label, the exact text to break in the hook, its replacement, and the case whose
+# branch must change as a result. Breaking an assertion must be VISIBLE in the case written for it.
+MUTATIONS = [
+    ("the audience line removed",
+     'MSG="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this '
+     'line in a transcript, it is not addressed to you, it is a record of what a hook measured, and '
+     'it changes nothing about your role: you verify, you do not repair.',
+     'MSG="', "08"),
+    ("the disarming half removed, audience kept",
+     ', it is a record of what a hook measured, and it changes nothing about your role: you verify, '
+     'you do not repair.', '.', "08"),
+    ("the findings file not consumed",
+     'rm -f "$FINDINGS" 2>/dev/null || true', 'true', "09"),
+    ("the session key ignored",
+     'FINDINGS="$SNAP_DIR/$SESSION_KEY.findings"', 'FINDINGS=$(ls "$SNAP_DIR"/*.findings 2>/dev/null | head -1)',
+     "04"),
+]
+
+
+def selftest(hook):
+    src = open(hook, encoding="utf-8").read()
+    bad = 0
+    with tempfile.TemporaryDirectory() as work:
+        base = dict((n, b) for n, b, _ in suite(hook, tempfile.mkdtemp(dir=work)))
+        for label, old, new, case in MUTATIONS:
+            if old not in src:
+                print("%-46s SETUP FAILED: pattern absent" % label)
+                bad += 1
+                continue
+            mut = os.path.join(work, "mut.sh")
+            with open(mut, "w", encoding="utf-8") as f:
+                f.write(src.replace(old, new, 1))
+            rows = dict((n, b) for n, b, _ in suite(mut, tempfile.mkdtemp(dir=work)))
+            changed = [n for n in rows if rows[n] != base.get(n)]
+            hit = any(n.startswith(case) for n in changed)
+            print("%-46s case %s %s%s" % (label, case, "ok" if hit else "MISSED",
+                                          "" if hit else "  <- branches that changed: %s"
+                                          % (", ".join(changed) or "none")))
+            if not hit:
+                bad += 1
+    print()
+    if bad:
+        print("selftest: %d mutation(s) not caught — those assertions do not work" % bad)
+        return 1
+    print("selftest: every mutation caught by the case written for it")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("hook", nargs="?", default=DEFAULT_HOOK)
     ap.add_argument("--compare", metavar="OTHER_HOOK")
     ap.add_argument("--expected", default="", help="case-name prefixes whose diff is INTENDED")
+    ap.add_argument("--selftest", action="store_true",
+                    help="break each assertion in a copy and require its own case to notice")
     a = ap.parse_args()
+
+    if a.selftest:
+        return selftest(a.hook)
 
     expected = [s.strip() for s in a.expected.split(",") if s.strip()]
     with tempfile.TemporaryDirectory() as workdir:

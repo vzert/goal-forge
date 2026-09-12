@@ -306,9 +306,15 @@ removing either half flips the case to `reported-no-audience-line`. **09** requi
 to be consumed, or every later turn re-reports a stale finding as new. **04** pins the session
 keying, **05** that garbage is skipped rather than fatal, **03/06/07/10** the fail-open paths.
 
+**Its baseline is NOT 0.44.0**, and that matters: this hook did not exist then, so "fails against the
+old hook" says nothing about it. An external partner caught exactly that — case 09 passes against the
+0.44.0 watcher for the wrong reason (that hook never reports, so "silent on the second call" is
+trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs four
+of them, each required to be noticed by the case written for it.
+
 ```sh
 python3 test/adversary-report-branches.py
-python3 test/adversary-report-branches.py --compare /tmp/report-BASELINE.sh --expected 08
+python3 test/adversary-report-branches.py --selftest
 ```
 
 ## `adversary-writes-branches.py` — the subagent read-only rail
