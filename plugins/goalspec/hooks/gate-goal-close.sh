@@ -29,10 +29,12 @@
 #     0.15.0 observed by nothing but the agent's memory. The gate now counts, and the claim it makes
 #     is deliberately weak, and phrased to say exactly what the walk below checks and no more: "at
 #     least N of your most recent verdict-carrying turns each contain a break, with no hold-only turn
-#     between them" — a statement about turns, NOT a round count. (An earlier wording said "no
-#     intervening hold", which the external adversary broke: a turn quoting BOTH backends, one holding
-#     and one breaking, is a break round that the walk does not reset on, so a hold really can sit
-#     inside the counted run. The counter was right; the sentence was claiming more than it checked.) It cannot be a round count: the
+#     between them" — a statement about turns, NOT a round count. That sentence became TRUE in 0.43.0
+#     and was not before it: the walk used to SKIP an earlier hold-only turn, so a hold really could
+#     sit inside the counted run. (An earlier wording said "no intervening hold", which the external
+#     adversary broke on the mixed-turn case: a turn quoting BOTH backends, one holding and one
+#     breaking, is a break round the walk still does not reset on — that half of the looseness is
+#     deliberate and survives, which is why the word is hold-ONLY. Case 17 pins it.) It cannot be a round count: the
 #     skill instructs the agent to quote every verdict verbatim in its own turn, so a multi-round loop
 #     naturally re-quotes earlier rounds when summarizing, and a transcript-wide tally inflates in
 #     exactly the scenario the guard exists for. So the count is damped: at most ONE round per
@@ -44,7 +46,12 @@
 #     0.18.0 changed three things about it, and the third is why the first two are safe:
 #       (a) an earlier hold-only turn no longer extinguishes the run (only a hold in the most recent
 #           verdict-carrying turn does) — running two backends, one holding in a turn of its own,
-#           was measured silencing the counter in exactly the runs it exists for;
+#           was measured silencing the counter in exactly the runs it exists for. REVERSED in 0.43.0
+#           (see the window + hold-reset comments at the walk itself): the skip had turned the count
+#           into a session-wide tally of every distinct break turn — a measured peak of 15 in a
+#           session with 22 breaks — and re-measuring the honest rule on five real transcripts showed
+#           the floor still reaches 3 in every session where it reached it under the skip. The
+#           mixed-turn half of the 0.18.0 concern is kept, not given up;
 #       (b) it can now fire on its own branch, so a non-converging run whose declaration happens to
 #           pass every check is no longer met with silence;
 #       (c) it never blocks, and its message routes to "stop and hand back to the human" instead of
@@ -53,11 +60,21 @@
 #           an unnecessary suggestion to stop and ask, which is cheap, so (a) and (b) trade in the
 #           direction the old rationale forbade only because the old message pointed somewhere worse.
 #     0.36.0 changed WHO it talks to and how often, which is the first change to this branch that is
-#     not a rewording of it: at the floor the payload is `systemMessage` ONLY (one line, to the
-#     human) with NO `additionalContext` — so the floor never re-enters the turn — and it stays
-#     entirely silent on a turn that neither attempted a close nor carried a verdict of its own (a
-#     checkpoint, a report, unrelated work in a session whose loop is parked). Both come from
-#     observed sessions, not from theory; the branch itself carries the evidence.
+#     not a rewording of it: at the floor the payload became `systemMessage` ONLY (one line, to the
+#     human) with NO `additionalContext`, and it stays entirely silent on a turn that neither
+#     attempted a close nor carried a verdict of its own (a checkpoint, a report, unrelated work in a
+#     session whose loop is parked). Both came from observed sessions, not from theory.
+#     0.43.0 keeps the second and AMENDS the first, because the first left the floor with no consumer
+#     on the agent side in EITHER mode (the teeth branch below is guarded `STREAK -lt 3`): measured on
+#     an unattended field session running 0.41.1, three streaks of 3, 5 and 3 breaks with the Stop
+#     hook running throughout and nothing stopped, because the only audience was a human who was not
+#     reading. The floor now emits TWO DIFFERENT strings — the same human line as `systemMessage`, and
+#     a separate agent-facing line as `additionalContext` whose only instruction is to stop spending
+#     rounds — and the agent-facing half is withheld on a re-entrant Stop, so the 0.18.1 one-re-ask
+#     bound is intact. What 0.36.0 measured (the floor RESUMING a loop the executor had stopped) was a
+#     property of the COPY it sent the model, not of the channel: the human line ends in "the decision
+#     is yours", which to a model is permission to continue. That string is now never the agent-facing
+#     one, and the suite asserts it cannot become it.
 #   * Opt-in teeth: GOAL_GATE_ENFORCE=1 turns the advisory into a block. Since 0.18.1 that means
 #     AT MOST ONE block per user prompt, not "may not stop until the declaration is complete":
 #     the re-entrant guard at step 0 runs ahead of this branch, so the Stop that follows a block
@@ -89,10 +106,13 @@
 #     stop is not prevented, and the model is asked again anyway. That is the intended mechanism
 #     (the reminder has an agent-facing consumer; a `systemMessage` the agent never sees could not
 #     do the job), and it is safe only because step 0 bounds it: one re-ask per turn, then silence.
-#     Unbounded, it was the runaway. The convergence floor is the ONE branch that opts out of that
-#     mechanism entirely (0.36.0): there the reminder has no agent-facing job left — everything it
-#     said is already in SKILL.md's convergence guard — and re-entering cost the human the report
-#     the agent had just written. Floor -> `systemMessage` only. A
+#     Unbounded, it was the runaway. The convergence floor is the branch with its own rule (0.36.0,
+#     amended 0.43.0): it never sends the model the HUMAN line — re-entering with that line cost the
+#     human the report the agent had just written, and its closing clause reads as permission to
+#     continue — but since 0.43.0 it does send the model a DIFFERENT line, whose only instruction is
+#     to stop spending rounds, and only on a non-re-entrant Stop. Floor -> human line always, agent
+#     line once per prompt. 0.36.0's "no agent-facing field at all" is what left this check with no
+#     consumer on the agent side in either mode, which is the defect 0.43.0 closes. A
 #     transcript_path that cannot be opened or parsed is swallowed and the checks proceed on
 #     last_assistant_message alone — so under the opt-in GOAL_GATE_ENFORCE=1 an unreadable transcript
 #     can still end in a `block`. That is what opting into teeth means, not a fail-open violation
@@ -149,8 +169,9 @@ except Exception:
 #    0.36.0 narrows it to what it is actually for. Every word above is about RE-ASKING: the guard
 #    exists because the advisory payload carries `additionalContext`, the harness feeds that back to
 #    the model, and asking again the turn that your own asking produced is the runaway. The floor
-#    branch no longer carries that field — it emits `systemMessage` only, which reaches the human
-#    and cannot produce another Stop — so on that branch the guard has nothing to prevent, while it
+#    branch carries that field only on a NON-re-entrant Stop (0.43.0; between 0.36.0 and 0.42.1 it
+#    carried none at all), so applying the guard HERE would swallow the human announcement to prevent
+#    a re-ask the floor branch already prevents by itself, while it
 #    still costs something real: the SECOND adversary round on this release constructed the case
 #    where the Stop that first reaches the floor is itself re-entrant, the guard swallows the
 #    announcement, and the new parked-loop silence below then suppresses every later chance to say
@@ -271,6 +292,19 @@ if lam_v:
     if lam_v[-1][1] not in tail:
         turns.append(lam_text)
 
+# 0.43.0 — the window. Until now the walk below could reach the FIRST turn of the session, so a
+# session with two goal-spec cycles (a patch, then its release) carried the breaks of the first cycle into
+# the second. Measured on five real local transcripts: a peak count of 15 in a session with 22
+# breaks, which is not a streak of anything. The window now starts at the LAST turn that wrote a
+# `## Goal-spec` — the same marker step 2 above uses as the own precondition of the gate, so no new
+# vocabulary. A session with one spec is unaffected (the window is the whole session).
+_gs_re = re.compile(r"(^|\n)#{1,6}\s*Goal-spec\b", re.I)
+_cycle_start = 0
+for _i, _t in enumerate(turns):
+    if _gs_re.search(_t):
+        _cycle_start = _i
+turns = turns[_cycle_start:]
+
 streak = 0
 counted = set()
 for t in reversed(turns):
@@ -278,14 +312,19 @@ for t in reversed(turns):
     if not vs:
         continue          # a turn with no verdict neither counts nor interrupts the run
     if not any(c == "break" for c, _ in vs):
-        # A hold-only turn ends the run ONLY when it is the MOST RECENT verdict-carrying turn
-        # (streak still 0): that is convergence, and a floor there would be noise. An EARLIER
-        # hold-only turn is skipped, not fatal — running two backends, one holding in its own turn
-        # while the other keeps breaking is one unconverged loop, not a reset, and treating it as a
-        # reset was measured under-counting the very runs the floor exists for (0.18.0).
-        if streak == 0:
-            break
-        continue
+        # 0.43.0 — ANY hold-only turn ends the run, not only the most recent one. This REVERSES a
+        # deliberate 0.18.0 decision, so the reversal carries its own measurement: 0.18.0 skipped an
+        # earlier hold-only turn because running two backends (one holding in a turn of its own while
+        # the other keeps breaking) was measured silencing the counter in the very runs the floor
+        # exists for. That hazard is real and is NOT gone. What changed is that the old rule made the
+        # count a session-wide tally of every distinct break turn (see the window above), and the
+        # claim stated in the header of this file — "no hold-only turn between them" — was then a statement the code did
+        # not check. Re-measured on the same five transcripts before shipping this: the peak count
+        # drops 15 -> 10, 8 -> 4, 9 -> 9, and the floor still reaches 3 in every session it reached
+        # it under the old rule, and stays silent in both sessions where it was silent. So the
+        # honest rule costs no firing on this corpus. The under-count direction remains the safe one
+        # (it advises less, never more).
+        break
     # A turn quoting BOTH backends (e.g. subagent hold + external break) is ONE break round.
     key = tuple(sorted(s for _, s in vs))
     if key in counted:
@@ -296,14 +335,19 @@ for t in reversed(turns):
 def remind(detail):
     # The deferred re-entrant guard (step 0). Below the floor every payload carries
     # `additionalContext` and would re-ask the turn that the last one produced — silence, exactly as
-    # 0.18.1 shipped it. At or above the floor the payload is `systemMessage` only, has no way to
-    # re-ask, and swallowing it can cost the human the one announcement they get.
+    # 0.18.1 shipped it. At or above the floor the pipeline is allowed to proceed even when
+    # re-entrant, because swallowing it here can cost the human the one announcement they get; the
+    # floor branch itself then withholds its agent-facing half on a re-entrant Stop (0.43.0), so the
+    # one-re-ask-per-prompt bound is enforced there instead of here, not dropped.
     if reentrant and streak < 3:
         fail_open()
     # Third field (0.36.0): does the CURRENT turn carry a structured verdict at all? The floor
     # branch below uses it to tell "this turn ran a round of the loop" apart from "this turn did
     # something else entirely while the loop sits parked" — see the parked-loop silence there.
-    print("REMIND|%s|%d|%d" % (detail, streak, 1 if lam_verdicts else 0)); sys.exit(0)
+    # Fifth field (0.43.0): the re-entrancy flag, which until now was consumed entirely inside this
+    # python (the deferred guard just above). The floor branch needs it on the BASH side too, to
+    # decide whether the agent-facing half of its payload is emitted at all — see that branch.
+    print("REMIND|%s|%d|%d|%d" % (detail, streak, 1 if lam_verdicts else 0, 1 if reentrant else 0)); sys.exit(0)
 
 # 5. Validate the completion-review declaration.
 # Operative completion-review = the current-turn declaration if present (last_assistant_message is
@@ -444,17 +488,23 @@ case "$RESULT" in
   *) exit 0 ;;
 esac
 
-# RESULT is REMIND|<detail>|<streak>|<current-turn-carries-a-verdict>. No detail token contains
-# "|", so the split is unambiguous; a malformed/absent streak field degrades to 0 (no convergence
-# note) and a malformed verdict flag degrades to 1 (the SPEAKING side of the floor branch below) —
-# both degrade toward the pre-0.36.0 behavior, never toward new silence on a bad parse.
+# RESULT is REMIND|<detail>|<streak>|<current-turn-carries-a-verdict>|<stop-is-re-entrant>. No
+# detail token contains "|", so the split is unambiguous; a malformed/absent streak field degrades to
+# 0 (no convergence note) and a malformed verdict flag degrades to 1 (the SPEAKING side of the floor
+# branch below) — both degrade toward the pre-0.36.0 behavior, never toward new silence on a bad
+# parse. A malformed re-entrancy flag degrades to 1 (0.43.0), i.e. to the HUMAN-ONLY floor payload
+# that 0.36.0 shipped: on a bad parse the floor never gains a channel it would not otherwise have,
+# so the degrade direction is "no new re-entry", never "an unbounded one".
 REST="${RESULT#REMIND|}"
 DETAIL="${REST%%|*}"
 REST="${REST#*|}"
 STREAK="${REST%%|*}"
-LAMV="${REST#*|}"
+REST="${REST#*|}"
+LAMV="${REST%%|*}"
+REENTRANT="${REST#*|}"
 case "$STREAK" in ''|*[!0-9]*) STREAK=0 ;; esac
 case "$LAMV" in 0|1) : ;; *) LAMV=1 ;; esac
+case "$REENTRANT" in 0|1) : ;; *) REENTRANT=1 ;; esac
 
 case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
@@ -505,18 +555,25 @@ esac
 #       the summary, as the last thing the human reads. The 0.18.0 comment above already recorded
 #       that both times the floor fired in the worst runaway it RESUMED a loop the executor had
 #       stopped by itself; 0.18.0 rewrote what the floor SAYS and left the re-entry intact. Three
-#       firings, zero where the model-facing copy improved the outcome. It is dropped: at the floor
-#       this branch speaks to the HUMAN and never to the model. That is not a loss of guidance —
-#       the same content is in SKILL.md's convergence guard, which the model already carries.
+#       firings, zero where the model-facing copy improved the outcome. So the WALL was dropped, and
+#       0.36.0 dropped the channel with it: at the floor this branch spoke to the HUMAN and never to
+#       the model. 0.43.0 keeps the wall gone and puts a channel back, with a different string — see
+#       the amendment in the floor bullet at the top of this file and the branch itself. The
+#       distinction it rests on is a JUDGEMENT, not a measurement: the three recorded firings used the
+#       old model-facing copy, so what they establish is that THAT copy through that channel resumed
+#       loops; that a copy whose only instruction is "stop" behaves differently is reasoned, and is
+#       unobserved until a live session shows it. The fuller guidance stays in SKILL.md either way.
 #   (2) The break count in a transcript never decays and a parked run never acquires a
 #       completion-review, so the floor fired AGAIN on every later turn of that session — including
 #       a turn that was a checkpoint the human asked for, burying that report under the same wall.
 #       Hence the parked-loop silence below: when this turn attempted no close (detail is plainly
 #       `absent`) and carried no verdict of its own, the loop ran no round here, the floor has
 #       nothing NEW to say, and saying it again only buries what the human did ask for.
-# The wall itself is replaced by one human-readable line. Everything the wall explained (de-dup
-# semantics, GOAL_GATE_ENFORCE suspension, why not to re-verify, the waiver's precondition) was
-# written for the model, and the model is no longer the audience of this branch.
+# The wall itself is replaced by one human-readable line, and it stays replaced. Everything the wall
+# explained (de-dup semantics, GOAL_GATE_ENFORCE suspension, why not to re-verify, the precondition of
+# the waiver) lives in SKILL.md, which the model already carries — so the agent-facing line 0.43.0
+# adds is NOT the wall coming back: its whole content is "stop spending rounds and hand the decision
+# to the human", and the suite pins that it cannot become the human line.
 if [ "$STREAK" -ge 3 ]; then
   # Parked-loop silence. Deliberately narrow, and both halves are required: `absent` means this
   # turn made no close attempt (a turn closing over a break still gets told), and LAMV=0 means it
@@ -551,7 +608,47 @@ if [ "$STREAK" -ge 3 ]; then
   # installers get this one line in Spanish. `Piso de convergencia` is the literal the branch suite
   # keys its CONV/CONV! column on — if this opening is ever reworded, that constant moves with it.
   MSG="Piso de convergencia (${DETAIL}). Al menos ${STREAK} rondas de revisión independiente objetaron; nadie aprobó este trabajo. La decisión es tuya."
-  MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage": os.environ["MSG"]}))'
+  # 0.43.0 — the floor gets an AGENT-FACING line back, and it is NOT the line above.
+  #
+  # What 0.36.0 got right and this keeps: the message quoted in $MSG is written FOR THE HUMAN. Its
+  # last clause ("La decisión es tuya") addressed to the model is an authorization to continue, at
+  # the one moment the model must stop — which is exactly the shape 0.18.0 measured RESUMING a loop
+  # the executor had already stopped by itself, twice, in the worst recorded runaway. Feeding that
+  # same string back to the model is the defect, and 0.36.0 removed the channel to remove the
+  # string.
+  #
+  # What 0.36.0 got wrong, and why this is not a revert: removing the channel left the floor with NO
+  # consumer on the agent side, in EITHER mode — the teeth branch below is guarded `STREAK -lt 3`,
+  # so at the floor the hook emits nothing the model can read and nothing that blocks. Measured on a
+  # field session (0.41.1, unattended VPS): three streaks of 3, 5 and 3 breaks, the Stop hook
+  # running throughout, and a human-only message with no human reading it. That is this project's
+  # own hueco #5 — a check whose only consumer may not exist — sitting on the floor itself. The
+  # rationale for (1) in the header stands as a rationale about COPY; it was never evidence that the
+  # model should be told nothing.
+  #
+  # So: two different strings, one per audience. `systemMessage` keeps the human line verbatim.
+  # `additionalContext` carries a line whose only instruction is to STOP SPENDING ROUNDS and hand
+  # the decision to the human. It re-opens nothing and offers no "one more round" — and it
+  # deliberately does NOT name the waiver, which is the one pointer 0.18.0 removed from this branch on
+  # purpose: the safety of an over-counting floor rests on its message routing to "stop and hand
+  # back" INSTEAD of to the waiver, because the cost of a false three-breaks is then an unnecessary
+  # suggestion to stop (cheap) rather than a nudge toward a premature close over a break (not cheap).
+  # The counter can still over-count on re-quotes, so that property is live, not historical. SKILL.md
+  # option (d) also gives the waiver a precondition this line could not state in one sentence
+  # (non-actionable residue, e.g. the verifier own environment) — a floor line naming it without the
+  # precondition invites exactly the close the precondition forbids. The waiver stays reachable; the
+  # agent carries SKILL.md. It is simply not what this line points at. The suite pins its ABSENCE.
+  #
+  # Bounded by 0.18.1, deliberately: the agent-facing half is emitted ONLY on a non-re-entrant Stop,
+  # so it is at most ONE re-ask per user prompt and can never be the runaway that made 0.18.1 an
+  # emergency. On a re-entrant Stop the human still gets the announcement — that is the hole the
+  # second adversary round of 0.36.0 found and it stays closed.
+  AGENT_MSG="goalspec convergence floor (${DETAIL}): at least ${STREAK} independent review rounds objected and nothing has approved this work. STOP running adversary rounds on it — do not spawn another goal-adversary and do not invoke the external backend again. More rounds is the failure mode here, not the fix: at this point the design is wrong, not the wording. Write what you have, say plainly which objection is unresolved, and hand the decision to the human. End the turn with no completion-review: that is a legitimate ending, not a failure to close. Do not treat this line as permission to continue."
+  if [ "$REENTRANT" = "1" ]; then
+    MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage": os.environ["MSG"]}))'
+  else
+    MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage": os.environ["MSG"], "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))'
+  fi
   exit 0
 fi
 

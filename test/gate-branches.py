@@ -91,6 +91,14 @@ MODEL_INDENTED = "    [ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
 #                are asserted on every run, not only under --compare: a guard whose whole job is to
 #                emit nothing needs a test that fails when it emits something, and parity-vs-a-copy
 #                cannot express that (the copy is the thing being changed).
+#   "conv"    -> the CONV cell this case MUST produce ("CONV!", "CONV", or "-"), asserted on every
+#                run for the same reason. Added 0.43.0 after the external adversary broke the first
+#                version of the streak-change cases: `expect` only pins `decision`, and the streak
+#                change moves ONLY the CONV cell (16, 43 and 44 all answer `advisory` before and
+#                after), so those cases asserted NOTHING on their own and were visible only as
+#                `DIFFERS` under --compare against a pre-edit copy. A suite whose new behavior can
+#                only be seen by diffing against a copy of the old script is not a negative control;
+#                it is the same class of defect as a carrier sweep that reads one carrier.
 CASES = [
     # --- the branches that predate the convergence floor ---
     ("01-no-goalspec", "just some text, no spec here", None),
@@ -116,11 +124,20 @@ CASES = [
     ("14-dedup-lam-equals-tail", V_BREAK_B + "\n" + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B]),
     # the current turn carries a NEW break the transcript has not recorded yet (transcript lagging)
     ("15-lam-new-break", V_BREAK_C + "\n" + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B]),
-    # a hold-only turn ends the run
-    ("16-hold-resets", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B, V_HOLD, V_BREAK_C]),
+    # A hold-only turn ends the run — ANY hold-only turn, since 0.43.0. This case is where the name
+    # and the code finally agree: under 0.18.0-0.42.1 an EARLIER hold-only turn was skipped, so this
+    # cell reported CONV! while its own name said "resets". The skip was a deliberate 0.18.0 trade
+    # (two backends, one holding in a turn of its own, is one unconverged loop) and reversing it is
+    # the 0.43.0 change — measured on five real transcripts before shipping: the peak count drops
+    # 15 -> 10, 8 -> 4, 9 -> 9, and the floor still reaches 3 in every session where it reached it
+    # under the old rule. Case 17 pins the half of the 0.18.0 concern that is NOT given up: a turn
+    # quoting BOTH backends still does not reset.
+    ("16-hold-resets", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B, V_HOLD, V_BREAK_C],
+     {"conv": "-"}),
     # one turn quoting BOTH backends (subagent hold + external break) is ONE break round, and does
     # not reset the run — which is why the floor's wording says "no hold-ONLY turn between them"
-    ("17-mixed-turn", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B, V_HOLD + "\n" + V_BREAK_C]),
+    ("17-mixed-turn", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_B, V_HOLD + "\n" + V_BREAK_C],
+     {"conv": "CONV!"}),
     # Was: "the floor must also reach the reminder a mid-loop agent actually sees (no
     # completion-review yet)". 0.36.0 INVERTED this cell to silent, deliberately — see the
     # parked-loop-silence case at the end of this list for the observed session behind it, and case
@@ -256,6 +273,18 @@ CASES = [
     ("42-floor-announced-even-when-reentrant", V_BREAK_C + "\nstill working on it.",
      [SPEC, V_BREAK_A, V_BREAK_B],
      {"payload": {"stop_hook_active": True}, "expect": "advisory-or-block"}),
+
+    # --- the counting WINDOW starts at the last goal-spec (0.43.0) ---
+    # Why this exists: before 0.43.0 the walk could reach the first turn of the session, so a session
+    # with two goal-spec cycles (a patch, then its release) carried the breaks of the first into the
+    # second. Measured on a real transcript: a peak count of 15 in a session with 22 breaks, which is
+    # not a streak of anything. These two cases are a matched pair — the first would report CONV!
+    # without the window (four break turns in the file), the second must still report CONV! with it,
+    # so a window that simply swallowed the count would fail the second.
+    ("43-second-goal-spec-restarts-the-window", SPEC + CR_ADV,
+     [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C, SPEC, V_BREAK_A], {"conv": "-"}),
+    ("44-floor-still-fires-inside-the-second-cycle", SPEC + CR_ADV,
+     [SPEC, V_BREAK_A, SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C], {"conv": "CONV!"}),
 ]
 
 
@@ -499,47 +528,83 @@ def checkpoint_goalspec_suite(gate):
             for name, events, _ in CHECKPOINT_GOALSPEC_CASES]
 
 
-# --- payload shape: what the floor spends (0.36.0) ------------------------------------------------
+# --- payload shape: who the floor talks to (0.36.0, amended 0.43.0) -------------------------------
 # Structurally separate from CASES/suite() for the same reason the staleness cases are: this asks a
-# question `run()` cannot express. `run()` collapses every non-block payload to "advisory", so
-# REMOVING `hookSpecificOutput.additionalContext` — the field the harness feeds back to the model,
-# i.e. the one that costs the agent a turn — is INVISIBLE to it and to `--compare`. That blindness
-# is not hypothetical: the defect 0.36.0 fixes was reported by a user watching the agent answer the
-# hook AFTER its own plain-language close, and every branch cell stayed identical through it.
+# question `run()` cannot express. `run()` collapses every non-block payload to "advisory", so the
+# presence or absence of `hookSpecificOutput.additionalContext` — the field the harness feeds back to
+# the model — is INVISIBLE to it and to `--compare`. That blindness is not hypothetical: the defect
+# 0.36.0 fixed was reported by a user watching the agent answer the hook AFTER its own plain-language
+# close, and every branch cell stayed identical through it. It is also why the 0.43.0 change below
+# needed cases of its own rather than a `--compare` run.
 #
-# What these cannot prove: that the harness then generates no follow-up turn. That is harness
-# behavior, not hook output, and it needs a live observation — see CHANGELOG 0.36.0.
+# 0.43.0 changes WHAT this section pins, and the change is the reason the hook was touched at all.
+# 0.36.0 shipped "at the floor, speak to the HUMAN and never to the model". Combined with the teeth
+# branch being guarded `STREAK -lt 3`, that left the floor emitting nothing the agent can read and
+# nothing that blocks, in EITHER mode — a check whose only consumer is a human who may not be
+# present. Measured on an unattended field session (0.41.1): three streaks of 3, 5 and 3 breaks, the
+# Stop hook running throughout, nothing stopped. So the floor now speaks to BOTH audiences, with two
+# DIFFERENT strings, and the distinction is what these cases pin:
+#   * `systemMessage` — the human line, unchanged, still one short Spanish sentence ending in "La
+#     decisión es tuya". That clause is correct for the human and is an authorization to continue if
+#     the model reads it, which is exactly the shape 0.18.0 measured RESUMING a loop the executor had
+#     already stopped. So it must NEVER be the agent-facing string (asserted below).
+#   * `hookSpecificOutput.additionalContext` — an agent-facing line whose only instruction is to stop
+#     spending rounds and hand the decision to the human. Emitted ONLY on a non-re-entrant Stop, so
+#     it is at most one re-ask per user prompt (the 0.18.1 bound), never the runaway.
+#
+# What these cannot prove: that the agent then OBEYS the line, or that the harness generates no
+# follow-up turn. Both are behavior outside the hook and need live observation.
 FLOOR_TX = [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C]          # streak 3
 BELOW_TX = [SPEC, V_BREAK_A, V_BREAK_B]                     # streak 2
 PAYLOAD_SHAPE_CASES = [
-    # (name, lam, turns, enforce, want) — want: (has_system, has_additional_context, is_block)
-    # At the floor the gate speaks to the HUMAN and never to the model, in both modes.
-    ("floor-speaks-to-human-only", SPEC + CR_ADV, FLOOR_TX, False, (True, False, False)),
-    ("floor-speaks-to-human-only-ENFORCE", SPEC + CR_ADV, FLOOR_TX, True, (True, False, False)),
+    # (name, lam, turns, enforce, reentrant, want) — want: (has_system, has_agent_ctx, is_block)
+    # At the floor, non-re-entrant: BOTH audiences, in both modes. This is the 0.43.0 change, and
+    # these two cases are the ones that go red if it is reverted.
+    ("floor-speaks-to-human-AND-agent", SPEC + CR_ADV, FLOOR_TX, False, False, (True, True, False)),
+    ("floor-both-ENFORCE", SPEC + CR_ADV, FLOOR_TX, True, False, (True, True, False)),
+    # At the floor, RE-ENTRANT: the human still gets the announcement (the hole 0.36.0's second
+    # adversary round found), and the agent-facing half is withheld — the 0.18.1 one-re-ask bound.
+    ("floor-reentrant-human-only", SPEC + CR_ADV, FLOOR_TX, False, True, (True, False, False)),
     # Below the floor nothing changes: the advisory still re-enters the turn (that is its consumer),
     # and the opt-in teeth still block. A fix that quietly muted these would be the real regression.
-    ("below-floor-still-re-enters", SPEC + CR_ADV, BELOW_TX, False, (True, True, False)),
-    ("below-floor-ENFORCE-still-blocks", SPEC + CR_ADV, BELOW_TX, True, (True, False, True)),
+    ("below-floor-still-re-enters", SPEC + CR_ADV, BELOW_TX, False, False, (True, True, False)),
+    ("below-floor-ENFORCE-still-blocks", SPEC + CR_ADV, BELOW_TX, True, False, (True, False, True)),
+    # Below the floor and re-entrant: total silence, exactly as 0.18.1 shipped it.
+    ("below-floor-reentrant-silent", SPEC + CR_ADV, BELOW_TX, False, True, (False, False, False)),
 ]
-# The floor's message is one human-readable line. This ceiling is the mechanical half of that claim:
-# the branch has now been rewritten three times and twice grew back into a wall of model-facing
-# prose, so "keep it short" is pinned rather than trusted.
+# The HUMAN line is one human-readable sentence. This ceiling is the mechanical half of that claim:
+# the branch has now been rewritten four times and twice grew back into a wall of model-facing prose,
+# so "keep it short" is pinned rather than trusted. It applies to `systemMessage` ONLY — the
+# agent-facing line has a different job and its own assertions below.
 FLOOR_MSG_MAX = 600
+# The agent-facing floor line, pinned by content, not length. Three claims, each a real failure mode:
+#   * it must forbid more rounds (that is its whole job);
+#   * it must NOT contain the human line's closing clause, which reads as permission to continue;
+#   * it must NOT name the waiver. That is the pointer 0.18.0 removed from this branch deliberately:
+#     an over-counting floor is safe only while its message routes to "stop and hand back" instead of
+#     to the waiver, since a false three-breaks then costs an unnecessary suggestion to stop rather
+#     than a nudge toward closing over a break. The counter still over-counts on re-quotes, so the
+#     property is live. The first version of this line named the waiver and this entry PINNED it —
+#     the suite was asserting the defect. Found by review, not by a suite, which is why it is written
+#     down here as a rule rather than left to the next reader of the 0.18.0 bullet.
+FLOOR_AGENT_MUST = ["STOP running adversary rounds"]
+FLOOR_AGENT_MUST_NOT = ["La decisión es tuya", "GOAL-CLOSE-WAIVED"]
 
 
-def run_payload_shape(gate, name, lam, turns, enforce):
+def run_payload_shape(gate, name, lam, turns, enforce, reentrant=False):
     payload = {"last_assistant_message": lam, "transcript_path": transcript(turns, "shape-" + name)}
+    if reentrant:
+        payload["stop_hook_active"] = True
     env = dict(os.environ)
     env["GOAL_GATE_ENFORCE"] = "1" if enforce else ""
     out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=env).stdout.strip()
     if not out:
-        return (False, False, False), 0
+        return (False, False, False), 0, ""
     d = json.loads(out)
     msg = d.get("systemMessage") or d.get("reason") or ""
-    return ((bool(d.get("systemMessage")),
-             bool(d.get("hookSpecificOutput", {}).get("additionalContext")),
-             d.get("decision") == "block"), len(msg))
+    ctx = d.get("hookSpecificOutput", {}).get("additionalContext") or ""
+    return ((bool(d.get("systemMessage")), bool(ctx), d.get("decision") == "block"), len(msg), ctx)
 
 
 def run_stale(gate, name, make_repo_fn, events, lam):
@@ -589,6 +654,10 @@ def main():
                          (want == "advisory-or-block" and decision in ("advisory", "block"))):
             failures.append("%s: want %s, got %s" % (name, want, decision))
             flag = "   <-- FAILS ASSERTION (want %s)" % want
+        want_conv = opts_of(CASES[i]).get("conv")
+        if want_conv and conv != want_conv:
+            failures.append("%s: want CONV cell %s, got %s" % (name, want_conv, conv))
+            flag += "   <-- FAILS ASSERTION (want conv %s)" % want_conv
         if other and other[i][1:] != (detail, conv, decision):
             tag = "EXPECTED-DIFF" if any(name.startswith(p) for p in expected) else "DIFFERS"
             flag += "   <-- %s: %s" % (tag, " ".join(other[i][1:]))
@@ -625,10 +694,10 @@ def main():
 
     # Payload shape — what the floor spends. Not part of --compare parity: the whole point is that
     # parity cannot see this field. Runs before the live-git section so it needs no repo.
-    print("\n--- payload shape: at the floor, human only — no turn spent (0.36.0) ---")
+    print("\n--- payload shape: who the floor talks to (0.36.0, amended 0.43.0) ---")
     shape_failures = []
-    for name, lam, turns, enforce, want in PAYLOAD_SHAPE_CASES:
-        got, msglen = run_payload_shape(a.gate, name, lam, turns, enforce)
+    for name, lam, turns, enforce, reentrant, want in PAYLOAD_SHAPE_CASES:
+        got, msglen, ctx = run_payload_shape(a.gate, name, lam, turns, enforce, reentrant)
         ok = got == want
         if not ok:
             shape_failures.append("%s: want %s, got %s" % (name, want, got))
@@ -636,8 +705,21 @@ def main():
             ok = False
             shape_failures.append("%s: floor message is %d chars, ceiling is %d — it grew back into "
                                   "a wall" % (name, msglen, FLOOR_MSG_MAX))
-        print("%-38s sys=%-5s ctx=%-5s block=%-5s len=%-4d%s"
-              % (name, got[0], got[1], got[2], msglen, "" if ok else "   <-- FAILS (want %s)" % (want,)))
+        # Content of the agent-facing line, wherever one was emitted at the floor.
+        if name.startswith("floor-") and got[1]:
+            for needle in FLOOR_AGENT_MUST:
+                if needle not in ctx:
+                    ok = False
+                    shape_failures.append("%s: agent-facing floor line is missing %r" % (name, needle))
+            for needle in FLOOR_AGENT_MUST_NOT:
+                if needle in ctx:
+                    ok = False
+                    shape_failures.append("%s: agent-facing floor line contains %r — that clause is "
+                                          "the human's, and to the model it reads as permission to "
+                                          "continue" % (name, needle))
+        print("%-38s sys=%-5s ctx=%-5s block=%-5s len=%-4d ctxlen=%-4d%s"
+              % (name, got[0], got[1], got[2], msglen, len(ctx),
+                 "" if ok else "   <-- FAILS (want %s)" % (want,)))
     if shape_failures:
         print("\nPAYLOAD-SHAPE FAILURES: %d\n  %s" % (len(shape_failures), "\n  ".join(shape_failures)))
         return 1
