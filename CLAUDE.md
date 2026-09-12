@@ -27,9 +27,10 @@ is 3.2 and the one recorded way this repo shipped a dead hook (an unbalanced apo
 unquoted heredoc) parses fine under bash 5. A second job runs `test/manifest-checks.py`.
 **A green CI run is not the acid test**: it does not observe an agent obeying a written rule, a
 hook firing in a real session, or an adversary round running, so every "observe in the wild"
-pendiente stays manual. That is a scoping decision, not an impossibility — a headless `claude -p`
-run in CI could in principle exercise some of it; it would need a credential in CI, cost per run,
-and a tolerance for non-determinism these hermetic suites do not have, and nobody has priced it. To sanity-check a change end-to-end:
+pendiente stays manual. That is a scoping decision, not an impossibility: `claude --help` documents
+headless `-p`, credential-bearing auth and `--max-budget-usd`, so such a job is feasible and
+boundable. What it would add is a credential in CI, a per-run cost, and non-determinism these
+hermetic suites do not have. Whether that trade is worth it is open. To sanity-check a change end-to-end:
 1. Validate manifests (real exit code, not `| tail`) and parse SKILL.md frontmatter as YAML.
 2. In a throwaway dir with an `open-decisions.md` holding a planted inherited decision, run
    `/goalspec audit <thing> and decide what to kill`. Assert: a `## Goal-spec` with grounded criteria

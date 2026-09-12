@@ -56,35 +56,41 @@ def selftest():
         print("selftest: needs a git repo with at least one commit", file=sys.stderr)
         return 2
 
+    # Each entry declares the check it is probing. Asserting only "exit != 0" is not enough: the
+    # "new suite no document names" mutation also trips BOTH count checks, so the naming check could
+    # be entirely broken and the probe would still show a green `exit=1`. An external partner caught
+    # exactly that — a self-test that passes for the wrong reason proves nothing about the check it
+    # was written for. So the expected check name must appear among the FAILED ones.
     MUTATIONS = [
-        ("typo in the hooks DIRECTORY (/hookz/)",
+        ("typo in the hooks DIRECTORY (/hookz/)", "canonical shape",
          lambda d: _sub(os.path.join(d, "plugins/goalspec/hooks/hooks.json"),
                         "/hooks/gate-goal-close.sh", "/hookz/gate-goal-close.sh")),
-        ("a second, contradictory suite count",
+        ("a second, contradictory suite count", "every stated suite count",
          lambda d: _sub(os.path.join(d, "test/README.md"), "mechanical suites",
                         "mechanical suites (not eight mechanical suites)", once=True)),
-        ("a carrier claiming there is no CI",
+        ("a carrier claiming there is no CI", "no carrier still claims",
          lambda d: _prepend(os.path.join(d, "test/verdict-nudge-branches.py"),
                             "# There is no CI here.\n")),
-        ("versions out of sync",
+        ("versions out of sync", "versions agree",
          lambda d: _json_set(os.path.join(d, ".claude-plugin/marketplace.json"),
                              ["metadata", "version"], "0.0.0-desync")),
-        ("frontmatter that is no longer YAML",
+        ("frontmatter that is no longer YAML", "frontmatter is valid YAML",
          lambda d: _sub(os.path.join(d, "plugins/goalspec/skills/goalspec/SKILL.md"),
                         "description:", "description: broken: like this", once=True)),
-        ("a new suite no document names",
+        ("a new suite no document names", "names unnamed-branches.py",
          lambda d: shutil.copyfile(os.path.join(d, "test/gate-branches.py"),
                                    os.path.join(d, "test/unnamed-branches.py"))),
-        ("a hook file deleted",
+        ("a hook file deleted", "watch-adversary-writes.sh exists",
          lambda d: os.remove(os.path.join(d, "plugins/goalspec/hooks/watch-adversary-writes.sh"))),
-        ("the plugin renamed",
+        ("the plugin renamed", "plugin name is still",
          lambda d: _json_set(os.path.join(d, "plugins/goalspec/.claude-plugin/plugin.json"),
                              ["name"], "goalspec-renamed")),
     ]
 
     bad = 0
     with tempfile.TemporaryDirectory() as work:
-        for label, mutate in MUTATIONS + [("NOTHING (control — must pass)", lambda d: None)]:
+        for label, expect, mutate in MUTATIONS + [
+                ("NOTHING (control — must pass)", None, lambda d: None)]:
             d = tempfile.mkdtemp(dir=work)
             listed = subprocess.run(["git", "-C", REPO, "ls-files", "-z"],
                                     capture_output=True, check=True)
@@ -105,12 +111,25 @@ def selftest():
                 continue
             r = subprocess.run([sys.executable, "test/manifest-checks.py"], cwd=d,
                                capture_output=True, text=True)
-            control = label.startswith("NOTHING")
-            ok = (r.returncode == 0) if control else (r.returncode == 1)
-            print("%-46s exit=%-2s %s" % (label, r.returncode, "ok" if ok else "MISSED"))
+            # The failure list the checker prints at the end, one "  - <check name>" per line.
+            failed_names = [ln.strip()[2:] for ln in r.stdout.splitlines()
+                            if ln.startswith("  - ")]
+            if expect is None:
+                ok = r.returncode == 0
+                why = "" if ok else "control should have passed"
+            elif r.returncode != 1:
+                ok, why = False, "exit %s, expected 1" % r.returncode
+            elif not any(expect in nm for nm in failed_names):
+                # THE case this assertion exists for: something failed, but not the check this
+                # mutation was written to probe.
+                ok, why = False, ("wrong check failed — wanted one naming %r, got: %s"
+                                  % (expect, "; ".join(failed_names) or "none"))
+            else:
+                ok, why = True, ""
+            print("%-46s exit=%-2s %s%s" % (label, r.returncode, "ok" if ok else "MISSED",
+                                            "" if ok else "  <- " + why))
             if not ok:
                 bad += 1
-                print("    ---- checker output ----")
                 for line in r.stdout.splitlines()[-6:]:
                     print("    " + line)
     print()
@@ -233,52 +252,39 @@ except Exception as e:
     hooks = {}
     check("hooks.json parses", False, str(e))
 
-referenced = set()
-direct = set()  # invoked WITHOUT an interpreter prefix -> the exec bit is load-bearing there
-for _event, groups in (hooks.get("hooks") or {}).items():
-    for group in groups or []:
-        for hook in (group.get("hooks") or []):
-            cmd = hook.get("command") or ""
-            # Commands look like: bash "${CLAUDE_PLUGIN_ROOT}"/hooks/foo.sh [args]
-            # Resolve what the command actually points at, rather than pattern-matching the
-            # directory name. The old version matched `/hooks/<name>.sh` literally, so a typo in the
-            # DIRECTORY (`/hookz/gate-goal-close.sh`) matched nothing, was never checked, and the
-            # whole file came back green — a checker blind to the commonest typo class it exists to
-            # catch. Found by an external partner, who reproduced it in a throwaway copy.
-            # Take everything after ${CLAUDE_PLUGIN_ROOT} (however quoted) up to whitespace.
-            for token in re.findall(
-                    r"(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$CLAUDE_PLUGIN_ROOT)\"?(/[^\s\"']+)", cmd):
-                rel = token.lstrip("/")
-                referenced.add(rel)
-                # The exec bit only matters when the harness execs the file itself. Every hook here
-                # is invoked as `bash <path>`, which ignores the mode — so demanding +x everywhere
-                # would assert something false about what makes a hook run, the exact defect class
-                # this plugin exists to catch. Check it only where it is real.
-                if not re.match(r"^\s*(bash|sh|/bin/bash|/bin/sh|env\s+bash)\b", cmd):
-                    direct.add(rel)
+# CANONICAL SHAPE, not a shell parser. Two rounds of an external partner beat a regex-based
+# extractor here: it passed a single-quoted `bash \'${CLAUDE_PLUGIN_ROOT}/hooks/x.sh\'` (where the
+# quotes PREVENT expansion, so that hook would fail at runtime) and it failed a perfectly valid path
+# containing a space. Parsing arbitrary shell with a regex is the game this project has already
+# documented losing twice ("simplify, do not out-clever it" — see the model-id matcher in
+# gate-goal-close.sh). So stop parsing: every hook here is written one way, and anything that is not
+# written that way is reported for a human to look at rather than silently judged.
+CANONICAL = re.compile(
+    r'^bash "\$\{CLAUDE_PLUGIN_ROOT\}"/(hooks/[A-Za-z0-9_.-]+\.sh)(?: [A-Za-z0-9_.-]+)*$')
 
-check("hooks.json references at least one script", len(referenced) > 0, "none parsed")
-# A command whose path could not be resolved at all is the failure this parser must not swallow:
-# silently extracting nothing looks exactly like a hook with no path to check.
-unresolved = []
+referenced = set()
+odd_shapes = []
 for _event, groups in (hooks.get("hooks") or {}).items():
     for group in groups or []:
         for hook in (group.get("hooks") or []):
-            cmd = hook.get("command") or ""
-            if cmd and not re.search(
-                    r"(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$CLAUDE_PLUGIN_ROOT)\"?/[^\s\"']+", cmd):
-                unresolved.append(cmd)
-check("every hooks.json command names a resolvable path", not unresolved,
-      "could not resolve: " + "; ".join(unresolved[:3]))
+            cmd = (hook.get("command") or "").strip()
+            m = CANONICAL.match(cmd)
+            if m:
+                referenced.add(m.group(1))
+            else:
+                odd_shapes.append(cmd)
+
+check("every hooks.json command uses the canonical shape", not odd_shapes,
+      "not canonical (check by hand): " + " | ".join(odd_shapes[:3]))
+check("hooks.json references at least one script", len(referenced) > 0, "none parsed")
 for rel_hook in sorted(referenced):
     target = os.path.join(PLUGIN, rel_hook)
     check("hooks.json -> %s exists" % rel_hook, os.path.isfile(target),
           "a hook wired to a missing path silently never runs")
 
-for rel_hook in sorted(direct):
-    target = os.path.join(PLUGIN, rel_hook)
-    check("hooks.json -> %s is executable" % rel_hook, os.access(target, os.X_OK),
-          "it is exec'd directly, with no interpreter prefix — chmod +x it")
+# The exec bit is NOT checked: the canonical shape runs every hook as `bash <path>`, which ignores
+# the file mode. Demanding +x would assert something false about what makes a hook run — and if a
+# non-canonical shape ever appears, the check above flags it for a human instead of guessing.
 
 # Mirror check: a hook script that exists but nothing registers. Not a failure — external-adversary
 # is invoked by the skill, not by an event — so this only reports, to keep the wiring visible.
@@ -301,15 +307,33 @@ word = WORDS.get(n, str(n))
 # satisfies trivially — an external partner proved it with "Eight ... not Nine" and got rc=0. So:
 # find EVERY "<word> mechanical/branch suites" phrase and require each to match reality. A check
 # satisfiable by prose that says the opposite is not a check.
-COUNT_RE = re.compile(r"\b([A-Za-z]+)\s+(?:mechanical|branch)\s+suites\b", re.I)
+# Words AND digits, and the noun is optional-ish: an external partner slipped "8 branch suites",
+# "eight suites" and "eight mechanical checks" past the first version, which only matched a WORD
+# followed by "mechanical|branch suites".
+# STATED LIMITS, because a checker that overclaims is the defect this file exists to catch. (a) It
+# is a FLOOR over the phrasings anyone here has actually written, not a proof that no wrong count can
+# be expressed — a count worded as "eight mechanical CHECKS" still slips through. (b) The noun is
+# deliberately "suites" only: widening it to "checks" was tried and immediately fired on the correct
+# sentence "and one check by hand", and a checker that flags healthy documentation is worse than one
+# with a gap you can read here. What makes it bite anyway is that the count lives in exactly two
+# documents and is written the same way in both.
+COUNT_RE = re.compile(
+    r"\b([A-Za-z]+|\d+)\s+(?:mechanical\s+|branch\s+)?suites?\b", re.I)
+DIGITS = {"1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six",
+          "7": "seven", "8": "eight", "9": "nine", "10": "ten", "11": "eleven", "12": "twelve"}
 
 for doc in ("test/README.md", "CLAUDE.md"):
     text = open(os.path.join(REPO, doc), encoding="utf-8").read()
     # Strip markdown emphasis so **Nine** reads as Nine.
     flat = text.replace("**", "").replace("*", "")
-    found = [m.group(1).lower() for m in COUNT_RE.finditer(flat)]
+    raw = [m.group(1).lower() for m in COUNT_RE.finditer(flat)]
+    found = []
+    for f in raw:
+        f = DIGITS.get(f, f)
+        if f in WORDS.values() or f.isdigit():
+            found.append(f)
     check("%s states a suite count at all" % doc, len(found) > 0,
-          "no '<word> mechanical/branch suites' phrase found — the check has nothing to verify")
+          "no count phrase found — the check has nothing to verify")
     wrong = sorted({f for f in found if f != word})
     check("%s: every stated suite count is %d (%s)" % (doc, n, word), not wrong,
           "also says: " + ", ".join(wrong) + " — %d *-branches.py files are present" % n)

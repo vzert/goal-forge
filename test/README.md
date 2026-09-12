@@ -9,8 +9,9 @@ The macOS leg is not redundancy: `/bin/bash` there is 3.2, and an unbalanced apo
 unquoted heredoc — the one recorded way this repo shipped a hook that died at parse time — is
 accepted by bash 5 on Ubuntu. A green run covers the mechanical branches and nothing else: it does
 not watch an agent obey a written rule or a hook fire in a real session. That is what this workflow
-was scoped to, not a law — a headless `claude -p` job could in principle go further, at the cost of a
-credential in CI, money per run, and non-determinism. Unpriced, so unbuilt.
+was scoped to, not a law: `claude --help` documents headless `-p` and `--max-budget-usd`, so such a
+job is feasible and boundable — at the cost of a credential in CI, money per run, and
+non-determinism. Whether that trade is worth it is open.
 
 ## `manifest-checks.py` — the silent-failure classes no branch suite can see
 
