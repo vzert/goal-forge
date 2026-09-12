@@ -14,8 +14,10 @@ grows), and text a reader will act on is a claim about the world wherever it liv
 Why a suite at all for a prose rule: the rule lives in FOUR carriers, by necessity, not by
 duplication-by-accident. `skills/goalspec/SKILL.md` owns it; `agents/goal-adversary.md` restates it
 inline because a spawned subagent cannot resolve the reference's path at runtime;
-`hooks/external-adversary.sh` restates it inline because the external partner cannot read files on
-this host; `references/durable-artifact.md` declares the checkpoint-shaped special case. A carrier
+`hooks/external-adversary.sh` restates it inline for the SAME reason — the external partner cannot
+reliably resolve that path either (the emitted prompt carries a bare relative path, and the partner's
+cwd is the project, not the plugin), NOT because it cannot read files, which is false;
+`references/durable-artifact.md` declares the checkpoint-shaped special case. A carrier
 left stale is exactly what `goal-adversary.md` tells the adversary to count as `incomplete`. This
 suite is the mechanical enumeration that keeps them from drifting.
 

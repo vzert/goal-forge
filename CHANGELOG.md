@@ -140,6 +140,27 @@ Un barrido propio posterior encontró dos más que la ronda no marcó: la misma 
 del propio `external-adversary.sh`. Las cuatro corregidas. **La lección, registrada**: cuando la
 corrección de un hallazgo es cambiar una frase, el trabajo no es la frase — es `grep` de la frase.
 
+### Ronda 3 (backend distinto): una quinta copia, y la causa raíz del barrido incompleto
+
+Partner `claude -p --model claude-sonnet-5` en vez de `codex`, porque dos `break` seguidos de un
+backend obligan a cambiar al otro. Devolvió
+`break ungrounded=1 unfalsified=0 incomplete=1 autonomy-violations=0 unsafe=0`, y el hallazgo fue una
+**quinta** copia de la misma frase falsa, en `test/claim-surface-carriers.py:17` — el docstring de la
+suite que existe precisamente para que los portadores de una regla no se desincronicen. Corregida.
+
+La causa raíz no era el descuido: **el barrido de la ronda 2 corrió sobre `plugins/`, `README.md` y
+`CHANGELOG.md`, y no sobre `test/`**. Un barrido con el alcance mal puesto devuelve «no queda
+ninguna» con la misma cara que un barrido completo. El barrido de esta ronda corre sobre todo lo
+rastreado (`git ls-files`), y las únicas coincidencias que quedan son registros históricos de la
+falsificación — que deben quedarse — y las versiones ya acotadas.
+
+Refutados en la misma ronda: la frase de reemplazo del prompt emitido es cierta en el caso general
+(el prompt lleva una ruta relativa desnuda, sin `CLAUDE_PLUGIN_ROOT`; que a este partner le resuelva
+es artefacto de correr dentro del repo fuente, no evidencia contra la afirmación); `bash -n`, las
+diez suites y `claude plugin validate` en verde; cinco pares `AskUserQuestion`/`tool_result` en el
+log, sin dead-handoff. Independencia: el partner no emitió `[ADVERSARY-MODEL:]`, así que se reporta
+`model=same` — el degradado honesto, no una afirmación de que revisó el mismo modelo.
+
 ### Portadores tocados
 `hooks/external-adversary.sh`, `hooks/watch-adversary-writes.sh` (nuevo), `hooks/hooks.json`,
 `agents/goal-adversary.md`, `skills/goalspec/SKILL.md` (paso 6), `references/external-adversary-setup.md`,
