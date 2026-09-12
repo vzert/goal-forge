@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Branch suite for plugins/goalspec/hooks/gate-goal-close.sh.
 
-There is no CI here — the plugin is a skill + hooks + docs. This is the mechanical half of the
-acid-test in CLAUDE.md: it drives the Stop gate across every branch it can take, using synthetic
+CI runs this on every push and PR (`.github/workflows/tests.yml`), on Ubuntu and macOS. It is the
+mechanical half of the acid-test in CLAUDE.md — the other half, watching an agent actually obey the
+rules, stays manual: it drives the Stop gate across every branch it can take, using synthetic
 `last_assistant_message` payloads and, where a branch needs history, synthetic multi-turn
 `transcript_path` JSONL files.
 

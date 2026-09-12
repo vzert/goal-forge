@@ -5,15 +5,20 @@ name: tests
 # a manifest/wiring check. All of them are pure `python3` + `bash` + `git`, with no network, no
 # credential and no Claude Code install — which is exactly why they are worth running here.
 #
-# What this workflow deliberately does NOT do, stated so a green check is not read as more than it
-# is: it cannot observe an AGENT obeying a written rule, a hook firing in a real session, or an
-# adversary round actually running. Every "observe in the wild" item in the project's pendientes
-# stays manual, by nature. A green run means the mechanical branches behave; it never means the
-# method works.
+# What this workflow does NOT cover, stated so a green check is not read as more than it is: it does
+# not observe an AGENT obeying a written rule, a hook firing in a real session, or an adversary round
+# actually running. Every "observe in the wild" item in the project's pendientes stays manual HERE.
+# That is a scoping decision, not an impossibility: a headless `claude -p` run in CI could in
+# principle exercise some of it, and that option has NOT been evaluated — it would need a credential
+# in CI, cost per run, and a tolerance for non-determinism that these hermetic suites do not have.
+# If someone wants it, the option is open; nobody has priced it. A green run means the mechanical
+# branches behave; it never means the method works.
 
 on:
+  # Every push, on every branch — not just main. A `branches: [main]` filter would make the "runs on
+  # every push" claim in CLAUDE.md and test/README.md false for every feature branch, and would let
+  # a broken hook sit undetected until the moment it merges.
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -101,3 +106,9 @@ jobs:
       - run: pip install pyyaml
       - name: Manifest and wiring checks
         run: python3 test/manifest-checks.py
+
+      - name: Self-test — break each check, require it to notice
+        # A check that has never been seen to FAIL is not yet a check. This file has already shipped
+        # two that passed on a healthy repo while missing the defect they named, so the mutation
+        # probe runs here rather than living in one session's scratch directory.
+        run: python3 test/manifest-checks.py --selftest

@@ -25,9 +25,11 @@ CI runs the mechanical half on every push and PR (`.github/workflows/tests.yml`)
 **both** Ubuntu and macOS, plus `bash -n` — and on macOS also `/bin/bash -n`, because /bin/bash there
 is 3.2 and the one recorded way this repo shipped a dead hook (an unbalanced apostrophe in an
 unquoted heredoc) parses fine under bash 5. A second job runs `test/manifest-checks.py`.
-**A green CI run is not the acid test**: nothing automated can observe an agent obeying a written
-rule, a hook firing in a real session, or an adversary round running — every "observe in the wild"
-pendiente stays manual, by nature. To sanity-check a change end-to-end:
+**A green CI run is not the acid test**: it does not observe an agent obeying a written rule, a
+hook firing in a real session, or an adversary round running, so every "observe in the wild"
+pendiente stays manual. That is a scoping decision, not an impossibility — a headless `claude -p`
+run in CI could in principle exercise some of it; it would need a credential in CI, cost per run,
+and a tolerance for non-determinism these hermetic suites do not have, and nobody has priced it. To sanity-check a change end-to-end:
 1. Validate manifests (real exit code, not `| tail`) and parse SKILL.md frontmatter as YAML.
 2. In a throwaway dir with an `open-decisions.md` holding a planted inherited decision, run
    `/goalspec audit <thing> and decide what to kill`. Assert: a `## Goal-spec` with grounded criteria
@@ -61,8 +63,9 @@ pendiente stays manual, by nature. To sanity-check a change end-to-end:
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and
-   `test/README.md` matching reality — the silent-failure classes no branch suite can see. Needs
-   PyYAML).
+   `test/README.md` matching reality, and that no carrier still claims the project has no CI — the
+   silent-failure classes no branch suite can see. Needs PyYAML. `--selftest` breaks each of those
+   in a throwaway copy and requires the checker to notice; run it after editing that file).
    **When editing the gate, copy the
    pre-edit script somewhere and `--compare` against it afterwards, in both default and
    `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed, which turns "no

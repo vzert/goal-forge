@@ -7,8 +7,10 @@ you add one), plus `claim-surface-carriers.py` (a text-consistency check, not a 
 `.github/workflows/tests.yml` runs everything here on every push and PR, on Ubuntu **and** macOS.
 The macOS leg is not redundancy: `/bin/bash` there is 3.2, and an unbalanced apostrophe inside an
 unquoted heredoc — the one recorded way this repo shipped a hook that died at parse time — is
-accepted by bash 5 on Ubuntu. A green run covers the mechanical branches and nothing else: no
-automated job can watch an agent obey a written rule or a hook fire in a real session.
+accepted by bash 5 on Ubuntu. A green run covers the mechanical branches and nothing else: it does
+not watch an agent obey a written rule or a hook fire in a real session. That is what this workflow
+was scoped to, not a law — a headless `claude -p` job could in principle go further, at the cost of a
+credential in CI, money per run, and non-determinism. Unpriced, so unbuilt.
 
 ## `manifest-checks.py` — the silent-failure classes no branch suite can see
 
@@ -31,12 +33,19 @@ has been bitten by each:
   named in `CLAUDE.md`'s run list. That count went stale in 0.44.0 and an external adversary found
   it, not a test.
 
-Each check was verified by **breaking** the thing it checks in a throwaway copy of the repo and
-confirming a non-zero exit — a check that has never been seen to fail is not yet a check.
+`--selftest` **breaks** each thing the file checks, in a throwaway copy of the tracked working tree,
+and requires a non-zero exit — plus a control that must stay clean. A check that has never been seen
+to fail is not yet a check, and this file has already shipped two that passed on a healthy repo while
+silently missing the defect they named: a typo in the hooks *directory* (`/hookz/…`, which the old
+path regex simply did not match, so nothing was checked and everything came back green), and a
+document stating two contradictory suite counts (the old regex found the right word somewhere and
+stopped looking). An external partner found both by reproducing them in a copy — so the reproduction
+now lives in the repo, runnable by anyone, and runs in CI.
 
 ```sh
 pip install pyyaml
 python3 test/manifest-checks.py
+python3 test/manifest-checks.py --selftest
 ```
 
 ## `gate-branches.py` — Stop-gate branch suite

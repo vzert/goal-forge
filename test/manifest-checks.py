@@ -22,7 +22,7 @@ non-stdlib dependency, and it is the point — the check is "does a real YAML pa
 
     python3 test/manifest-checks.py
 """
-import json, os, re, sys
+import json, os, re, shutil, subprocess, sys, tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
@@ -34,6 +34,117 @@ except ImportError:
           "It is not optional here: the whole point of the frontmatter check is that a REAL YAML\n"
           "parser accepts the block, which a hand-rolled regex cannot establish.", file=sys.stderr)
     sys.exit(2)
+
+
+def selftest():
+    """Break each thing this file checks, in a throwaway copy, and require a non-zero exit.
+
+    A check that has never been seen to FAIL is not yet a check — and this file has already shipped
+    two that passed on a healthy repo while silently missing the defect they named (a typo in the
+    hooks directory, and a document stating two contradictory suite counts). Both were found by an
+    external partner reproducing them in a copy, not by the checker. So the reproduction lives here
+    now, runnable by anyone, instead of in one session's scratch directory.
+
+    Copies the tracked WORKING tree (`git ls-files`), not `git archive HEAD`: what matters is
+    whether the checks work on what you are about to commit. Testing HEAD instead makes the tool
+    unusable before the commit that fixes something — the first version did exactly that and its
+    own control case failed on a fix that was written but not yet committed.
+    """
+    repo_head = subprocess.run(["git", "-C", REPO, "rev-parse", "--verify", "HEAD"],
+                               capture_output=True, text=True)
+    if repo_head.returncode != 0:
+        print("selftest: needs a git repo with at least one commit", file=sys.stderr)
+        return 2
+
+    MUTATIONS = [
+        ("typo in the hooks DIRECTORY (/hookz/)",
+         lambda d: _sub(os.path.join(d, "plugins/goalspec/hooks/hooks.json"),
+                        "/hooks/gate-goal-close.sh", "/hookz/gate-goal-close.sh")),
+        ("a second, contradictory suite count",
+         lambda d: _sub(os.path.join(d, "test/README.md"), "mechanical suites",
+                        "mechanical suites (not eight mechanical suites)", once=True)),
+        ("a carrier claiming there is no CI",
+         lambda d: _prepend(os.path.join(d, "test/verdict-nudge-branches.py"),
+                            "# There is no CI here.\n")),
+        ("versions out of sync",
+         lambda d: _json_set(os.path.join(d, ".claude-plugin/marketplace.json"),
+                             ["metadata", "version"], "0.0.0-desync")),
+        ("frontmatter that is no longer YAML",
+         lambda d: _sub(os.path.join(d, "plugins/goalspec/skills/goalspec/SKILL.md"),
+                        "description:", "description: broken: like this", once=True)),
+        ("a new suite no document names",
+         lambda d: shutil.copyfile(os.path.join(d, "test/gate-branches.py"),
+                                   os.path.join(d, "test/unnamed-branches.py"))),
+        ("a hook file deleted",
+         lambda d: os.remove(os.path.join(d, "plugins/goalspec/hooks/watch-adversary-writes.sh"))),
+        ("the plugin renamed",
+         lambda d: _json_set(os.path.join(d, "plugins/goalspec/.claude-plugin/plugin.json"),
+                             ["name"], "goalspec-renamed")),
+    ]
+
+    bad = 0
+    with tempfile.TemporaryDirectory() as work:
+        for label, mutate in MUTATIONS + [("NOTHING (control — must pass)", lambda d: None)]:
+            d = tempfile.mkdtemp(dir=work)
+            listed = subprocess.run(["git", "-C", REPO, "ls-files", "-z"],
+                                    capture_output=True, check=True)
+            for rel in listed.stdout.decode().split("\0"):
+                if not rel:
+                    continue
+                src = os.path.join(REPO, rel)
+                if not os.path.isfile(src):
+                    continue  # tracked but deleted in the working tree
+                dst = os.path.join(d, rel)
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.copyfile(src, dst)
+            try:
+                mutate(d)
+            except Exception as e:
+                print("%-46s SETUP FAILED: %s" % (label, e))
+                bad += 1
+                continue
+            r = subprocess.run([sys.executable, "test/manifest-checks.py"], cwd=d,
+                               capture_output=True, text=True)
+            control = label.startswith("NOTHING")
+            ok = (r.returncode == 0) if control else (r.returncode == 1)
+            print("%-46s exit=%-2s %s" % (label, r.returncode, "ok" if ok else "MISSED"))
+            if not ok:
+                bad += 1
+                print("    ---- checker output ----")
+                for line in r.stdout.splitlines()[-6:]:
+                    print("    " + line)
+    print()
+    if bad:
+        print("selftest: %d mutation(s) not caught — those checks do not work" % bad)
+        return 1
+    print("selftest: every mutation caught, control clean")
+    return 0
+
+
+def _sub(path, old, new, once=False):
+    t = open(path, encoding="utf-8").read()
+    if old not in t:
+        raise RuntimeError("pattern not present in %s: %r" % (path, old))
+    open(path, "w", encoding="utf-8").write(t.replace(old, new, 1 if once else -1))
+
+
+def _prepend(path, text):
+    t = open(path, encoding="utf-8").read()
+    open(path, "w", encoding="utf-8").write(text + t)
+
+
+def _json_set(path, keys, value):
+    d = json.load(open(path, encoding="utf-8"))
+    node = d
+    for k in keys[:-1]:
+        node = node.setdefault(k, {})
+    node[keys[-1]] = value
+    json.dump(d, open(path, "w", encoding="utf-8"), indent=2)
+
+
+if "--selftest" in sys.argv:
+    sys.exit(selftest())
+
 
 failures = []
 
@@ -129,7 +240,14 @@ for _event, groups in (hooks.get("hooks") or {}).items():
         for hook in (group.get("hooks") or []):
             cmd = hook.get("command") or ""
             # Commands look like: bash "${CLAUDE_PLUGIN_ROOT}"/hooks/foo.sh [args]
-            for token in re.findall(r"/hooks/[A-Za-z0-9_.-]+\.sh", cmd):
+            # Resolve what the command actually points at, rather than pattern-matching the
+            # directory name. The old version matched `/hooks/<name>.sh` literally, so a typo in the
+            # DIRECTORY (`/hookz/gate-goal-close.sh`) matched nothing, was never checked, and the
+            # whole file came back green — a checker blind to the commonest typo class it exists to
+            # catch. Found by an external partner, who reproduced it in a throwaway copy.
+            # Take everything after ${CLAUDE_PLUGIN_ROOT} (however quoted) up to whitespace.
+            for token in re.findall(
+                    r"(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$CLAUDE_PLUGIN_ROOT)\"?(/[^\s\"']+)", cmd):
                 rel = token.lstrip("/")
                 referenced.add(rel)
                 # The exec bit only matters when the harness execs the file itself. Every hook here
@@ -140,6 +258,18 @@ for _event, groups in (hooks.get("hooks") or {}).items():
                     direct.add(rel)
 
 check("hooks.json references at least one script", len(referenced) > 0, "none parsed")
+# A command whose path could not be resolved at all is the failure this parser must not swallow:
+# silently extracting nothing looks exactly like a hook with no path to check.
+unresolved = []
+for _event, groups in (hooks.get("hooks") or {}).items():
+    for group in groups or []:
+        for hook in (group.get("hooks") or []):
+            cmd = hook.get("command") or ""
+            if cmd and not re.search(
+                    r"(?:\$\{CLAUDE_PLUGIN_ROOT\}|\$CLAUDE_PLUGIN_ROOT)\"?/[^\s\"']+", cmd):
+                unresolved.append(cmd)
+check("every hooks.json command names a resolvable path", not unresolved,
+      "could not resolve: " + "; ".join(unresolved[:3]))
 for rel_hook in sorted(referenced):
     target = os.path.join(PLUGIN, rel_hook)
     check("hooks.json -> %s exists" % rel_hook, os.path.isfile(target),
@@ -166,21 +296,60 @@ WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "sev
          8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
 word = WORDS.get(n, str(n))
 
-test_readme = open(os.path.join(REPO, "test", "README.md"), encoding="utf-8").read()
-head = test_readme[:400]
-check("test/README.md states %d (%s) branch suites" % (n, word),
-      re.search(r"\*\*%s\*\*" % word, head, re.I) is not None,
-      "header says a different count than the %d *-branches.py files present" % n)
+# Every place either document states a suite count must state the RIGHT one. The first version of
+# this check just looked for the correct word anywhere in the header, which a contradictory sentence
+# satisfies trivially — an external partner proved it with "Eight ... not Nine" and got rc=0. So:
+# find EVERY "<word> mechanical/branch suites" phrase and require each to match reality. A check
+# satisfiable by prose that says the opposite is not a check.
+COUNT_RE = re.compile(r"\b([A-Za-z]+)\s+(?:mechanical|branch)\s+suites\b", re.I)
 
-claude_md = open(os.path.join(REPO, "CLAUDE.md"), encoding="utf-8").read()
-check("CLAUDE.md states %d (%s) branch suites" % (n, word),
-      re.search(r"the %s branch suites" % word, claude_md, re.I) is not None,
-      "CLAUDE.md's count drifted from the %d files present" % n)
+for doc in ("test/README.md", "CLAUDE.md"):
+    text = open(os.path.join(REPO, doc), encoding="utf-8").read()
+    # Strip markdown emphasis so **Nine** reads as Nine.
+    flat = text.replace("**", "").replace("*", "")
+    found = [m.group(1).lower() for m in COUNT_RE.finditer(flat)]
+    check("%s states a suite count at all" % doc, len(found) > 0,
+          "no '<word> mechanical/branch suites' phrase found — the check has nothing to verify")
+    wrong = sorted({f for f in found if f != word})
+    check("%s: every stated suite count is %d (%s)" % (doc, n, word), not wrong,
+          "also says: " + ", ".join(wrong) + " — %d *-branches.py files are present" % n)
 
 # Every suite should also be named somewhere in CLAUDE.md's run list, or nobody will run it.
-for s in suites:
-    check("CLAUDE.md names %s" % s, s in claude_md,
+claude_md = open(os.path.join(REPO, "CLAUDE.md"), encoding="utf-8").read()
+for s_name in suites:
+    check("CLAUDE.md names %s" % s_name, s_name in claude_md,
           "a suite no document tells anyone to run is a suite nobody runs")
+
+# No carrier may still claim this project has no CI — it does, and a doc saying otherwise sends a
+# contributor to run things by hand believing nothing else will. Sweep the tracked tree, not a list.
+no_ci = []
+for root, dirs, files in os.walk(REPO):
+    dirs[:] = [d for d in dirs if d not in (".git", "memory", "__pycache__", ".goalspec")]
+    for f in files:
+        if not f.endswith((".md", ".py", ".yml", ".sh")):
+            continue
+        fp = os.path.join(root, f)
+        try:
+            body = open(fp, encoding="utf-8").read()
+        except Exception:
+            continue
+        # Match the ASSERTION ("No CI — ...", "There is no CI here"), not every mention. A bare
+        # `no CI` substring also matches prose ABOUT this check ("...still claims the project has
+        # no CI"), which made the check fail on its own documentation the first time it ran. So:
+        # only at the start of a line or sentence, which is where a claim lives.
+        for m in re.finditer(
+                r"^.*?(?:^|[.!?]\s+|—\s*|\"\"\"|#\s*)(?:No CI\b|There is no CI\b).*$",
+                body, re.I | re.M):
+            line = m.group(0).strip()
+            # The CHANGELOG is a historical record: a past entry describing the then-current state
+            # is not a stale claim, it is the log doing its job.
+            if os.path.basename(fp) in ("CHANGELOG.md", "manifest-checks.py"):
+                # CHANGELOG is a historical record; this file necessarily contains the phrase it
+                # searches for. Neither is a stale claim.
+                continue
+            no_ci.append("%s: %s" % (os.path.relpath(fp, REPO), line[:70]))
+check("no carrier still claims this project has no CI", not no_ci,
+      " | ".join(no_ci[:3]))
 
 print()
 if failures:
