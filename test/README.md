@@ -208,13 +208,55 @@ phases. The rails are host-side only: from outside any git repo there is no root
 that branch warns on stderr instead of relocating (11), and a partner whose own sandbox denies
 writes the hook's process can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 
+Cases **16/17/19** pin the read-only rail (0.44.0), and **18** is its control. **16 is the
+discriminating one**: the stub appends to a file the fixture repo has *already* modified, so the
+`git status` porcelain line is byte-identical before and after — a status-based fingerprint passes
+it while the repair goes unseen, which is the commonest real shape, since the tree under review is
+the uncommitted work being reviewed. Against the pre-0.44.0 hook, 16/17/19 all come back
+`pass+mutation-missed` — the repair read as a clean pass. **17** pins the asymmetry that keeps the
+rail from ever weakening the gate: a `break` from a mutated tree is printed unchanged and only
+warned about, while 16/19's clean `hold` is degraded to `UNVERIFIED`. **19** covers `.goalspec/`,
+which `--exclude-standard` hides, so the fingerprint hashes it explicitly. **18** is the control
+that keeps this from being a mere dirty-tree detector: same pre-dirtied repo, partner writes
+nothing, clean pass. These four run in a throwaway git repo (`cwd` sentinel `MUTREPO`) for the
+obvious reason — the stubs write files, and every other case in this file runs with `cwd=REPO`.
+
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
 baseline copy; `--compare` works like the gate suite's when the hook is edited again.
+
+## `adversary-writes-branches.py` — the subagent read-only rail
+
+For `hooks/watch-adversary-writes.sh` (0.44.0), the subagent half of the same rail. Hermetic apart
+from `git`: each case builds a throwaway repo, feeds the hook a synthetic `SubagentStart` payload,
+mutates the repo the way a misbehaving adversary would, then feeds it the matching `SubagentStop`
+payload. `TMPDIR` is redirected per case so snapshots never collide and never touch the project.
+
+Why those two events and not the `Task` hooks already registered on `PreToolUse`/`PostToolUse`:
+subagents run in the **background**, so the `Task` tool result is a handle and `PostToolUse` fires
+at *launch*. A snapshot pair there would bracket the spawn, not the run — an instrument measuring
+nothing, which is the exact defect the rail exists to catch. `SubagentStart`/`SubagentStop` bracket
+the real run and carry `agent_type` + `agent_id`, so attribution is structural.
+
+**02** is the discriminating case, for the same reason as case 16 of the external suite: an append
+to an already-modified file is invisible to `git status`. **05** pins that a `git add` is caught by
+the staged-diff hash (it moves the path out of `ls-files -m`) *and* that the index line gets named
+rather than stripped — the first run of that case reported a bare 40-char hash as if it were a
+filename. **04** covers gitignored `.goalspec/` run state. **06** pins a deliberate non-finding:
+changed and changed back is nothing left modified. **01** is the control against a dirty-tree
+detector; **07/08** pin the `agent_type` re-check (including `not-goal-adversary-example`, the
+fabricated form that slipped a bare substring check once in this project); **09** pins that a
+`stop` with no `start` stays silent — claiming "no writes detected" from a measurement that never
+ran is the broken instrument this rail is about.
+
+```sh
+python3 test/adversary-writes-branches.py
+python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 02
+```
 
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
 

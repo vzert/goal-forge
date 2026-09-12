@@ -6,6 +6,87 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.0] - 2026-09-12
+
+### El adversario verifica, no repara — y ahora se mide
+
+Reporte de campo: el backend externo no es de sólo lectura y a veces hace cambios no solicitados.
+Corre con un sandbox de escritura (`codex exec -s workspace-write …`) porque lo necesita — uno de
+sólo lectura le hace fallar las suites y devuelve esas fallas disfrazadas de `ungrounded`, y por eso
+el arreglo registrado fue ampliar el sandbox, no encogerlo. Pero un verificador que **repara** lo que
+fue a medir después verifica un estado que él creó: el principio 1 vuelto contra el verificador, y el
+`hold` limpio que sigue es indistinguible de uno honesto.
+
+**La regla, en los dos portadores.** `hooks/external-adversary.sh` (prompt del partner) y
+`agents/goal-adversary.md` (def del subagente, que tiene `Bash`) ahora dicen lo mismo: leer y correr
+lo que ya existe; no crear, editar, borrar, revertir, indexar ni commitear nada del trabajo bajo
+revisión; lo que parezca roto es un hallazgo, no una tarea; el scratch va a `$TMPDIR`, fuera del repo.
+
+**La medición, una por portador** — una regla pedida en un prompt y consumida por nadie es
+exactamente el instrumento roto que este método denuncia:
+
+* `hooks/external-adversary.sh` toma una huella **del contenido** del repo antes y después de correr
+  al partner, en línea.
+* `hooks/watch-adversary-writes.sh` (nuevo) hace lo mismo alrededor del subagente, en
+  `SubagentStart`/`SubagentStop`.
+
+**Contenido, no `git status`.** El árbol bajo revisión casi siempre ya está sucio — *es* el trabajo
+sin commitear que se está revisando — así que un partner que agrega una línea a un archivo ya
+modificado deja la línea de porcelana byte-idéntica antes y después. La huella hashea blobs, el diff
+en staging y el run state de `.goalspec/` (que `--exclude-standard` esconde). Medido: el caso 16 de
+`test/external-adversary-branches.py` y el 02 de `test/adversary-writes-branches.py` son exactamente
+ese caso, y contra el hook pre-0.44.0 los tres casos de mutación vuelven `pass+mutation-missed` — la
+reparación pasaba como aprobación limpia.
+
+```
+$ python3 test/external-adversary-branches.py <copia pre-edición>
+16-mutates-hold              pass+mutation-missed   <-- EXPECT FAILED: wanted mutation-unverified
+17-mutates-break             pass+mutation-missed   <-- EXPECT FAILED: wanted pass+mutation-warned
+19-mutates-gitignored-runstate pass+mutation-missed <-- EXPECT FAILED: wanted mutation-unverified
+3 expect assertion(s) failed        (rc=1)
+$ python3 test/external-adversary-branches.py --compare <copia pre-edición> --expected 16,17,19
+parity OK — 19 branches, 3 intended change(s)      (rc=0)
+$ python3 test/adversary-writes-branches.py
+9 casos, 0 fallas                                   (rc=0)
+```
+
+**La asimetría es el punto: esto nunca debilita el gate.** Un `hold` sobre un árbol mutado se degrada
+al mismo `hold UNVERIFIED` sintético que ya emite la rama de instrumento roto. Un `break` se imprime
+**sin tocar** — suprimir hallazgos convertiría un efecto lateral detectado en una violación perdida —
+y el aviso va a stderr. Ninguno de los dos hooks revierte nada: este script se niega a borrar
+artefactos que no son suyos, y deshacer un cambio que quizá hiciste vos es justo el no-harm que está
+chequeando. Nombrar las rutas es todo el trabajo.
+
+**Por qué `SubagentStart`/`SubagentStop` y no los hooks `Task` que ya existían.** La costura obvia
+parecía el par `PreToolUse`/`PostToolUse` sobre `Task|Agent`. No sirve: desde v2.1.198 los subagentes
+corren en segundo plano, así que el resultado del `Task` es un handle y `PostToolUse` dispara al
+**lanzar**, no al terminar — algo que este mismo repo ya tenía medido en `remind-quote-verdict.sh`.
+Un par de fotos ahí encerraría el spawn, no la corrida: un instrumento que no mide nada, el defecto
+exacto que este riel existe para cazar. Los eventos de subagente sí encierran la corrida y traen
+`agent_type` + `agent_id`, así que la atribución es estructural y no adivinada.
+
+**Del lado del subagente el mensaje ofrece dos lecturas, las dos hallazgos**: el adversario escribió,
+o vos editaste bajo un verificador en vuelo — el mismo defecto desde el otro lado, porque el veredicto
+describe un árbol que ya no existe. Una ronda en background puede producir la segunda inocentemente;
+una ronda de cierre síncrona no.
+
+**Un defecto que encontró la suite, no la lectura.** El extractor de rutas imprimía el hash pelado de
+las dos líneas de cabecera (`HEAD`, `staged`) como si fuera un archivo. Lo destapó el caso 05 de la
+suite nueva; ahora esas dos líneas se nombran en vez de recortarse.
+
+**Corrección de una afirmación falsa del README.** Decía `agents/goal-adversary.md — independent
+adversarial verifier (read-only)`. El agente tiene `Bash` y nada lo hacía de sólo lectura: era una
+afirmación sin piso desde que se escribió. Ahora dice qué es verdad y qué lo sostiene.
+
+### Portadores tocados
+`hooks/external-adversary.sh`, `hooks/watch-adversary-writes.sh` (nuevo), `hooks/hooks.json`,
+`agents/goal-adversary.md`, `skills/goalspec/SKILL.md` (paso 6), `references/external-adversary-setup.md`,
+`README.md`, `CLAUDE.md`, `test/README.md`, `test/external-adversary-branches.py` (casos 16-19),
+`test/adversary-writes-branches.py` (nuevo).
+**Exentos, a propósito**: `skills/adversary/SKILL.md` (ronda suelta que enruta al mismo subagente y
+al mismo hook, así que hereda la regla sin repetirla) y `test/claim-surface-carriers.py` (fija la
+regla de superficie de afirmaciones, otra regla).
+
 ## [0.43.0] - 2026-09-11
 
 ### El piso de convergencia vuelve a hablarle al agente — y el contador se vuelve una racha de verdad

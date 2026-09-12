@@ -137,6 +137,18 @@ the claimed outcome against this 5-principle constitution — not to approve it:
      Do not assume you cannot reach it: check.
   5. No-harm — don't remove/pause/scale something that works without a validated, reversible replacement.
 
+YOU VERIFY, YOU DO NOT REPAIR. Your reach is reading and running what already exists: read any file,
+run the suites and commands the work already ships, inspect the VCS history. Do NOT create, edit,
+delete or revert any file in the repository under review, do not stage or commit, and do not run a
+command whose purpose is to change the work. Something you believe is broken is a FINDING you report,
+never a task you take on — repairing it destroys the very thing you were sent to measure, because the
+state you would then verify is one you created, and principle 1 turns on you. Scratch space is the one
+exception and it lives OUTSIDE the repository: write temporary files under TMPDIR, which this host has
+already pointed at a directory you can write. This is MEASURED, not trusted: the hook that invoked you
+fingerprints the repository content before and after your run, names every path whose bytes changed,
+and degrades a clean verdict to UNVERIFIED when it finds one — a repair does not quietly become a
+pass, it voids your own verdict.
+
 NEGATIVE CLAIMS — audit the option surface, not just the measurement. This fires on a CLAIM SHAPE, in
 any domain: whenever a load-bearing claim says something CANNOT be done, is unavailable, no longer
 exists, is not supported, or is impossible, AND the action follows from that impossibility (a removal,
@@ -250,6 +262,51 @@ else
 fi
 if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || echo /tmp); export TMPDIR; fi
 
+# READ-ONLY RAIL (measuring half; the rule itself is a paragraph in the prompt above).
+# A partner that REPAIRS what it was sent to measure then verifies a state it created — principle 1
+# turned on the adversary. Observed in the field: partners run with a write-capable sandbox (they
+# need it; a read-only sandbox failed their suite runs and fabricated ungrounded counts, which is
+# why the recorded fix was to widen the sandbox, not to narrow it) and some of them take the
+# initiative to fix what they find. The rule alone would be an emission with no consumer — exactly
+# the instrument-validity defect this prompt warns about — so it is measured here.
+#
+# CONTENT, not `git status`. The tree under review is almost always ALREADY dirty (the uncommitted
+# work being verified). A partner that appends one line to an already-modified file leaves the
+# byte-identical " M path" porcelain line before and after, so a status-only fingerprint is blind to
+# the commonest case. Hash the blobs instead.
+# KNOWN GAPS, stated rather than discovered in review: (1) `--exclude-standard` hides gitignored
+# paths, so a write into an ignored directory is invisible — `.goalspec/` is the one that matters
+# here (it is run state, not a deliverable) and is therefore hashed explicitly; other ignored paths
+# are out of reach. (2) A write outside the repo root is not covered, by design: TMPDIR is where the
+# partner is told to put scratch. (3) A partner that changes a file and changes it back is a no-op
+# to this check, and that is the correct answer — nothing was left modified.
+_adv_fingerprint() {
+  # $1 = repo root. Prints one line per fact; the caller diffs two of these captures.
+  [ -z "${1:-}" ] && return 0
+  printf 'HEAD %s\n' "$(git -C "$1" rev-parse HEAD 2>/dev/null || echo unborn)"
+  # The staged set as CONTENT: a partner that `git add`s its edit moves the path out of `ls-files -m`,
+  # so the unstaged scan below would stop seeing it.
+  printf 'staged %s\n' "$(git -C "$1" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null || echo none)"
+  # Modified, deleted and untracked-but-not-ignored paths, content-hashed.
+  git -C "$1" ls-files -m -o -d --exclude-standard -z 2>/dev/null \
+    | while IFS= read -r -d '' p; do
+        if [ -f "$1/$p" ]; then
+          printf '%s %s\n' "$(git -C "$1" hash-object -- "$1/$p" 2>/dev/null || echo unreadable)" "$p"
+        else
+          printf 'absent %s\n' "$p"
+        fi
+      done
+  # Run state: gitignored (see .gitignore), so the scan above never lists it.
+  for _f in "$1"/.goalspec/*; do
+    [ -f "$_f" ] || continue
+    printf '%s %s\n' "$(git -C "$1" hash-object -- "$_f" 2>/dev/null || echo unreadable)" "${_f#"$1"/}"
+  done
+}
+# Captured OUTSIDE the `set +e` region on purpose: this must run before the partner does, and a
+# failure here is a broken instrument, not a finding. `|| true` keeps a git-less host fail-open —
+# REPO_ROOT is empty there and the function returns immediately anyway.
+FP_BEFORE=$(_adv_fingerprint "$REPO_ROOT" 2>/dev/null || true)
+
 # Pipe the prompt to the external CLI on stdin. Some CLIs accept a prompt on stdin (codex exec,
 # claude -p); others want it as an argument (gemini -p) — wrap those in a small adapter.
 #
@@ -285,14 +342,69 @@ VERDICT=$(printf '%s' "$OUT" | grep -Eo "$VERDICT_RE" | tail -1 || true)
 MODEL_LINE=$(printf '%s' "$OUT" | grep -Eo '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 || true)
 set -e
 
+# READ-ONLY RAIL (verdict half). Name the paths whose content differs between the two captures.
+FP_AFTER=$(_adv_fingerprint "$REPO_ROOT" 2>/dev/null || true)
+MUTATED=""
+if [ -n "$REPO_ROOT" ] && [ "$FP_BEFORE" != "$FP_AFTER" ]; then
+  # Report the PATH column of every line present in exactly one capture, deduplicated. A changed
+  # blob shows up as two differing lines for the same path; `sort -u` on the path collapses them.
+  # The two HEADER lines carry no path, so they get named rather than stripped — without this the
+  # generic rule prints their bare hash as if it were a filename (caught by case 05 of
+  # test/adversary-writes-branches.py, on the sibling copy of this extractor).
+  MUTATED=$(diff <(printf '%s\n' "$FP_BEFORE") <(printf '%s\n' "$FP_AFTER") 2>/dev/null \
+            | grep -E '^[<>]' \
+            | sed -E -e 's/^[<>] HEAD .*/(HEAD moved: a commit or checkout happened during the run)/' \
+                     -e 's/^[<>] staged .*/(the git index: content was staged or unstaged)/' \
+                     -e 's/^[<>] [^ ]+ ?//' \
+            | grep -v '^$' | sort -u || true)
+  [ -z "$MUTATED" ] && MUTATED="(the fingerprint changed but no path could be named — inspect \`git status\` by hand)"
+fi
+
 if [ $RC -ne 0 ] || [ -z "$VERDICT" ]; then
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
   {
     echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
     echo "no independent check ran. Treat this 'hold' as UNVERIFIED, not as a pass. Partner output:"
     printf '%s\n' "$OUT" | head -20
+    if [ -n "$MUTATED" ]; then
+      echo "AND it left the repository modified — these paths changed during its run:"
+      printf '%s\n' "$MUTATED" | sed 's/^/  /'
+    fi
   } >&2
   exit 0
+fi
+
+# A partner that MODIFIED the work verified a state it created. Two rules, and the asymmetry is the
+# point: never make this gate weaker than it was.
+#   * verdict 'hold'  -> degrade to the same synthetic UNVERIFIED hold the broken-instrument rail
+#     emits. A clean bill of health from a tree the reviewer just repaired is precisely the failure
+#     mode this rail exists for, and it must not read as a pass.
+#   * verdict 'break' -> print it UNCHANGED. The findings stand; suppressing them would turn a
+#     detected side effect into a lost violation. The warning goes to stderr instead.
+# Deliberately NOT paired with an automatic revert: this script refuses remove-verbs on artifacts it
+# does not own (same rule that keeps it out of /tmp cleanup), and undoing a change the human may have
+# made themselves is exactly the no-harm violation it would be checking for. Naming the paths is the
+# whole job; what to do about them is the operator decision.
+if [ -n "$MUTATED" ]; then
+  if printf '%s' "$VERDICT" | grep -qE '\[ADVERSARY-VERDICT:[[:space:]]*hold'; then
+    echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
+    {
+      echo "external-adversary: the partner MODIFIED the repository during its own review, then"
+      echo "returned a clean 'hold' — a verdict over a state it created. Degraded to UNVERIFIED; do"
+      echo "not read it as a pass. Paths whose content changed during the run:"
+      printf '%s\n' "$MUTATED" | sed 's/^/  /'
+      echo "Decide yourself whether to keep or revert them — this hook does not touch files it does"
+      echo "not own. Then re-run the review over a tree nobody edited mid-flight. Partner output:"
+      printf '%s\n' "$OUT" | head -40
+    } >&2
+    exit 0
+  fi
+  {
+    echo "external-adversary: the partner MODIFIED the repository during its own review. Its 'break'"
+    echo "stands (findings are not suppressed), but every one of them was measured against a tree it"
+    echo "had already changed — re-derive each before acting. Paths whose content changed:"
+    printf '%s\n' "$MUTATED" | sed 's/^/  /'
+  } >&2
 fi
 
 # Verdict is valid either way (fail-open); but an absent self-report degrades the INDEPENDENCE

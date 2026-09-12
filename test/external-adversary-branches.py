@@ -119,7 +119,87 @@ CASES = [
     # Bracketed model name + UNKNOWN id — silent before the raw-line fix; gate case 33 covers it.
     ("15-model-id-unknown-bracketed-name",
      NOISE + MODEL_UNKNOWN_BRACKET + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+idunresolved"),
+    # --- read-only rail (0.44.0). A partner that REPAIRS what it was sent to measure verifies a
+    # state it created. These four run in a THROWAWAY git repo (cwd MUTREPO) for the obvious reason:
+    # the stub writes files, and every other case in this file runs with cwd=REPO.
+    #
+    # 16 is THE discriminating case, and it is why the fingerprint hashes content instead of reading
+    # `git status`: the file the stub appends to is ALREADY modified before the hook runs, so the
+    # porcelain line (" M tracked.txt") is byte-identical before and after. A status-only check
+    # passes this case while the repair goes unseen — the commonest real shape, since the tree under
+    # review is the uncommitted work being reviewed.
+    ("16-mutates-hold", "STUB_MUTATE", {}, "MUTREPO", "mutation-unverified"),
+    # Never weaken the gate: a 'break' from a mutated tree keeps its findings on stdout and gets the
+    # warning on stderr. Degrading it to a hold would turn a detected side effect into a lost
+    # violation.
+    ("17-mutates-break", "STUB_MUTATE_BREAK", {}, "MUTREPO", "pass+mutation-warned"),
+    # The control that proves this is not just a dirty-tree detector: same pre-dirtied repo, partner
+    # writes nothing. Must stay a clean pass, or the rail fires on every real review.
+    ("18-clean-in-dirty-repo", "STUB_CLEAN", {}, "MUTREPO", "pass"),
+    # `.goalspec/` is gitignored, so `ls-files --exclude-standard` never lists it. It is run state
+    # the adversary must not rewrite, so the fingerprint hashes it explicitly — this pins that.
+    ("19-mutates-gitignored-runstate", "STUB_MUTATE_RUNSTATE", {}, "MUTREPO",
+     "mutation-unverified"),
 ]
+
+BREAK = ("[ADVERSARY-VERDICT: break ungrounded=2 unfalsified=0 incomplete=1 "
+         "autonomy-violations=0 unsafe=0]")
+
+# The hook cds to the repo root before running the partner, so these relative paths resolve there.
+STUB_MUTATE = """#!/bin/bash
+cat >/dev/null
+echo "while reviewing I noticed a typo and fixed it" >> tracked.txt
+echo "%s"
+echo "- probe: one real evidence line"
+echo "%s"
+""" % (MODEL, HOLD)
+
+STUB_MUTATE_BREAK = """#!/bin/bash
+cat >/dev/null
+echo "fixed it on the way" >> tracked.txt
+echo "%s"
+echo "- the coverage-floor row claims done for an entity that is not done"
+echo "%s"
+""" % (MODEL, BREAK)
+
+STUB_CLEAN = """#!/bin/bash
+cat >/dev/null
+cat tracked.txt >/dev/null
+echo "%s"
+echo "- probe: one real evidence line"
+echo "%s"
+""" % (MODEL, HOLD)
+
+STUB_MUTATE_RUNSTATE = """#!/bin/bash
+cat >/dev/null
+echo "- round 9: reconciled by the adversary" >> .goalspec/checkpoint-suite.md
+echo "%s"
+echo "- probe: one real evidence line"
+echo "%s"
+""" % (MODEL, HOLD)
+
+
+def make_mutrepo(workdir, name):
+    """A throwaway git repo whose tracked file is ALREADY modified and whose .goalspec/ run state
+    exists and is gitignored — the state a real review actually runs against."""
+    # mkdtemp, not a fixed name: `--compare` runs the whole suite TWICE in one workdir, and a fixed
+    # path collides on the second pass (the run that measures the pre-edit hook).
+    root = tempfile.mkdtemp(prefix="mutrepo-" + name + "-", dir=workdir)
+    os.makedirs(os.path.join(root, ".goalspec"))
+    git = ["git", "-c", "user.email=suite@example.invalid", "-c", "user.name=suite"]
+    subprocess.run(git + ["init", "-q", root], check=True, capture_output=True)
+    with open(os.path.join(root, ".gitignore"), "w") as f:
+        f.write("/.goalspec/\n")
+    with open(os.path.join(root, "tracked.txt"), "w") as f:
+        f.write("committed line\n")
+    subprocess.run(git + ["-C", root, "add", "-A"], check=True, capture_output=True)
+    subprocess.run(git + ["-C", root, "commit", "-qm", "base"], check=True, capture_output=True)
+    # Pre-dirty it: this is what makes case 16 discriminating.
+    with open(os.path.join(root, "tracked.txt"), "a") as f:
+        f.write("uncommitted work under review\n")
+    with open(os.path.join(root, ".goalspec", "checkpoint-suite.md"), "w") as f:
+        f.write("# checkpoint\n\n## Live goal-spec\n- criterion 1\n")
+    return root
 
 # A real wrapper script: consumes the prompt on stdin and emits the UNKNOWN-id transcript. Invoked
 # as `bash <stub>`, so the leading word the hook resolves with `command -v` is the INTERPRETER —
@@ -160,6 +240,26 @@ def classify(res, case_name):
         branch += "+wrapperbin" if re.search(r"bin='[^']*/bash'", err) else "+notwrapper"
     if case_name.startswith("11"):
         branch += "+warned" if "not inside any git repo" in err else "+silent"
+    if case_name[:2] in ("16", "17", "19"):
+        # Two halves, both required: the hook must SAY the partner modified the tree, and it must
+        # NAME the path. A warning that cannot name what changed sends the operator to a blank
+        # `git status` on an already-dirty tree — the same blindness the content fingerprint exists
+        # to remove.
+        said = "MODIFIED the repository" in err
+        named = ("tracked.txt" in err if case_name[:2] in ("16", "17")
+                 else "checkpoint-suite.md" in err)
+        if said and named:
+            # 16/19: the clean hold is degraded, so stdout must carry a hold and stderr must say so.
+            # 17: the break must survive verbatim on stdout.
+            if case_name.startswith("17"):
+                branch = ("pass+mutation-warned" if "break ungrounded=2" in out
+                          else "break-suppressed")
+            else:
+                branch = ("mutation-unverified"
+                          if "Degraded to UNVERIFIED" in err and FILLED_RE.search(out)
+                          else "mutation-not-degraded")
+        else:
+            branch += "+mutation-missed" if not said else "+mutation-unnamed"
     return branch
 
 
@@ -170,11 +270,13 @@ def suite(hook, workdir):
         env.pop("GOAL_ADVERSARY_ACTIVE", None)
         env.pop("GOAL_ADVERSARY_CMD", None)
         env.pop("GOAL_CONFIG_PATH", None)
-        if transcript in ("STUB_TMPDIR", "STUB_PWD", "STUB_WRAP"):
+        stubs = {"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD, "STUB_WRAP": STUB_WRAP,
+                 "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,
+                 "STUB_CLEAN": STUB_CLEAN, "STUB_MUTATE_RUNSTATE": STUB_MUTATE_RUNSTATE}
+        if transcript in stubs:
             stub = os.path.join(workdir, "stub-" + name + ".sh")
             with open(stub, "w") as f:
-                f.write({"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD,
-                         "STUB_WRAP": STUB_WRAP}[transcript])
+                f.write(stubs[transcript])
             env["GOAL_ADVERSARY_CMD"] = "bash " + stub
         elif transcript is not None:
             fixture = os.path.join(workdir, "out-" + name + ".txt")
@@ -182,7 +284,12 @@ def suite(hook, workdir):
                 f.write(transcript)
             env["GOAL_ADVERSARY_CMD"] = "cat " + fixture
         env.update(env_extra)
-        run_cwd = workdir if cwd == "WORKDIR" else (cwd or REPO)
+        if cwd == "WORKDIR":
+            run_cwd = workdir
+        elif cwd == "MUTREPO":
+            run_cwd = make_mutrepo(workdir, name)
+        else:
+            run_cwd = cwd or REPO
         res = subprocess.run(["bash", hook], input=PAYLOAD, capture_output=True,
                              text=True, env=env, cwd=run_cwd, timeout=30)
         rows.append((name, classify(res, name), expect))

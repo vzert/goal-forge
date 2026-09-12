@@ -502,8 +502,8 @@ goal-forge/
                                           #   verification, without the full loop or the gate
     skills/interview/SKILL.md             # /goalspec:interview — frontier-round interview that
                                           #   discovers the goal before the spec, for fuzzy intent
-    agents/goal-adversary.md              # independent adversarial verifier (read-only)
-    hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart hooks below
+    agents/goal-adversary.md              # independent adversarial verifier (verifies, never repairs — measured)
+    hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart/Subagent* hooks below
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop) + terminal-action staleness backstop
     hooks/precheck-terminal-push.sh       # PreToolUse (Bash): hard-denies a push/merge/deploy/destructive command with no operative adversary hold on record
     hooks/lib/terminal_actions.py         # shared terminal-command classifier + content exemption, read by gate-goal-close.sh, precheck-terminal-push.sh, and check-usage-budget.sh below
@@ -512,6 +512,7 @@ goal-forge/
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
     hooks/route-external-adversary.sh     # PreToolUse nudge toward a configured external backend (fail-open, silent on error)
     hooks/remind-quote-verdict.sh         # PostToolUse nudge: quote the verdict before you forget it
+    hooks/watch-adversary-writes.sh       # SubagentStart/Stop: fingerprints repo content around an adversary run and names anything it changed
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale

@@ -91,6 +91,25 @@ rather than assume**.
 > **model**-correlated; the external partner is the only one that can catch a premise your own model
 > finds plausible. Running both is strictly better than either.
 
+**Your partner keeps its write sandbox — and its writes to the repo are detected.** Two facts that
+look contradictory and are not. (1) The partner needs a **write-capable** sandbox: a read-only one
+fails its suite runs and its scratch writes, and those failures come back disguised as
+`ungrounded`/`UNVERIFIED` counts — a broken instrument fabricating findings. The recorded fix was to
+widen the sandbox (`codex exec -s workspace-write -c sandbox_workspace_write.network_access=true`),
+not to narrow it, and that still stands: escalating the sandbox is the operator's decision, and the
+hook hands the partner a writable `TMPDIR` precisely so scratch has somewhere legitimate to go.
+(2) But an adversary that **repairs** what it was sent to measure then verifies a state it created —
+principle 1 turned on the verifier — and the clean `hold` that follows is indistinguishable from an
+honest one. So the prompt tells the partner it verifies and does not repair, and
+`hooks/external-adversary.sh` **measures** it: it fingerprints repository *content* (blob hashes, the
+staged diff, and the gitignored `.goalspec/` run state — not `git status`, which is blind to one more
+line in an already-modified file) before and after the run. If anything changed it names the paths,
+and it degrades a `hold` to the same synthetic `UNVERIFIED` hold a broken partner gets. A `break` is
+printed unchanged: findings are never suppressed, the warning goes to stderr. Nothing is reverted —
+this hook does not touch files it does not own; what to keep is yours to decide. The subagent backend
+carries the same rule (`agents/goal-adversary.md`) with its own consumer,
+`hooks/watch-adversary-writes.sh` on `SubagentStart`/`SubagentStop`.
+
 - **One backend → announce it.** When only one of the two actually ran, the completion-review says
   `backends=subagent-only` or `backends=external-only` (rather than `backends=both`). It asserts
   nothing about what a second backend would have found. Nothing gates it, **and nothing notices its

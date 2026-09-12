@@ -69,6 +69,30 @@
         ]
       }
     ],
+    "SubagentStart": [
+      {
+        "matcher": "(^|:)goal-adversary$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/watch-adversary-writes.sh start",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "(^|:)goal-adversary$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/watch-adversary-writes.sh stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Task|Agent",
