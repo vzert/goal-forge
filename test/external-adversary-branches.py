@@ -140,7 +140,18 @@ CASES = [
     # the adversary must not rewrite, so the fingerprint hashes it explicitly — this pins that.
     ("19-mutates-gitignored-runstate", "STUB_MUTATE_RUNSTATE", {}, "MUTREPO",
      "mutation-unverified"),
+    # A filled BREAK that exits nonzero. Until 0.44.0 the RC test came first, so this partner's
+    # confirmed findings were REPLACED by a synthetic clean hold — the gate weakened by the very
+    # branch meant to keep it honest. Found by an external partner attacking the claim "a break is
+    # never weakened" against the code path instead of the prose. A crash is a reason to distrust a
+    # PASS, never a reason to discard violations.
+    ("20-break-with-nonzero-exit", "STUB_BREAK_RC", {}, None, "pass+rcwarned"),
+    # The other half of the same rule, unchanged: a HOLD that exits nonzero still degrades. Without
+    # this control, "preserve the break" could be widened into "preserve anything".
+    ("21-hold-with-nonzero-exit", "STUB_HOLD_RC", {}, None, "unfilled"),
 ]
+
+
 
 BREAK = ("[ADVERSARY-VERDICT: break ungrounded=2 unfalsified=0 incomplete=1 "
          "autonomy-violations=0 unsafe=0]")
@@ -176,6 +187,23 @@ echo "- round 9: reconciled by the adversary" >> .goalspec/checkpoint-suite.md
 echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
+""" % (MODEL, HOLD)
+
+
+STUB_BREAK_RC = """#!/bin/bash
+cat >/dev/null
+echo "%s"
+echo "- the coverage-floor row claims done for an entity that is not done"
+echo "%s"
+exit 3
+""" % (MODEL, BREAK)
+
+STUB_HOLD_RC = """#!/bin/bash
+cat >/dev/null
+echo "%s"
+echo "- probe: one real evidence line"
+echo "%s"
+exit 3
 """ % (MODEL, HOLD)
 
 
@@ -240,6 +268,13 @@ def classify(res, case_name):
         branch += "+wrapperbin" if re.search(r"bin='[^']*/bash'", err) else "+notwrapper"
     if case_name.startswith("11"):
         branch += "+warned" if "not inside any git repo" in err else "+silent"
+    if case_name.startswith("20"):
+        # Both halves: the break must reach stdout intact, AND the nonzero exit must be called out
+        # as a COVERAGE limit rather than swallowed.
+        kept = "break ungrounded=2" in out
+        warned = "returned a filled 'break'" in err
+        branch = ("pass+rcwarned" if kept and warned
+                  else ("break-suppressed" if not kept else "pass+rcsilent"))
     if case_name[:2] in ("16", "17", "19"):
         # Two halves, both required: the hook must SAY the partner modified the tree, and it must
         # NAME the path. A warning that cannot name what changed sends the operator to a blank
@@ -272,7 +307,8 @@ def suite(hook, workdir):
         env.pop("GOAL_CONFIG_PATH", None)
         stubs = {"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD, "STUB_WRAP": STUB_WRAP,
                  "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,
-                 "STUB_CLEAN": STUB_CLEAN, "STUB_MUTATE_RUNSTATE": STUB_MUTATE_RUNSTATE}
+                 "STUB_CLEAN": STUB_CLEAN, "STUB_MUTATE_RUNSTATE": STUB_MUTATE_RUNSTATE,
+                 "STUB_BREAK_RC": STUB_BREAK_RC, "STUB_HOLD_RC": STUB_HOLD_RC}
         if transcript in stubs:
             stub = os.path.join(workdir, "stub-" + name + ".sh")
             with open(stub, "w") as f:

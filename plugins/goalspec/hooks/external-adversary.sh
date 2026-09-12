@@ -80,8 +80,13 @@ PAYLOAD=$(cat)
 #
 # SECOND HOME, DELIBERATE: the checkpoint.md paragraph inside this prompt restates the per-section
 # authority rule whose single source is references/durable-artifact.md ("Who reads which section").
-# The external partner cannot read files on this host, so the rule must travel inline — this is the
-# one carrier that cannot be reduced to a pointer. When that section changes, the rule-surface
+# The rule must travel INLINE because the partner cannot reliably RESOLVE that reference's path from
+# where it runs (its cwd is the project, not the plugin, and an installed cache holds many plugin
+# versions) — not because it cannot read files, which is false and which the header of this very file
+# warns at length against re-introducing. This comment asserted the false version until 0.44.0, and
+# an external partner falsified it the same way the 0.4.0 draft was falsified: by reading this repo
+# and the session log from inside the invocation that is supposedly unable to. Reach is a property of
+# the CLI you configured, never of "being external". When that section changes, the rule-surface
 # enumeration must catch this block (grep terms: checkpoint, coverage-floor, Rounds, claim surface).
 # The CLAIM SURFACE paragraph above the checkpoint one is a second such restatement: its single
 # source is skills/goalspec/SKILL.md step 6 (first bullet), restated here for the same reason.
@@ -360,7 +365,22 @@ if [ -n "$REPO_ROOT" ] && [ "$FP_BEFORE" != "$FP_AFTER" ]; then
   [ -z "$MUTATED" ] && MUTATED="(the fingerprint changed but no path could be named — inspect \`git status\` by hand)"
 fi
 
-if [ $RC -ne 0 ] || [ -z "$VERDICT" ]; then
+# A FILLED BREAK SURVIVES A NONZERO EXIT. Until 0.44.0 this branch tested `RC -ne 0` first, so a
+# partner that produced a well-formed `break` and then exited nonzero (a crash on the way out, a
+# wrapper propagating its own status, a CLI that exits on a nonzero finding count) had its confirmed
+# findings REPLACED by a synthetic clean hold — the gate made weaker by exactly the path that exists
+# to keep it honest. Found by an external partner attacking the 0.44.0 claim "a break is never
+# weakened" against this code path rather than against the prose that made it. The rule now holds
+# uniformly: silence and a bad hold degrade to UNVERIFIED; a break is never suppressed, whatever the
+# exit status, because a nonzero exit is a reason to distrust a PASS, never a reason to discard
+# findings. The loud warning below is what the nonzero exit buys instead.
+if printf '%s' "$VERDICT" | grep -qE '\[ADVERSARY-VERDICT:[[:space:]]*break'; then
+  VERDICT_IS_BREAK=1
+else
+  VERDICT_IS_BREAK=0
+fi
+
+if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; then
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
   {
     echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
@@ -372,6 +392,19 @@ if [ $RC -ne 0 ] || [ -z "$VERDICT" ]; then
     fi
   } >&2
   exit 0
+fi
+
+# Reached only with a filled verdict. If RC is nonzero here, the verdict is a BREAK that was
+# deliberately preserved above — say so, loudly, because a partner that crashed may have stopped
+# short of attacks it had not run yet: the findings stand, the COVERAGE does not.
+if [ $RC -ne 0 ]; then
+  {
+    echo "external-adversary: '$EXT_CMD' exited $RC but returned a filled 'break' — the findings are"
+    echo "printed unchanged rather than discarded (a nonzero exit is a reason to distrust a pass, not"
+    echo "to drop violations). Treat its COVERAGE as incomplete: it may have died before running"
+    echo "attacks it had not reached. Re-run or route to the other backend once you have acted on"
+    echo "what it did find."
+  } >&2
 fi
 
 # A partner that MODIFIED the work verified a state it created. Two rules, and the asymmetry is the

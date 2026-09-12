@@ -92,12 +92,20 @@ rather than assume**.
 > finds plausible. Running both is strictly better than either.
 
 **Your partner keeps its write sandbox — and its writes to the repo are detected.** Two facts that
-look contradictory and are not. (1) The partner needs a **write-capable** sandbox: a read-only one
-fails its suite runs and its scratch writes, and those failures come back disguised as
-`ungrounded`/`UNVERIFIED` counts — a broken instrument fabricating findings. The recorded fix was to
-widen the sandbox (`codex exec -s workspace-write -c sandbox_workspace_write.network_access=true`),
-not to narrow it, and that still stands: escalating the sandbox is the operator's decision, and the
-hook hands the partner a writable `TMPDIR` precisely so scratch has somewhere legitimate to go.
+look contradictory and are not. (1) In the configuration this project actually ran, a read-only
+sandbox failed the partner's suite runs and its scratch writes, and those failures came back
+disguised as `ungrounded`/`UNVERIFIED` counts — a broken instrument fabricating findings. The
+recorded fix was to widen the sandbox
+(`codex exec -s workspace-write -c sandbox_workspace_write.network_access=true`), not to narrow it.
+**Read that as one measured configuration, not as a proof that no read-only setup can work** — an
+external partner broke exactly that overreach in review. The option surface was never exhausted:
+`codex` exposes `--sandbox read-only` alongside `workspace-write`, plus profiles, config overrides
+and `--add-dir`; a `claude -p` partner has permission modes and allowed/disallowed tools; a wrapper
+or an OS-level sandbox is another surface again. What is actually load-bearing here is narrower and
+does hold: **`external_cmd` belongs to the operator**, so this hook cannot impose a sandbox mode
+portably across CLIs it does not own — it can only hand the partner a writable `TMPDIR` so scratch
+has somewhere legitimate to go, and then measure. If you want a tighter sandbox, that is yours to
+configure, and worth trying: the measurement below stays honest either way.
 (2) But an adversary that **repairs** what it was sent to measure then verifies a state it created —
 principle 1 turned on the verifier — and the clean `hold` that follows is indistinguishable from an
 honest one. So the prompt tells the partner it verifies and does not repair, and
@@ -105,7 +113,13 @@ honest one. So the prompt tells the partner it verifies and does not repair, and
 staged diff, and the gitignored `.goalspec/` run state — not `git status`, which is blind to one more
 line in an already-modified file) before and after the run. If anything changed it names the paths,
 and it degrades a `hold` to the same synthetic `UNVERIFIED` hold a broken partner gets. A `break` is
-printed unchanged: findings are never suppressed, the warning goes to stderr. Nothing is reverted —
+printed unchanged: findings are never suppressed, the warning goes to stderr — and that holds for a
+nonzero exit too, since a crash is a reason to distrust a pass, never a reason to discard violations.
+**One limit, stated plainly**: the fingerprint covers tracked content, the staged diff and the
+gitignored `.goalspec/` run state; **other gitignored paths are invisible to it**, so a partner that
+writes into an ignored directory is not caught. Widening it to every ignored path would drown the
+signal in build output and `node_modules`, so the choice is deliberate — but it is a gap, not a
+guarantee, and a clean run means "nothing changed where this looks". Nothing is reverted —
 this hook does not touch files it does not own; what to keep is yours to decide. The subagent backend
 carries the same rule (`agents/goal-adversary.md`) with its own consumer,
 `hooks/watch-adversary-writes.sh` on `SubagentStart`/`SubagentStop`.

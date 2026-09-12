@@ -78,6 +78,40 @@ suite nueva; ahora esas dos líneas se nombran en vez de recortarse.
 adversarial verifier (read-only)`. El agente tiene `Bash` y nada lo hacía de sólo lectura: era una
 afirmación sin piso desde que se escribió. Ahora dice qué es verdad y qué lo sostiene.
 
+### Lo que rompió el adversario en la ronda 1, y qué se corrigió
+
+La ronda de cierre (partner externo, copia instalada 0.43.0 sin editar por P25) devolvió
+`break ungrounded=2 unfalsified=0 incomplete=2 autonomy-violations=0 unsafe=1`. Las cinco, reales:
+
+1. **`unsafe`: el `break` SÍ se debilitaba.** La rama de instrumento roto probaba `RC -ne 0`
+   **antes** que nada, así que un partner que devolvía un `break` bien formado y después salía con
+   código distinto de cero veía sus hallazgos confirmados reemplazados por un hold sintético limpio —
+   el gate debilitado justo por la rama que existe para mantenerlo honesto. La afirmación «un `break`
+   nunca se debilita» era falsa en el código aunque fuera cierta en la rama nueva. Ahora la regla
+   vale uniforme: el silencio y un hold malo degradan; un `break` no se suprime nunca, y el exit
+   distinto de cero se reporta como límite de **cobertura** (un partner que crasheó pudo no llegar a
+   ataques que no corrió). Casos 20/21.
+2. **`incomplete`: `test/README.md:3` seguía diciendo «ocho» suites** con nueve en el repo. Portador
+   viejo quedado atrás por el cambio de este mismo release.
+3. **`incomplete`: el criterio 2 prometía «huella del contenido del repo»** sin decir que los paths
+   ignorados por git, salvo `.goalspec/`, son invisibles. El límite estaba en los comentarios del
+   código pero no en los portadores que lee un usuario. Ahora está dicho donde se lee.
+4. **`ungrounded`: la afirmación de imposibilidad del sandbox de sólo lectura no auditó la superficie
+   de opciones.** `codex` expone `--sandbox read-only`, perfiles, overrides y `--add-dir`; `claude
+   -p` expone permission modes y allowed/disallowed tools. Lo medido fue *una* configuración, no el
+   espacio de opciones. Lo que sí se sostiene es más angosto: `external_cmd` es del operador, así que
+   este hook no puede imponer un modo de sandbox de forma portable entre CLIs que no controla.
+5. **`ungrounded`: el comentario de la línea 83 afirmaba que el partner externo no puede leer
+   archivos en este host** — falso, y es exactamente lo que la cabecera de ese mismo archivo prohíbe
+   reintroducir desde 0.4.0. Lo falsificó el partner de la misma forma que la primera vez: leyendo
+   este repo y el log de sesión desde adentro de la invocación que supuestamente no puede.
+
+Refutados en la misma ronda: el ataque A (la huella sí caza el append a un archivo ya modificado,
+reconstruido por el partner desde cero), el C (los eventos `SubagentStart`/`SubagentStop` y la forma
+del matcher existen y están documentados — el ataque de mayor valor contra este cambio), el E (las
+diez suites, `bash -n` y `claude plugin validate` reproducidos con rc=0) y el de autonomía (las
+cuatro decisiones aparecen como pares `AskUserQuestion`/`tool_result` en el log de sesión).
+
 ### Portadores tocados
 `hooks/external-adversary.sh`, `hooks/watch-adversary-writes.sh` (nuevo), `hooks/hooks.json`,
 `agents/goal-adversary.md`, `skills/goalspec/SKILL.md` (paso 6), `references/external-adversary-setup.md`,

@@ -1,7 +1,8 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. **Eight** mechanical suites (one per `*-branches.py`
-in this directory — keep this count in step when you add one) and one check by hand.
+No CI — the plugin is a skill + hooks + docs. **Nine** mechanical suites (one per `*-branches.py`
+in this directory — keep this count in step when you add one), plus `claim-surface-carriers.py`,
+which is not a branch suite but a text-consistency check, and one check by hand.
 
 ## `gate-branches.py` — Stop-gate branch suite
 
@@ -221,9 +222,18 @@ that keeps this from being a mere dirty-tree detector: same pre-dirtied repo, pa
 nothing, clean pass. These four run in a throwaway git repo (`cwd` sentinel `MUTREPO`) for the
 obvious reason — the stubs write files, and every other case in this file runs with `cwd=REPO`.
 
+Cases **20/21** pin the other half of "never weaken the gate", and 20 exists because an external
+partner found the hole in it. Until 0.44.0 the `RC -ne 0` test came **first**, so a partner that
+produced a well-formed `break` and then exited nonzero had its confirmed findings replaced by a
+synthetic clean hold — the gate weakened by the very branch meant to keep it honest. Against the
+pre-fix hook, case 20 comes back `unfilled`; it now comes back `pass+rcwarned` (break intact on
+stdout, nonzero exit called out on stderr as a **coverage** limit, since a partner that crashed may
+never have reached attacks it had not run). **21** is the control that keeps the fix from widening
+into "preserve anything": a `hold` that exits nonzero still degrades.
+
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
