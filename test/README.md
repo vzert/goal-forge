@@ -1,8 +1,43 @@
 # test/
 
-No CI — the plugin is a skill + hooks + docs. **Nine** mechanical suites (one per `*-branches.py`
-in this directory — keep this count in step when you add one), plus `claim-surface-carriers.py`,
-which is not a branch suite but a text-consistency check, and one check by hand.
+**Nine** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+you add one), plus `claim-surface-carriers.py` (a text-consistency check, not a branch suite),
+`manifest-checks.py` (manifest and wiring checks), and one check by hand.
+
+`.github/workflows/tests.yml` runs everything here on every push and PR, on Ubuntu **and** macOS.
+The macOS leg is not redundancy: `/bin/bash` there is 3.2, and an unbalanced apostrophe inside an
+unquoted heredoc — the one recorded way this repo shipped a hook that died at parse time — is
+accepted by bash 5 on Ubuntu. A green run covers the mechanical branches and nothing else: no
+automated job can watch an agent obey a written rule or a hook fire in a real session.
+
+## `manifest-checks.py` — the silent-failure classes no branch suite can see
+
+Not a branch suite: it reads files and parses them, runs nothing, and needs no Claude Code install.
+It exists because four things can break a release without breaking a single test, and this project
+has been bitten by each:
+
+- **A version that was not bumped.** The install cache is keyed by version, so a push without a bump
+  ships to GitHub and reaches nobody. It checks `plugin.json` `version` against `marketplace.json`
+  `metadata.version`, and that the plugin is still named `goalspec` (a rename breaks auto-update).
+- **Frontmatter that stopped being YAML.** A bare `: ` inside a `description:` makes the block
+  unparseable; the skill then loads with empty metadata and never auto-triggers, silently.
+  `claude plugin validate` does not catch it. PyYAML is the one dependency and it is the point — the
+  check is "does a real parser accept this", which a regex cannot establish.
+- **A hook wired to a path that does not exist.** Every `/hooks/*.sh` path in `hooks.json` must
+  resolve to a real file. The exec bit is checked **only** for a hook invoked without an interpreter
+  prefix — every hook here runs as `bash <path>`, which ignores the mode, and asserting +x is
+  required everywhere would be a false claim about what makes a hook run.
+- **A suite the docs forgot.** The counts in this file and in `CLAUDE.md`, and every suite being
+  named in `CLAUDE.md`'s run list. That count went stale in 0.44.0 and an external adversary found
+  it, not a test.
+
+Each check was verified by **breaking** the thing it checks in a throwaway copy of the repo and
+confirming a non-zero exit — a check that has never been seen to fail is not yet a check.
+
+```sh
+pip install pyyaml
+python3 test/manifest-checks.py
+```
 
 ## `gate-branches.py` — Stop-gate branch suite
 

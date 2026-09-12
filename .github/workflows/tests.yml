@@ -1,0 +1,103 @@
+name: tests
+
+# The plugin is a skill + hooks + docs, so there is nothing to build and nothing to deploy. What
+# there IS: nine hermetic branch suites that drive the hook scripts, one text-consistency check, and
+# a manifest/wiring check. All of them are pure `python3` + `bash` + `git`, with no network, no
+# credential and no Claude Code install — which is exactly why they are worth running here.
+#
+# What this workflow deliberately does NOT do, stated so a green check is not read as more than it
+# is: it cannot observe an AGENT obeying a written rule, a hook firing in a real session, or an
+# adversary round actually running. Every "observe in the wild" item in the project's pendientes
+# stays manual, by nature. A green run means the mechanical branches behave; it never means the
+# method works.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  suites:
+    # BOTH platforms, and the macOS leg is not redundancy. The hooks are bash, and the one recorded
+    # way this repo has shipped a silently-dead hook is an unbalanced apostrophe inside an unquoted
+    # heredoc in `$( )`: bash 3.2 (which macOS still ships at /bin/bash) swallows the rest of the
+    # file and the script dies at parse time. bash 5 on Ubuntu parses it fine, so an Ubuntu-only run
+    # is blind to the exact failure that actually happened (0.39.0, 13 assertions).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report the interpreters actually in use
+        run: |
+          bash --version | head -1
+          /bin/bash --version | head -1
+          python3 --version
+          git --version
+
+      - name: bash -n every hook
+        run: |
+          set -euo pipefail
+          for f in plugins/goalspec/hooks/*.sh; do
+            bash -n "$f"
+            echo "ok  $f"
+          done
+
+      - name: bash 3.2 parse check (macOS only — /bin/bash is 3.2 there)
+        if: runner.os == 'macOS'
+        run: |
+          set -euo pipefail
+          for f in plugins/goalspec/hooks/*.sh; do
+            /bin/bash -n "$f"
+            echo "ok (3.2)  $f"
+          done
+
+      - name: Run every suite
+        run: |
+          set -uo pipefail
+          # CLAUDE_PLUGIN_ROOT is load-bearing for three of them (gate, usage-budget,
+          # terminal-precheck): they import hooks/lib/terminal_actions.py through it, and without it
+          # the staleness cases degrade silently to "not stale" — indistinguishable from passing.
+          export CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE/plugins/goalspec"
+          # Several suites build throwaway repos and commit in them. They set a local identity, but
+          # a runner with no global identity at all is a harsher environment than any dev machine,
+          # so make it explicit rather than depend on that holding.
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+          failed=0
+          for t in test/*.py; do
+            [ "$(basename "$t")" = "manifest-checks.py" ] && continue
+            echo "::group::$t"
+            python3 "$t"
+            rc=$?
+            if [ $rc -eq 0 ]; then
+              echo "PASS $t"
+            else
+              echo "FAIL $t (exit $rc)"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
+
+  manifests:
+    # One platform is enough: this reads files and parses them. PyYAML is the only dependency, and
+    # it is the point — the frontmatter check must be "a real YAML parser accepts this", which a
+    # regex cannot establish.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pyyaml
+      - name: Manifest and wiring checks
+        run: python3 test/manifest-checks.py

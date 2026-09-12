@@ -21,7 +21,13 @@ Layout: `plugins/goalspec/` (skill + agent + hooks + config), `.claude-plugin/ma
   forces every existing user through a manual migration. The name `goalspec` is now stable.
 
 ## Verifying a change (manual acid-test)
-No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-end:
+CI runs the mechanical half on every push and PR (`.github/workflows/tests.yml`): all the suites on
+**both** Ubuntu and macOS, plus `bash -n` — and on macOS also `/bin/bash -n`, because /bin/bash there
+is 3.2 and the one recorded way this repo shipped a dead hook (an unbalanced apostrophe in an
+unquoted heredoc) parses fine under bash 5. A second job runs `test/manifest-checks.py`.
+**A green CI run is not the acid test**: nothing automated can observe an agent obeying a written
+rule, a hook firing in a real session, or an adversary round running — every "observe in the wild"
+pendiente stays manual, by nature. To sanity-check a change end-to-end:
 1. Validate manifests (real exit code, not `| tail`) and parse SKILL.md frontmatter as YAML.
 2. In a throwaway dir with an `open-decisions.md` holding a planted inherited decision, run
    `/goalspec audit <thing> and decide what to kill`. Assert: a `## Goal-spec` with grounded criteria
@@ -52,6 +58,11 @@ No CI — the plugin is a skill + hooks + docs. To sanity-check a change end-to-
    a temp dir plus a synthetic transcript, no git), and `python3 test/adversary-writes-branches.py`
    (SubagentStart/Stop read-only rail for the subagent adversary — throwaway git repos, synthetic
    payloads, `TMPDIR` redirected per case).
+   Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
+   `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
+   `hooks.json` path resolving to a file that exists, and the suite counts in this file and
+   `test/README.md` matching reality — the silent-failure classes no branch suite can see. Needs
+   PyYAML).
    **When editing the gate, copy the
    pre-edit script somewhere and `--compare` against it afterwards, in both default and
    `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed, which turns "no

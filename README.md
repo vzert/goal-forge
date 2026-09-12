@@ -25,6 +25,8 @@ listing; the source of truth is this repo on GitHub.
 
 # goal-forge
 
+[![tests](https://github.com/vzert/goal-forge/actions/workflows/tests.yml/badge.svg)](https://github.com/vzert/goal-forge/actions/workflows/tests.yml)
+
 A Claude Code plugin marketplace for one plugin: **goalspec** — a portable
 *self-goal + independent-adversary* methodology that turns a terse request into a grounded,
 falsifiable goal-spec, verifies the outcome with an independent adversary, and closes through a
