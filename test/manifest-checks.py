@@ -74,7 +74,8 @@ def selftest():
         ("versions out of sync", "versions agree",
          lambda d: _json_set(os.path.join(d, ".claude-plugin/marketplace.json"),
                              ["metadata", "version"], "0.0.0-desync")),
-        ("frontmatter that is no longer YAML", "frontmatter is valid YAML",
+        ("frontmatter that is no longer YAML",
+         "skills/goalspec/SKILL.md frontmatter is valid YAML",
          lambda d: _sub(os.path.join(d, "plugins/goalspec/skills/goalspec/SKILL.md"),
                         "description:", "description: broken: like this", once=True)),
         ("a new suite no document names", "names unnamed-branches.py",
@@ -87,10 +88,17 @@ def selftest():
                              ["name"], "goalspec-renamed")),
     ]
 
+    # The control runs FIRST, and every mutation is judged against what it failed. Requiring only
+    # "the expected check is among the failures" is not enough: an external partner showed that a
+    # DECOY defect elsewhere in the copy can make the expected check fail for its own reasons while
+    # the check the mutation targets is wholly broken — green for the wrong reason, again, this time
+    # one level up in the harness. Differencing against the control encodes the thing actually being
+    # claimed: this mutation CAUSED this check to start failing.
     bad = 0
     with tempfile.TemporaryDirectory() as work:
-        for label, expect, mutate in MUTATIONS + [
-                ("NOTHING (control — must pass)", None, lambda d: None)]:
+        ordered = [("NOTHING (control — must pass)", None, lambda d: None)] + MUTATIONS
+        control_failures = set()
+        for label, expect, mutate in ordered:
             d = tempfile.mkdtemp(dir=work)
             listed = subprocess.run(["git", "-C", REPO, "ls-files", "-z"],
                                     capture_output=True, check=True)
@@ -115,17 +123,21 @@ def selftest():
             failed_names = [ln.strip()[2:] for ln in r.stdout.splitlines()
                             if ln.startswith("  - ")]
             if expect is None:
+                control_failures = set(failed_names)
                 ok = r.returncode == 0
-                why = "" if ok else "control should have passed"
+                why = "" if ok else ("the unmutated tree already fails: "
+                                     + "; ".join(failed_names))
             elif r.returncode != 1:
                 ok, why = False, "exit %s, expected 1" % r.returncode
-            elif not any(expect in nm for nm in failed_names):
-                # THE case this assertion exists for: something failed, but not the check this
-                # mutation was written to probe.
-                ok, why = False, ("wrong check failed — wanted one naming %r, got: %s"
-                                  % (expect, "; ".join(failed_names) or "none"))
             else:
-                ok, why = True, ""
+                # NEW failures only — a check already failing in the control proves nothing here.
+                caused = [nm for nm in failed_names if nm not in control_failures]
+                if not any(expect in nm for nm in caused):
+                    ok, why = False, (
+                        "wrong check failed — wanted a NEW failure naming %r; new failures: %s"
+                        % (expect, "; ".join(caused) or "none"))
+                else:
+                    ok, why = True, ""
             print("%-46s exit=%-2s %s%s" % (label, r.returncode, "ok" if ok else "MISSED",
                                             "" if ok else "  <- " + why))
             if not ok:
