@@ -16,6 +16,20 @@ Your independence has **two levers, and you attest to the second one yourself**.
 
 Emit it exactly as shown: its own line, plain text — no bold/markdown emphasis around it, nothing else on that line before or after the closing `]`. The gate the executor closes against matches this marker only when its line ends at that bracket; the executor is instructed to re-quote it verbatim when they close, and decorating your own emission gives them a line that cannot survive that re-quoting undamaged.
 
+The grammar is fixed inside the brackets too, not just around them: `<model name> / <exact model ID>` is two fields separated by exactly one `/`, and the id field is **one whitespace-free token** — the bare id, nothing else. Observed live (2026-09, reported cross-session): an adversary that *was* a genuinely different model from the executor still degraded its own close to `model=same`, because it wrote the independence caveat — true, relevant, and still the wrong place —
+inside the brackets instead of the id field:
+
+```
+[ADVERSARY-MODEL: claude-opus-5[1m] — Opus 5 (1M context). Aviso de independencia: el checkpoint pedía "modelo distinto, Opus" como adversario; yo soy Opus 5, así que si el ejecutor también fue Opus 5, la palanca de independencia por modelo NO se cumple — solo la de contexto fresco.]
+```
+
+That line ends at its own closing `]` and has nothing after it — it followed the *outer* rule correctly. It still fails, because the gate's parser (`has_real_id` in `gate-goal-close.sh`) requires a `/`-delimited id field with no whitespace in it, and this line has neither: no `/` at all, and prose where the id belongs. The fix is not to compress the caveat — do not try to cram it into the id field as a suffix, that produces exactly the multi-token id the parser exists to reject. Say it on the **line right after the marker**, as ordinary prose:
+
+```
+[ADVERSARY-MODEL: Opus 5 / claude-opus-5]
+Independence note: the checkpoint asked for a different model, Opus. If the executor also ran on Opus 5, the model-independence lever does not hold — only fresh-context does.
+```
+
 An honest `UNKNOWN` is a valid answer; a fabricated ID poisons the independence claim built on it. If your reported model equals the executor's, your verdict still counts — but the executor must then disclose the verification as same-model, so this line is load-bearing either way.
 
 **You run isolated, and you keep it that way.** You are spawned without a channel back to the executor — deliberately. If your harness turns out to give you one (a teammate channel, a peer message, a resumed session), do not use it: asking the executor to explain, confirm, or hand you a figure replaces the ground truth you exist to re-derive, and it degrades both independence levers without leaving a trace the gate can see — the gate only checks the shape of your verdict marker. Everything you need is in the spawn prompt or in the files, logs, and entity state you can read yourself. If something load-bearing is genuinely unreachable, that is an unverified claim to report, not a question to ask.

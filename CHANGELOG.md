@@ -6,6 +6,38 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.2] - 2026-09-14
+
+### La plantilla del adversario no daba un lugar legal al aviso de independencia
+
+**Reporte cross-session, caso real (no hipotético)**: un `goal-adversary` corriendo en Opus 5,
+verificando un cierre cuyo ejecutor también había corrido en Opus 5, escribió honestamente que la
+palanca de independencia por modelo no se cumplía — pero la puso **dentro de los corchetes** del
+marcador `[ADVERSARY-MODEL: ...]`, en vez de después de él:
+
+```
+[ADVERSARY-MODEL: claude-opus-5[1m] — Opus 5 (1M context). Aviso de independencia: ...]
+```
+
+`has_real_id()` en `gate-goal-close.sh` la rechazó (`completion-review:model-different-needs-
+nonunknown-self-report`), correctamente: exige un campo `/`-delimitado de un solo token sin
+espacios, y esta línea no tenía `/` en absoluto. **El gate no tiene el bug** — el `.*` greedy
+anclado a fin de línea, y el rechazo del "arreglo obvio" (ir greedy al último `]`), están bien
+pensados y documentados en el propio código (case 34, `test/gate-branches.py`). El hueco real
+estaba en `agents/goal-adversary.md`: la plantilla mostraba la gramática externa (marcador en su
+propia línea, sin decoración alrededor) pero nunca dijo que el campo interno tras `/` debe ser un
+solo token, ni dónde va un aviso de independencia legítimo. Un adversario que quiere comunicar
+honestamente "soy el mismo modelo que el ejecutor" tenía un incentivo natural a meterlo junto al
+self-report — exactamente lo que rompe el parseo.
+
+**Cambio**: `agents/goal-adversary.md` ahora nombra la gramática interna del campo id, cita la
+línea real que falló como ejemplo negativo, y da el lugar sancionado para el aviso (la línea
+siguiente al marcador, en prosa). No se tocó `gate-goal-close.sh` — su comportamiento de fallo
+cerrado es el diseño correcto y ya tiene test dedicado. `test/gate-branches.py` case 45 pin
+la línea real del incidente para que una futura "mejora" al parser (split por `—`, tomar el primer
+token entre corchetes) tenga un test rojo que fallar en vez de abrir el hueco de falso-positivo que
+case 34 ya midió y rechazó.
+
 ## [0.44.1] - 2026-09-12
 
 ### El aviso llegaba al adversario, no al ejecutor — y lo empujaba a escribir

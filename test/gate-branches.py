@@ -84,6 +84,15 @@ MODEL_CODE_SPAN = "`[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]`"
 # tightens the pattern cannot silently start rejecting an ordinary quoted-bullet or indented reply.
 MODEL_LIST_PREFIX = "- [ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
 MODEL_INDENTED = "    [ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
+# Reported cross-session (2026-09-14, real adversary output, not hypothetical): no "/" at all, and
+# an independence caveat written INSIDE the brackets instead of the id field. Unlike cases 34-38
+# (trailing content AFTER a well-formed marker), this marker's own inner grammar is broken — the
+# id field the gate's regex expects was never there to anchor past. See agents/goal-adversary.md's
+# negative example, added alongside this case.
+MODEL_CAVEAT_IN_BRACKETS = ("[ADVERSARY-MODEL: claude-opus-5[1m] — Opus 5 (1M context). Aviso de "
+    "independencia: el checkpoint pedía \"modelo distinto, Opus\" como adversario; yo soy Opus 5, "
+    "así que si el ejecutor también fue Opus 5, la palanca de independencia por modelo NO se "
+    "cumple — solo la de contexto fresco.]")
 
 # (name, last_assistant_message, transcript turns or None[, opts])
 # opts is an optional dict:
@@ -254,6 +263,13 @@ CASES = [
      {"expect": "silent"}),
     ("40-indented-marker", SPEC + MODEL_INDENTED + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
      {"expect": "silent"}),
+    # 45 pins the real incident, not a synthetic worst-case: no fix to has_real_id is expected here
+    # (the comment above it already explains why loosening it is rejected) — this case exists so a
+    # FUTURE "helpful" loosening (e.g. splitting on "—" or taking the first bracketed token) has a
+    # red test to fail, instead of silently starting to accept a caveat-stuffed id as real.
+    ("45-caveat-inside-brackets-no-slash",
+     SPEC + MODEL_CAVEAT_IN_BRACKETS + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
+     {"expect": "advisory-or-block"}),
 
     # --- parked-loop silence (0.36.0) ---
     # The other side of case 18. Same streak, same absent declaration — but THIS turn carries a
