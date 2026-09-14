@@ -179,6 +179,16 @@ you are — never a guess, and UNKNOWN if you genuinely do not know:
 
 [ADVERSARY-MODEL: <model name> / <exact model id, or UNKNOWN>]
 
+Grammar, inside the brackets too, not just around them: exactly one "/" separating the two fields,
+and the id field is ONE whitespace-free token — the bare id (e.g. "claude-opus-5" or
+"claude-opus-5[1m]"), nothing else. If you want to disclose an independence caveat (e.g. same tier
+as the executor, or an uncertain id), put that in ordinary prose on the line AFTER the marker —
+never inside the brackets, never appended to the id field. A real incident: an adversary wrote a
+model line as name-plus-explanatory-clause with no "/" at all, prose where the id belonged — true
+content, wrong place — and the executor gate could not find a valid id in it, so a genuine
+model-different verification silently degraded to model=same. Emit the marker bare; say anything
+else on the next line.
+
 Attack every load-bearing figure. Default to skeptical: if you cannot verify a claim, count it as a
 violation, not a pass — the one exception is the dead-handoff check in principle 4, and ONLY if you
 truly cannot reach the session log (an unreachable instrument is not a finding; an unchecked one is

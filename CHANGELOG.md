@@ -10,33 +10,55 @@ version bump are never delivered to already-installed users.
 
 ### La plantilla del adversario no daba un lugar legal al aviso de independencia
 
-**Reporte cross-session, caso real (no hipotético)**: un `goal-adversary` corriendo en Opus 5,
-verificando un cierre cuyo ejecutor también había corrido en Opus 5, escribió honestamente que la
-palanca de independencia por modelo no se cumplía — pero la puso **dentro de los corchetes** del
-marcador `[ADVERSARY-MODEL: ...]`, en vez de después de él:
+**Reporte cross-session, caso real (no hipotético)**: un `goal-adversary` **spawneado en Opus 5
+por la regla de tier-distinto, verificando un cierre cuyo ejecutor corrió en Sonnet 5** — modelos
+**distintos**, la independencia real que la palanca de modelo existe para dar — escribió
+honestamente que, *si* el ejecutor también hubiera sido Opus 5, la palanca no se habría cumplido —
+pero puso ese aviso condicional **dentro de los corchetes** del marcador `[ADVERSARY-MODEL: ...]`,
+en vez de después de él:
 
 ```
 [ADVERSARY-MODEL: claude-opus-5[1m] — Opus 5 (1M context). Aviso de independencia: ...]
 ```
 
 `has_real_id()` en `gate-goal-close.sh` la rechazó (`completion-review:model-different-needs-
-nonunknown-self-report`), correctamente: exige un campo `/`-delimitado de un solo token sin
-espacios, y esta línea no tenía `/` en absoluto. **El gate no tiene el bug** — el `.*` greedy
-anclado a fin de línea, y el rechazo del "arreglo obvio" (ir greedy al último `]`), están bien
-pensados y documentados en el propio código (case 34, `test/gate-branches.py`). El hueco real
-estaba en `agents/goal-adversary.md`: la plantilla mostraba la gramática externa (marcador en su
-propia línea, sin decoración alrededor) pero nunca dijo que el campo interno tras `/` debe ser un
-solo token, ni dónde va un aviso de independencia legítimo. Un adversario que quiere comunicar
-honestamente "soy el mismo modelo que el ejecutor" tenía un incentivo natural a meterlo junto al
-self-report — exactamente lo que rompe el parseo.
+nonunknown-self-report`) y degradó el cierre a `model=same` — **la degradación honesta que la
+propia mitigación del gate ofrece cuando no puede confirmar un id real, pero aquí incorrecta**:
+la independencia por modelo sí se había cumplido, y se perdió en silencio por un problema de
+formato, no de sustancia. Esto es lo que hace grave al incidente: si ejecutor y adversario
+hubieran sido el mismo modelo, degradar habría sido lo correcto y no se habría perdido nada real.
 
-**Cambio**: `agents/goal-adversary.md` ahora nombra la gramática interna del campo id, cita la
-línea real que falló como ejemplo negativo, y da el lugar sancionado para el aviso (la línea
-siguiente al marcador, en prosa). No se tocó `gate-goal-close.sh` — su comportamiento de fallo
-cerrado es el diseño correcto y ya tiene test dedicado. `test/gate-branches.py` case 45 pin
-la línea real del incidente para que una futura "mejora" al parser (split por `—`, tomar el primer
-token entre corchetes) tenga un test rojo que fallar en vez de abrir el hueco de falso-positivo que
-case 34 ya midió y rechazó.
+`has_real_id()` en sí **no tiene el bug** — el `.*` greedy anclado a fin de línea, y el rechazo del
+"arreglo obvio" (ir greedy al último `]`), están bien pensados y documentados en el propio código
+(case 34, `test/gate-branches.py`). El hueco real estaba en la plantilla que ve el adversario
+(`agents/goal-adversary.md`) y en sus carriers: mostraban la gramática externa (marcador en su
+propia línea, sin decoración alrededor) pero nunca decían que el campo interno tras `/` debe ser
+un solo token, ni dónde va un aviso de independencia legítimo. Un adversario que quiere comunicar
+esto honestamente tiene un incentivo natural a meterlo junto al self-report — exactamente lo que
+rompe el parseo.
+
+**Cambio**: tres carriers, no uno solo (la primera versión de este release tocó solo el primero,
+y una ronda adversarial — subagente Opus 5 + backend externo GPT-5, en paralelo — encontró los
+otros dos y la inversión de hecho de arriba):
+- `agents/goal-adversary.md` — gramática interna del campo id, ejemplo negativo (la línea real
+  que falló) y ejemplo positivo (el aviso en la línea siguiente al marcador, en prosa).
+- `gate-goal-close.sh` — el mensaje de recuperación que lee el **ejecutor** cuando el gate
+  rechaza el marcador (`completion-review:model-different-needs-nonunknown-self-report`) solo
+  explicaba la gramática externa; ahora también nombra el `/` y el token único, y dice dónde va
+  el aviso — es el único carrier que un ejecutor real lee en el momento del incidente, y antes
+  no le habría dicho por qué la re-cita seguía fallando.
+- `external-adversary.sh` — el prompt que arma para el backend externo (partner de otro vendor)
+  tenía la misma plantilla sin gramática interna, sin ningún carrier que la corrigiera; ahora
+  lleva la misma regla y el mismo par de ejemplos que `agents/goal-adversary.md`.
+
+No se tocó `has_real_id()` — su comportamiento de fallo cerrado es el diseño correcto y ya tiene
+test dedicado. `test/gate-branches.py` case 45 pin la línea real del incidente para que una futura
+"mejora" al parser (split por `—`, tomar el primer token entre corchetes) tenga un test rojo que
+fallar en vez de abrir el hueco de falso-positivo que case 34 ya midió y rechazó.
+
+Relacionado, aún abierto: `memory/_pendientes.md` `p-5efa316c13` (el hook externo queda mudo, no
+rechaza, ante un marcador decorado con negritas/code-span — un problema de simetría hook↔gate
+distinto de este, no cerrado por este release).
 
 ## [0.44.1] - 2026-09-12
 
