@@ -202,6 +202,24 @@ must emit nothing", because the copy is the thing being changed. And `CONV!` dis
 convergence floor that **replaced** the reminder from a `CONV` that was appended to one; without that
 column the 0.18.1 floor fix is invisible to `--compare`, since detail and decision both stay put.
 
+**The `audience split` and `general parked-turn silence` sections (0.44.5)** extend the floor's own
+two-audience payload and its parked-loop silence to every OTHER `remind()` branch — before this,
+only the floor separated a short human `systemMessage` from a technical agent-facing line, and only
+the floor ever went quiet on a turn with nothing new to say. Like the payload-shape section above,
+`run()`/`suite()` cannot see either property (both collapse to `advisory`), so these run separately.
+**Audience split** pins that `systemMessage` and `additionalContext`/`reason` are genuinely two
+different strings (a lazy split that copies the same text into both variables would still pass every
+existing branch/decision assertion). **General silence** pins the four-turn invariant: the first
+parked turn after the goal-spec (`silence-first-parked-after-spec-SPEAKS`) and the first parked turn
+after any active one (`silence-resets-after-active-turn-SPEAKS`) both speak; the second and third
+consecutive parked turns (`silence-second-parked-SILENT`, `silence-third-parked-SILENT`) do not. The
+first case is the regression control for a real bug found while building this: an earlier draft
+counted the goal-spec-announcement turn itself as "the prior parked turn", which silenced the very
+first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`04` above)
+is deliberately EXEMPT from this silence (`skip_general_silence=True` at its own call site) — a
+terminal action having run after the operative close does not become less true because a later turn
+also failed to re-declare, and `stale-01` already pins that it must always fire.
+
 ## `verdict-nudge-branches.py` — PostToolUse verdict-nudge suite
 
 Same shape, for `hooks/remind-quote-verdict.sh`. The two payload **shapes** are the point: a

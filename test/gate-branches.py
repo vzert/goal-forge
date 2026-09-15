@@ -520,6 +520,23 @@ CHECKPOINT_GOALSPEC_CASES = [
       {"write": (".goalspec/checkpoint.md.bak", SPEC)},
       {"text": "still working on it."}],
      None),
+    # CONFIRMED break (external adversary, GPT-5, 0.44.5 round 1): the general parked-turn silence
+    # (see `general_silence` in gate-goal-close.sh) windows itself by finding a `## Goal-spec`
+    # heading in TURN TEXT (`_gs_re` over `sig_turns`) — but a disk-only spec, like every case
+    # above, never puts that heading in any turn's text (checkpoint-03's own comment: the
+    # completion-review scan and this one are both text-only, on purpose). So `_sig_spec_at` stays
+    # None here, and a first draft of the fix fell back to "start the window at turn 0" — which
+    # let a genuinely PRE-checkpoint parked turn count as "the prior parked turn" and silence the
+    # FIRST real post-checkpoint reminder. This case is that exact shape: a parked turn BEFORE the
+    # checkpoint, then the checkpoint Write, then the first parked turn after it — which must
+    # SPEAK, not go silent. The fix: when no text-based spec turn is found, general_silence is
+    # unconditionally OFF (never silence), not "start at 0" — same fail-open, under-count-over-
+    # over-count direction as the rest of this file.
+    ("checkpoint-07-disk-only-spec-pre-existing-parked-turn-still-SPEAKS",
+     [{"text": "an older parked turn, before the checkpoint even exists."},
+      {"write": (".goalspec/checkpoint.md", SPEC)},
+      {"text": "first parked turn after the disk-only spec."}],
+     "completion-review:absent"),
 ]
 
 
@@ -650,6 +667,85 @@ def stale_suite(gate):
             for name, repo_fn, events, lam in STALE_CASES]
 
 
+# --- audience split: every remind() branch, not just the floor (0.44.5) ----------------------------
+# Pins the actual CONTENT split the floor already had and the other branches did not: `systemMessage`
+# is a short Spanish sentence for the human, `hookSpecificOutput.additionalContext` (or, under
+# ENFORCE, `reason`) is the technical English text the agent reads and acts on. `run()`/`suite()`
+# above cannot see this at all — they only ever look at `systemMessage or reason` as ONE string to
+# classify the branch, which is exactly why this needs its own section, the same reasoning the
+# payload-shape section above already gives for the floor. Reuses run_payload_shape() rather than a
+# new subprocess helper — it already extracts systemMessage/additionalContext/reason correctly and is
+# tested by the floor cases above; only the assertions here are new.
+AUDIENCE_SPLIT_CASES = [
+    # (name, lam, turns, enforce, must_be_in_system, must_be_in_agent)
+    ("audience-absent-default", SPEC + "I did the work.", None, False,
+     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared"),
+    ("audience-absent-ENFORCE", SPEC + "I did the work.", None, True,
+     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared"),
+    ("audience-closed-over-break", SPEC + CR_ADV + V_BREAK_A, None, False,
+     "Un revisor independiente marcó un problema sin resolver", "cannot close over it as-is"),
+    ("audience-model-diff-unknown", SPEC + CR_ADV_DIFF + V_HOLD, None, False,
+     "no se pudo confirmar por formato", "OUTER grammar this gate reads"),
+]
+
+
+def run_audience_split(gate, name, lam, turns, enforce):
+    payload = {"last_assistant_message": lam}
+    if turns is not None:
+        payload["transcript_path"] = transcript(turns, "aud-" + name)
+    env = dict(os.environ)
+    env["GOAL_GATE_ENFORCE"] = "1" if enforce else ""
+    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=env).stdout.strip()
+    if not out:
+        return "", ""
+    d = json.loads(out)
+    system = d.get("systemMessage") or ""
+    agent = d.get("hookSpecificOutput", {}).get("additionalContext") or (d.get("reason") or "")
+    return system, agent
+
+
+def audience_split_suite(gate):
+    return [(name,) + run_audience_split(gate, name, lam, turns, enforce)
+            for name, lam, turns, enforce, _, _ in AUDIENCE_SPLIT_CASES]
+
+
+# --- general parked-turn silence (0.44.5) -----------------------------------------------------------
+# Extends, without touching, the floor's own silence (payload-shape section above) to every OTHER
+# remind() branch: a turn that attempts nothing new (no completion-review, no fresh verdict) and
+# whose immediately preceding turn ALSO attempted nothing new gets no reminder at all — the same
+# unresolved state was already reported the first time it appeared. `turns` = history already
+# flushed to the transcript file; `lam` = the current, not-yet-flushed turn — same convention
+# run_payload_shape() already uses above.
+SILENCE_CASES = [
+    # First turn after the spec, nothing has been said yet -> SPEAKS. Regression control: the fix
+    # for this exact case is what makes the general silence safe to ship at all (see the hook's own
+    # comment by `_sig_spec_at` for why the window must skip the spec-announcement turn itself).
+    ("silence-first-parked-after-spec-SPEAKS", "turn A, doing unrelated work.", [SPEC], "spoke"),
+    # Second consecutive parked turn -> SILENT: nothing changed since the reminder already said this.
+    ("silence-second-parked-SILENT", "turn B, still unrelated work.",
+     [SPEC, "turn A, doing unrelated work."], "silent"),
+    # Third consecutive parked turn -> still SILENT, not just the second.
+    ("silence-third-parked-SILENT", "turn C, still unrelated work.",
+     [SPEC, "turn A, doing unrelated work.", "turn B, still unrelated work."], "silent"),
+    # A parked turn RIGHT AFTER an active one (a real, if malformed, completion-review attempt) ->
+    # SPEAKS again: the active turn reset the run, this parked turn is news.
+    ("silence-resets-after-active-turn-SPEAKS", "turn C, back to unrelated work.",
+     [SPEC, "turn A, doing unrelated work.", CR_NONE_SHORT], "spoke"),
+]
+
+
+def run_silence(gate, name, lam, turns):
+    payload = {"last_assistant_message": lam, "transcript_path": transcript(turns, "sil-" + name)}
+    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=os.environ).stdout.strip()
+    return "silent" if not out else "spoke"
+
+
+def silence_suite(gate):
+    return [(name, run_silence(gate, name, lam, turns)) for name, lam, turns, _ in SILENCE_CASES]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("gate", nargs="?", default=DEFAULT_GATE)
@@ -753,6 +849,33 @@ def main():
         print("%-52s %-10s%s" % (name, decision, "" if ok else "   <-- FAILS (want %s)" % want))
     if stale_failures:
         print("\nSTALENESS FAILURES: %d\n  %s" % (len(stale_failures), "\n  ".join(stale_failures)))
+        return 1
+
+    # Audience split — every remind() branch, not just the floor (0.44.5).
+    print("\n--- audience split: short Spanish systemMessage vs technical additionalContext/reason ---")
+    audience_failures = []
+    for i, (name, system, agent) in enumerate(audience_split_suite(a.gate)):
+        _, _, _, _, want_system, want_agent = AUDIENCE_SPLIT_CASES[i]
+        ok = (want_system in system and want_agent in agent and system != agent and system)
+        if not ok:
+            audience_failures.append("%s: system=%r agent=%r" % (name, system[:80], agent[:80]))
+        print("%-30s sys=%-60s agentlen=%-4d%s"
+              % (name, system[:60], len(agent), "" if ok else "   <-- FAILS"))
+    if audience_failures:
+        print("\nAUDIENCE-SPLIT FAILURES: %d\n  %s" % (len(audience_failures), "\n  ".join(audience_failures)))
+        return 1
+
+    # General parked-turn silence — every remind() branch below the floor (0.44.5).
+    print("\n--- general parked-turn silence (streak < 3) ---")
+    silence_failures = []
+    for name, got in silence_suite(a.gate):
+        want = dict((n, w) for n, _, _, w in SILENCE_CASES)[name]
+        ok = got == want
+        if not ok:
+            silence_failures.append("%s: want %s, got %s" % (name, want, got))
+        print("%-46s %-8s%s" % (name, got, "" if ok else "   <-- FAILS (want %s)" % want))
+    if silence_failures:
+        print("\nSILENCE FAILURES: %d\n  %s" % (len(silence_failures), "\n  ".join(silence_failures)))
         return 1
 
     return 0

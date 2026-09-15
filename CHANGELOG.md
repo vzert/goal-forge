@@ -6,6 +6,44 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.5] - 2026-09-15
+
+### `gate-goal-close.sh` separa audiencia en TODO `remind()`, y calla los avisos repetidos sin progreso
+
+**Pendiente de la misma sesión** (`3-tier-memory` cross-session, `claude-vzert`) que produjo 0.44.3/
+0.44.4: Víctor reportó ruido real — en una sesión larga sin cierre formal, el mismo aviso largo y
+técnico se repetía muchas veces, obligando a hacer scroll para encontrar qué pasaba. Solo la rama
+del piso de convergencia (streak≥3, desde 0.43.0) separaba un `systemMessage` corto en español
+(humano) de un `additionalContext` técnico (agente); el resto de `remind()` mandaba el mismo texto
+largo a ambos, y ninguna rama fuera del piso tenía de-dup.
+
+**Cambio**: se extiende, sin reescribirlo, el patrón de dos-strings-por-audiencia del piso a TODAS
+las ramas del `case "$DETAIL"` — cada una define ahora `MSG` (corto, español, humano) y `AGENT_MSG`
+(técnico, inglés, el texto que antes era la única variable). Se añade un silencio general de
+"turno estacionado" (streak < 3 únicamente; el piso mantiene el suyo, sin tocar): un turno que no
+declara completion-review ni cita un verdict nuevo, y cuyo turno inmediatamente anterior tampoco lo
+hizo, no repite el aviso — el primer turno estacionado tras uno activo (o el primero del ciclo)
+siempre habla. El backstop de acción terminal después de un cierre (push/merge/deploy) queda
+deliberadamente exento de este silencio: esa alerta debe sonar siempre.
+
+**El adversario externo (Codex/GPT-5) rompió la primera versión**:
+`[ADVERSARY-VERDICT: break ungrounded=1 unfalsified=0 incomplete=1 autonomy-violations=1 unsafe=1]`.
+Un defecto real: cuando el goal-spec vive solo en un archivo (`.goalspec/checkpoint*.md`, sin
+encabezado en el texto del turno), la ventana del silencio no encontraba el punto de inicio del
+ciclo y caía a "empezar desde el turno 0" — dejando que un turno estacionado anterior al propio
+checkpoint silenciara el primer aviso real. Corregido: sin un turno de texto con el encabezado del
+spec, el silencio general queda desactivado por completo (nunca calla), la misma dirección
+fail-open/subcontar que ya usa el resto del archivo. Caso de regresión agregado
+(`checkpoint-07-disk-only-spec-pre-existing-parked-turn-still-SPEAKS`). Una ronda acotada al fix
+confirmó `hold`. (Un segundo hallazgo del adversario — `test/manifest-checks.py` fallando por falta
+de PyYAML — resultó ser una limitación del propio sandbox del verificador: se re-derivó en el
+entorno real con PyYAML instalado y pasa limpio; no es un defecto del cambio.)
+
+Suites: `python3 test/gate-branches.py` (45 branches + checkpoint + payload-shape + staleness +
+las dos secciones nuevas — audience-split y silence — todas verdes) y `--compare` contra la copia
+pre-edición en ambos modos (`parity OK — 45 branches, 0 intended change(s), 0 unexpected`).
+`python3 test/manifest-checks.py` limpio.
+
 ## [0.44.4] - 2026-09-15
 
 ### El cierre simétrico de "Ground yourself": el sweep de decisiones heredadas ahora corre en reversa

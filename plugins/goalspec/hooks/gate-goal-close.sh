@@ -269,6 +269,10 @@ if re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I):
 # no structured verdict at all.
 verdict_re = (r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+\s+unfalsified=\d+\s+"
               r"incomplete=\d+\s+autonomy-violations=\d+\s+unsafe=\d+\s*\]")
+# Moved up from step 5 (was defined right before its first use) so the general parked-turn silence
+# below can use it too, without duplicating the grammar. No behavior change — same string, same use
+# at step 5 (`lam_crs = re.findall(cr_pat, lam_text, re.I)`).
+cr_pat = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
 lam_verdicts = re.findall(verdict_re, lam_text, re.I)
 tx_verdicts = re.findall(verdict_re, tx_text, re.I)
 verdicts = lam_verdicts or tx_verdicts
@@ -305,6 +309,67 @@ for _i, _t in enumerate(turns):
         _cycle_start = _i
 turns = turns[_cycle_start:]
 
+# General "parked-turn" silence (0.44.5) — extends, without touching, the pattern the floor already
+# uses below: "if this turn contributes nothing, the same was already true at the previous turn, and
+# it was already said then." A signal = a quoted verdict OR a completion-review attempt (even a
+# malformed one — trying to close is always news).
+def turn_has_signal(t):
+    return bool(turn_verdicts(t)) or bool(re.search(cr_pat, t, re.I))
+
+# Build the turn sequence with the current one always represented exactly once at the tail. This is
+# a DIFFERENT dedup than the verdict-only append above (turns/lam_v): that one only needs to decide
+# whether to append lam when it carries a fresh VERDICT, and a substring-containment check on the
+# short verdict text is enough. Here lam may carry no signal at all (the common "parked" case this
+# silence exists for), so there is no signal substring to test containment of — the question is
+# whether lam_text itself is ALREADY the flushed tail of tx_turns (no lag) or genuinely new (file
+# lagging behind). Full-turn equality (not containment) answers that directly and generally, signal
+# or not. A false "new" classification on a verbatim-repeated turn just makes both neighbours parked
+# either way, which does not change the silence outcome — so this is safe even on the coincidence.
+lam_has_signal = turn_has_signal(lam_text)
+_lam_norm_full = re.sub(r"\s+", " ", lam_text).strip().lower()
+_tail_norm_full = re.sub(r"\s+", " ", tx_turns[-1]).strip().lower() if tx_turns else ""
+sig_turns = list(tx_turns)
+if not (tx_turns and _lam_norm_full and _lam_norm_full == _tail_norm_full):
+    sig_turns.append(lam_text)
+
+# Unlike the OTHER window (_cycle_start above, for `turns`), this one starts AFTER the goal-spec
+# turn, not AT it: the spec-announcement turn itself never carries a verdict or a completion-review
+# either, so counting it as "the prior parked turn" would silence the very FIRST reminder of every
+# session — the opposite of what this exists to fix. When the spec was found in TEXT, skip past it.
+_sig_spec_at = None
+for _i, _t in enumerate(sig_turns):
+    if _gs_re.search(_t):
+        _sig_spec_at = _i
+
+# CONFIRMED break (external adversary, GPT-5, 0.44.5 round 1): when the spec was NOT found in text
+# (it lives only in a checkpoint-file Write — CHECKPOINT_GOALSPEC_CASES, and the goal_spec_file
+# detection in ta.transcript_signals, which this text-only _gs_re scan cannot see), _sig_spec_at
+# stays None. The first draft of this branch then fell back to "start at 0, same as before this
+# branch existed" -- safe for turns/streak (an over/under-count, advisory only) but NOT safe here: a
+# genuinely PRE-cycle parked turn (before the checkpoint was ever written) got treated as the prior
+# parked turn, silencing the first real post-checkpoint reminder. Confirmed live: a scratch
+# transcript with an older parked turn, then a checkpoint Write, then the first parked turn produced
+# no hook output at all. So: no text-based spec turn found -> we cannot safely establish where the
+# cycle starts -> general_silence stays OFF entirely (never silence), the same fail-open,
+# under-count-over-over-count direction this file already takes everywhere else (see the floor own
+# streak comments below). This costs de-dup value only in the disk-only-spec case; the common case
+# (the spec posted as chat text, the primary path SKILL.md describes) is unaffected.
+sig_turns = sig_turns[(_sig_spec_at + 1):] if _sig_spec_at is not None else []
+
+# Silence fires ONLY when: a text-based goal-spec turn was actually found (see above), this turn
+# carries no signal, there was a prior turn in this cycle (sig_turns holds at least the current turn
+# plus one before it), and that prior turn ALSO carried no signal. The first parked turn after an
+# active one (or the first turn of the cycle -- nothing before it) is always said; only the
+# consecutive repeats go quiet. Deliberately scoped to streak < 3 -- streak >= 3 is the floor own
+# territory, with its own already-correct silence below, which this must not duplicate or interact
+# with.
+general_silence = (
+    _sig_spec_at is not None
+    and (not lam_has_signal)
+    and len(sig_turns) >= 2
+    and (not turn_has_signal(sig_turns[-2]))
+)
+
 streak = 0
 counted = set()
 for t in reversed(turns):
@@ -332,7 +397,7 @@ for t in reversed(turns):
     counted.add(key)
     streak += 1
 
-def remind(detail):
+def remind(detail, skip_general_silence=False):
     # The deferred re-entrant guard (step 0). Below the floor every payload carries
     # `additionalContext` and would re-ask the turn that the last one produced — silence, exactly as
     # 0.18.1 shipped it. At or above the floor the pipeline is allowed to proceed even when
@@ -340,6 +405,15 @@ def remind(detail):
     # floor branch itself then withholds its agent-facing half on a re-entrant Stop (0.43.0), so the
     # one-re-ask-per-prompt bound is enforced there instead of here, not dropped.
     if reentrant and streak < 3:
+        fail_open()
+    # General parked-turn silence (0.44.5, streak < 3 only — see general_silence above).
+    # skip_general_silence=True is for the staleness backstop (step 5b) ONLY: that check has its own
+    # condition (a terminal action ran after the operative close) that does not become less true
+    # because a later turn also failed to re-declare — treating it as a "repeat with nothing new" is
+    # exactly backwards for a safety backstop whose whole job is to catch something an earlier Stop
+    # may have been silent about for other reasons (it is evaluated fresh from git log each time,
+    # not from what this hook said before). Pinned by test/gate-branches.py case stale-01.
+    if streak < 3 and general_silence and not skip_general_silence:
         fail_open()
     # Third field (0.36.0): does the CURRENT turn carry a structured verdict at all? The floor
     # branch below uses it to tell "this turn ran a round of the loop" apart from "this turn did
@@ -354,7 +428,7 @@ def remind(detail):
 # the reliable current-turn source), else the MOST RECENT one in the transcript. Anchoring on the
 # *last* declaration — never the first re.search match — is what prevents an earlier exploratory or
 # malformed [COMPLETION-REVIEW] from permanently poisoning the check after a correct one is emitted.
-cr_pat = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
+# (cr_pat itself is now defined near verdict_re, above — reused by the general parked-turn silence.)
 lam_crs = re.findall(cr_pat, lam_text, re.I)
 crs = lam_crs or re.findall(cr_pat, tx_text, re.I)
 if not crs:
@@ -467,7 +541,7 @@ if ta is not None and not lam_crs:
         if terminal_calls:
             paths = ta.commits_since(data.get("cwd") or os.getcwd(), items[idx].get("timestamp"))
             if not ta.all_exempt(paths):
-                remind("completion-review:stale-terminal-action-after-close")
+                remind("completion-review:stale-terminal-action-after-close", skip_general_silence=True)
 
 # 6. Floor as its own branch (0.18.0). Until now the floor could only be APPENDED to a reminder some
 #    other check had already raised, so a run that is not converging but has nothing wrong with its
@@ -506,21 +580,38 @@ case "$STREAK" in ''|*[!0-9]*) STREAK=0 ;; esac
 case "$LAMV" in 0|1) : ;; *) LAMV=1 ;; esac
 case "$REENTRANT" in 0|1) : ;; *) REENTRANT=1 ;; esac
 
+# Every branch below sets TWO strings, not one (0.44.5 — extends the floor's own audience split,
+# below, to the rest of remind(); see the header note by the floor for why the split exists at all).
+# MSG = short, Spanish, human-facing — one sentence, same register as the floor's line, and it
+# always carries the literal "(${DETAIL})" the branch classifier greps for. AGENT_MSG = the
+# technical, English text that used to be the ONLY message this case produced — moved verbatim,
+# content unchanged, just renamed.
 case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
-    MSG="Goal-spec present but your operative [ADVERSARY-VERDICT: …] is \`break\` (${DETAIL}) — your [COMPLETION-REVIEW: …] cannot close over it as-is. Do NOT reformulate the completion-review to paper over the break. Pick one, honestly: (1) address the confirmed violation(s) and get a fresh \`hold\` from the adversary — and if the only thing left unverified is the fixes themselves, that is ONE delta-scoped round (payload names the diff since this verdict and the findings each change resolves; it verifies each fix against ground truth AND that it invalidates nothing a prior round held), not a re-run of the whole outcome, which is what makes the loop terminate; (2) if you are stuck (e.g. three consecutive breaks — the design is wrong, not the wording), route to a genuinely different model/vendor and get a hold there; (3) if you've judged the residual break non-actionable, close explicitly with \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) — this is usable by you, the agent, not only a human operator; it is the honest, greppable way to override, unlike a completion-review that quietly disagrees with its own verdict."
+    MSG="Un revisor independiente marcó un problema sin resolver (${DETAIL}) — el cierre no lo puede pasar por alto todavía."
+    AGENT_MSG="Goal-spec present but your operative [ADVERSARY-VERDICT: …] is \`break\` (${DETAIL}) — your [COMPLETION-REVIEW: …] cannot close over it as-is. Do NOT reformulate the completion-review to paper over the break. Pick one, honestly: (1) address the confirmed violation(s) and get a fresh \`hold\` from the adversary — and if the only thing left unverified is the fixes themselves, that is ONE delta-scoped round (payload names the diff since this verdict and the findings each change resolves; it verifies each fix against ground truth AND that it invalidates nothing a prior round held), not a re-run of the whole outcome, which is what makes the loop terminate; (2) if you are stuck (e.g. three consecutive breaks — the design is wrong, not the wording), route to a genuinely different model/vendor and get a hold there; (3) if you've judged the residual break non-actionable, close explicitly with \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) — this is usable by you, the agent, not only a human operator; it is the honest, greppable way to override, unlike a completion-review that quietly disagrees with its own verdict."
     ;;
   convergence-floor-only)
+    # Dead in practice: this detail is only ever emitted by python when streak>=3, and the
+    # `STREAK -ge 3` block near the end of this file UNCONDITIONALLY overwrites both MSG and
+    # AGENT_MSG below with the floor's own two-string payload before anything is printed. Kept only
+    # so every branch of this case sets both variables uniformly; do not treat this MSG as
+    # user-visible, and do not touch the floor block itself to "consolidate" this — see that block's
+    # own header note for why it stays separate.
     MSG="Nothing objects to how you closed (${DETAIL}) — the declaration checks all pass. This is the convergence counter speaking on its own branch, because the count behind a clean-looking close is what the loop looks like from outside."
+    AGENT_MSG="$MSG"
     ;;
   completion-review:model-different-needs-nonunknown-self-report)
-    MSG="Goal-spec present but your model=different claim isn't backed by a matching [ADVERSARY-MODEL: …] line (${DETAIL}). Three distinct causes need three different responses: (1) the adversary genuinely self-reported UNKNOWN or the same model as yours — say model=same, that is the honest degrade, not a defect; or (2) the marker line doesn't match the OUTER grammar this gate reads — it must be its OWN line, in PLAIN TEXT: no bold/markdown wrapping (\`**[ADVERSARY-MODEL: …]**\` does not match) and nothing appended after the closing \`]\` on that same line (a trailing citation or comment breaks the match too, even a real one); or (3) the marker's INNER grammar is broken — the id field after the \`/\` must be exactly one whitespace-free token (the bare id, e.g. \`claude-opus-5\` or \`claude-opus-5[1m]\`), never prose. If the adversary wants to disclose an independence caveat (e.g. 'I may be the same tier as the executor'), that belongs on the line AFTER the marker, in ordinary prose — never inside the brackets, and never appended to the id field. Re-quote the adversary's [ADVERSARY-MODEL: …] line verbatim, alone and unformatted, on its own line, with a bare \`<name> / <id>\` — then this check passes."
+    MSG="El aviso de verificación con un modelo distinto no se pudo confirmar por formato (${DETAIL}) — no es un defecto grave, falta ajustar cómo se cita la línea."
+    AGENT_MSG="Goal-spec present but your model=different claim isn't backed by a matching [ADVERSARY-MODEL: …] line (${DETAIL}). Three distinct causes need three different responses: (1) the adversary genuinely self-reported UNKNOWN or the same model as yours — say model=same, that is the honest degrade, not a defect; or (2) the marker line doesn't match the OUTER grammar this gate reads — it must be its OWN line, in PLAIN TEXT: no bold/markdown wrapping (\`**[ADVERSARY-MODEL: …]**\` does not match) and nothing appended after the closing \`]\` on that same line (a trailing citation or comment breaks the match too, even a real one); or (3) the marker's INNER grammar is broken — the id field after the \`/\` must be exactly one whitespace-free token (the bare id, e.g. \`claude-opus-5\` or \`claude-opus-5[1m]\`), never prose. If the adversary wants to disclose an independence caveat (e.g. 'I may be the same tier as the executor'), that belongs on the line AFTER the marker, in ordinary prose — never inside the brackets, and never appended to the id field. Re-quote the adversary's [ADVERSARY-MODEL: …] line verbatim, alone and unformatted, on its own line, with a bare \`<name> / <id>\` — then this check passes."
     ;;
   completion-review:stale-terminal-action-after-close)
-    MSG="Your operative [COMPLETION-REVIEW: …] was declared BEFORE what looks like a terminal action (push to a protected branch, merge, deploy/publish, or a destructive command) that ran afterward in this same session, and the files it touched are not all low-risk (memory/docs/checkpoint) content (${DETAIL}). A completion-review closes the spec it was written against, not the session — a NEW terminal action needs its OWN review, not the old one standing in for it (see SKILL.md, \"A completion-review closes the spec, not the session\"). Re-enter targeted: 4b (ratify, naming THIS action's scope/blast-radius) then 6 (adversary) for this action specifically, then declare a FRESH [COMPLETION-REVIEW: …]. If this really is low-risk content that the exemption failed to recognize, say so and add \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) to proceed."
+    MSG="Hubo una acción difícil de deshacer (push, merge o despliegue) después del último cierre declarado (${DETAIL}) — falta revisarla aparte."
+    AGENT_MSG="Your operative [COMPLETION-REVIEW: …] was declared BEFORE what looks like a terminal action (push to a protected branch, merge, deploy/publish, or a destructive command) that ran afterward in this same session, and the files it touched are not all low-risk (memory/docs/checkpoint) content (${DETAIL}). A completion-review closes the spec it was written against, not the session — a NEW terminal action needs its OWN review, not the old one standing in for it (see SKILL.md, \"A completion-review closes the spec, not the session\"). Re-enter targeted: 4b (ratify, naming THIS action's scope/blast-radius) then 6 (adversary) for this action specifically, then declare a FRESH [COMPLETION-REVIEW: …]. If this really is low-risk content that the exemption failed to recognize, say so and add \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) to proceed."
     ;;
   *)
-    MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
+    MSG="Sigue sin haber un cierre formal de este trabajo (${DETAIL}) — la decisión de cerrarlo o seguir es tuya."
+    AGENT_MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
     ;;
 esac
 
@@ -600,13 +691,17 @@ if [ "$STREAK" -ge 3 ]; then
   if [ "$DETAIL" = "completion-review:absent" ] && [ "$LAMV" = "0" ]; then
     exit 0
   fi
-  # In Spanish, and the ONLY user-facing string in this plugin that is: chosen by the author
-  # (2026-08-10) over an English line and over locale detection, because this is the one message
-  # whose entire audience is the human operator — everything else here is read by the agent. A
-  # hook has no model in its path and no locale in its payload, so "in the user's language" would
-  # have to be guessed from the transcript; a wrong guess costs more than a fixed choice. English
-  # installers get this one line in Spanish. `Piso de convergencia` is the literal the branch suite
-  # keys its CONV/CONV! column on — if this opening is ever reworded, that constant moves with it.
+  # In Spanish — chosen by the author (2026-08-10) over an English line and over locale detection,
+  # because this is a message whose entire audience is the human operator — everything ELSE in this
+  # branch (AGENT_MSG, below) is read by the agent. A hook has no model in its path and no locale in
+  # its payload, so "in the user's language" would have to be guessed from the transcript; a wrong
+  # guess costs more than a fixed choice. English installers get this line in Spanish too.
+  # 0.44.5 generalized the two-strings-per-audience SHAPE of this branch (short Spanish systemMessage
+  # / technical English additionalContext) to every OTHER remind() branch in the case statement
+  # above — so this is no longer the only Spanish string in the plugin, only the only one that also
+  # decides, on its own, whether to emit the agent-facing half at all based on re-entrancy (see
+  # AGENT_MSG below). `Piso de convergencia` is the literal the branch suite keys its CONV/CONV!
+  # column on — if this opening is ever reworded, that constant moves with it.
   MSG="Piso de convergencia (${DETAIL}). Al menos ${STREAK} rondas de revisión independiente objetaron; nadie aprobó este trabajo. La decisión es tuya."
   # 0.43.0 — the floor gets an AGENT-FACING line back, and it is NOT the line above.
   #
@@ -694,16 +789,20 @@ fi
 # hardening this branch against a self-report you already trust everywhere else would buy nothing
 # while re-arming the loop this release exists to end.
 if [ "${GOAL_GATE_ENFORCE:-}" = "1" ] && [ "$STREAK" -lt 3 ]; then
-  # `reason` is the block explanation; `systemMessage` is the user-facing warning the advisory path
-  # already sets. Emitting BOTH is the whole 0.19.0 code change: it removes the one respect in which
-  # opting into teeth was strictly worse than not opting in. The suite classifies by the `decision`
-  # field (test/gate-branches.py:182), not by which message field is present, and derives its detail
-  # from `systemMessage or reason` (:179) — both are the same $MSG here — so this is behaviourally
-  # inert to all 30 branches in both modes by construction, which is the claim --compare checks.
-  MSG="$MSG" "$PY" -c 'import json,os; m=os.environ["MSG"]; print(json.dumps({"decision":"block","reason":m,"systemMessage":m}))'
+  # `reason` is the block explanation the harness/logs carry; `systemMessage` is the user-facing
+  # warning. 0.19.0 made both fields present; 0.44.5 makes them the two DIFFERENT per-audience
+  # strings every other branch now uses: `reason` = $AGENT_MSG (technical — it's the mechanism's own
+  # explanation, not something a human reads on screen), `systemMessage` = $MSG (short, human,
+  # Spanish). The suite classifies by the `decision` field (test/gate-branches.py:341), not by which
+  # message field is present, and derives its detail from `systemMessage or reason` (:338) — it
+  # prefers systemMessage, and $MSG still carries the literal "(${DETAIL})" every branch above sets,
+  # so the classifier is unaffected by the split; only the CONTENT split is new, not detection.
+  MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["AGENT_MSG"],"systemMessage":os.environ["MSG"]}))'
   exit 0
 fi
 
-# Default: fail-open advisory. Surface the reminder without blocking the stop.
-MSG="$MSG" "$PY" -c 'import json,os; m=os.environ["MSG"]; print(json.dumps({"systemMessage":m,"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":m}}))'
+# Default: fail-open advisory. Surface the reminder without blocking the stop. Same split as the
+# floor branch above and the ENFORCE block just above: systemMessage = $MSG (short, human,
+# Spanish), additionalContext = $AGENT_MSG (technical, English — what the agent reads and acts on).
+MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage":os.environ["MSG"],"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":os.environ["AGENT_MSG"]}}))'
 exit 0
