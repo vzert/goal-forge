@@ -6,6 +6,52 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.3] - 2026-09-15
+
+### "Ground yourself" tenía tres categorías de contexto; le faltaba la memoria propia del proyecto
+
+**Reporte cross-session, incidente real (proyecto `3-tier-memory`)**: un agente ejecutó `/goalspec`
+para resolver un pendiente que en realidad era la Fase 1 de un plan activo — el propio plan decía
+explícitamente "si aparece un tercer hallazgo, agrégalo aquí como fase nueva en vez de dejarlo
+suelto". El paso "Ground yourself before you spec" solo se usó para leer código; nunca se consultó
+`memory/_plans-index.md`. El pendiente se cerró sin conectarse al plan, y el usuario lo notó un día
+después. El "mechanical sweep of inherited decisions" (Execute, `SKILL.md:259`) no lo habría
+atajado: ese barrido es post-hoc y por palabra clave — la conexión perdida era relacional
+("continuación de", "Fase 1 de"), no léxica.
+
+**Causa**: "Ground yourself" (`SKILL.md:208-218`) ya listaba tres categorías de contexto a
+verificar antes de comprometer el spec — cómo funciona el código, el ground-truth real, y
+prior-art externo — pero le faltaba una cuarta al mismo nivel: la memoria/historia propia del
+proyecto (decisiones previas, planes activos, trabajo relacionado), sea cual sea su mecanismo.
+Sin nombrarla como categoría, un agente con acceso de sobra a esa memoria no piensa en revisarla
+antes de dar el spec por completo. Además, la cláusula de disparo original ataba la verificación
+solo a Q2/Q3 (criterio de éxito, pre-mortem) — pero el hecho que faltó en el incidente real era de
+alcance/definition-of-done ("¿a qué trabajo pertenece esto?"), que un agente podía honestamente
+declarar fuera de Q2/Q3 y saltarse la categoría de todos modos.
+
+**Cambio**: agregada la cuarta categoría a los dos carriers del mismo archivo (la prosa completa
+en `SKILL.md:210` y la versión comprimida del paso 3 de Execute en `SKILL.md:290`), y ampliada la
+cláusula de disparo de "Q2/Q3" a "el spec" para cubrir alcance/DoD. Se agregó un tell concreto: una
+petición que llega como continuación ("el pendiente de…", "siguiendo con…") suele indicar que la
+memoria que la originó ya dice a qué pertenece el trabajo — un vínculo relacional que ningún
+barrido léxico posterior encuentra. Cambio de prosa puro; ningún hook, agente ni test tocado.
+
+**Verificación**: `test/claim-surface-carriers.py` (66/66 ok), `test/manifest-checks.py` (todo ok,
+versión sincronizada). Verificado además con el adversario externo (`/goalspec:adversary`, backend
+Codex/GPT-5): cinco ataques concretos (contradicción con el resto del método, ceremonia sin
+dientes mecánicos, rotura de la cláusula Q2/Q3 en otras partes del archivo, alcance del cambio,
+si el tell agregado es realmente load-bearing) — los cinco refutados. `[ADVERSARY-VERDICT: hold
+ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]` (`model=GPT-5/UNKNOWN`,
+id no verificable — se trata honestamente como `model=same` a efectos de gate; cambio no terminal,
+así que no aplica la regla de modelo distinto).
+
+**No implementado en esta versión (pendiente separado, señalado por la misma sesión cross-session,
+no evaluado aún)**: un cierre simétrico — al terminar, si el agente escribió algo en la memoria
+propia del proyecto, confirmar que sus relaciones (jerarquía, padres/hijos, planes o decisiones
+relacionadas) quedaron completas, no solo que el artefacto se guardó de forma aislada. Se deja
+fuera de este release porque es una decisión de diseño separada (entrada vs. cierre) que aún no se
+ha evaluado con el mismo rigor.
+
 ## [0.44.2] - 2026-09-14
 
 ### La plantilla del adversario no daba un lugar legal al aviso de independencia
