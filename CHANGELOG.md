@@ -6,6 +6,52 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.4] - 2026-09-15
+
+### El cierre simétrico de "Ground yourself": el sweep de decisiones heredadas ahora corre en reversa
+
+**Continuación del pendiente dejado explícitamente abierto en 0.44.3.** La misma sesión
+cross-session (`3-tier-memory`) propuso el complemento simétrico: 0.44.3 hizo que el agente
+*lea* la memoria propia del proyecto antes de especificar; faltaba que, al *escribir* algo nuevo
+ahí (una pendiente, un learning, una fase de plan), confirme que quedó conectado a su jerarquía
+— no solo que se guardó. La versión ingenua ("no olvides guardar en memoria") no habría servido:
+en el incidente real el agente sí guardaba activamente (dual-write) durante toda la sesión: el
+fallo no fue "olvidé persistir", fue "persistí sin conectar la relación correcta".
+
+**Cambio**: el "Mechanical sweep of inherited decisions" (`SKILL.md:259`, uno de los cuatro
+patrones derivados) gana una quinta cláusula: al escribir una entrada nueva en cualquiera de las
+mismas superficies que el sweep ya vigila, re-correr el mismo grep en reversa sobre esa entrada y
+confirmar que nombra su plan/decisión padre — agregando el vínculo faltante o señalando el hueco
+explícitamente, la misma obligación que la cláusula (3) ya exige para lo heredado que se lee. Se
+agregó `plans` al glob de superficies vigiladas (el vínculo perdido en el incidente real era
+justamente hacia un plan activo). Se agregó un gancho en la autocrítica de "Before closing"
+(Completeness), y se sincronizó el mismo mecanismo en `references/adaptation-guide.md` y en el
+chequeo mecánico propio del `goal-adversary` (para que el adversario pueda auditar la cláusula 5
+de forma independiente, no solo confiar en la palabra del ejecutor).
+
+**El adversario rompió la primera versión** (`/goalspec:adversary`, backend externo Codex/GPT-5):
+`[ADVERSARY-VERDICT: break ungrounded=0 unfalsified=1 incomplete=2 autonomy-violations=0 unsafe=0]`.
+Tres defectos reales: (1) la cláusula (5) detectaba una entrada desconectada pero no obligaba a
+resolverla ni a señalarla, a diferencia de la (3); (2) hueco de timing — el barrido en reversa
+corría atado a un paso fijo del pipeline (antes del red-team), sin cubrir una escritura hecha
+*después*, por un comando de cierre separado (p.ej. un checkpoint de otro plugin en otra sesión);
+(3) el propio payload de verificación decía "4 archivos cambiados" cuando `git diff --name-only`
+muestra 3 archivos con 4 sitios de edición — un error de conteo en la prosa, no en el diff.
+
+**Arreglo**: la cláusula (5) ahora exige agregar el vínculo faltante o señalar el hueco
+explícitamente (espejo exacto de la cláusula 3); se reancla al *momento de la escritura* en vez de
+a un paso numerado fijo, y declara honestamente su propio límite — cubre escrituras hechas
+*dentro de esta misma ejecución*, y dice explícitamente que una escritura posterior de un comando
+de cierre separado es la brecha de completitud de ESE comando, no de este método (en vez de
+fingir una cobertura que el método no puede alcanzar). Corregido el conteo de archivos en la
+siguiente ronda.
+
+**Ronda delta del adversario tras el arreglo**: `[ADVERSARY-VERDICT: hold ungrounded=0
+unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]` — los tres hallazgos anteriores,
+re-atacados y refutados con evidencia (`git diff --numstat`, lectura directa de los tres carriers
+editados). `test/claim-surface-carriers.py` (66/66) y `test/manifest-checks.py` (todo ok, versión
+sincronizada) tras cada ronda.
+
 ## [0.44.3] - 2026-09-15
 
 ### "Ground yourself" tenía tres categorías de contexto; le faltaba la memoria propia del proyecto

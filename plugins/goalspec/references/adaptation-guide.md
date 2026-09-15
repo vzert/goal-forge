@@ -10,7 +10,7 @@ the same `/goalspec` and get the same rigor — the agent derives what's domain-
 | Domain-specific thing | How the agent gets it, with no config | Why not hardcode it |
 |---|---|---|
 | **ground-truth sources** | Named per-task when answering scaffold Q2 — whatever *this* task verifies against (tests/CI, an analytics API, sensor & lab readings, a primary document) | A fixed list can't anticipate every task's real ground-truth; the reasoning always can. |
-| **files to sweep** | **Discovered** — the agent globs for decision logs (`TODO`, `open-decisions`, `pending`, `open-questions`, `known-issues`, `backlog`, `notes`) and scans recent context | A discovered-and-always-run grep beats a precise grep that's never configured. |
+| **files to sweep** | **Discovered** — the agent globs for decision logs (`TODO`, `open-decisions`, `pending`, `open-questions`, `known-issues`, `backlog`, `notes`, `plans`) and scans recent context — then, at the point it writes a new entry there itself, re-runs the same sweep on that entry and adds the missing link rather than leaving it disconnected (scoped to writes made within the same run) | A discovered-and-always-run grep beats a precise grep that's never configured. |
 | **which entities to enumerate** | The **task noun** names them: "audit the widgets" → widgets, "review this PR" → changed files, "check clarifier 2" → its tanks/sensors, "write the sequence" → its emails | Nothing to maintain; the task already says it. |
 | **terminal / irreversible actions** | The agent **judges reversibility per action** — would undoing it be hard or harmful? | A hardcoded list misses *your* domain's terminal actions (dosing a feed, sending to a list). |
 
