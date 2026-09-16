@@ -26,7 +26,11 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
      — the one verified end-to-end against a real CLI (v0.4.0), and it reads stdin natively.
    - **OpenAI Codex CLI** — `external_cmd: "codex exec"` (reads stdin; verify your install actually
      runs — `printf 'say OK' | codex exec`. The npm wrapper can be on PATH while its vendored binary
-     is missing, which `command -v` cannot detect.)
+     is missing, which `command -v` cannot detect.) Bare `codex exec` — the hook's own fallback when
+     nothing else configures `external_cmd` — sets no sandbox mode, so whatever trust level your own
+     `~/.codex/config.toml` gives this cwd decides it (a `trusted` project gets `workspace-write`).
+     `external-adversary.sh` warns about this on stderr when it detects it; it does not add a flag
+     for you (see "Your partner keeps its write sandbox" below for why `-s read-only` is not the fix).
    - **Google Gemini CLI** — needs an adapter: `gemini -p` takes the prompt as an **argument**, not on
      stdin, so it cannot be used bare with this script. Wrap it, e.g. a `gemini-stdin` on your PATH:
      `#!/usr/bin/env bash` + `exec gemini -p "$(cat)"`, then `external_cmd: "gemini-stdin"`.

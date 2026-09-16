@@ -6,6 +6,36 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.6] - 2026-09-15
+
+### `external-adversary.sh` avisa cuando el fallback a `codex` no fija modo de sandbox
+
+**Reportado por una sesión par** (`claude-vzert-c9`, cross-session): el fallback por defecto del
+backend externo cuando nada configura `adversary.external_cmd` es literalmente `codex exec`, sin
+`-s read-only` ni ningún otro flag de sandbox. Sin flag, el modo lo decide el propio
+`~/.codex/config.toml` del operador para ese directorio — si el repo está marcado `trusted`,
+`codex exec` corre en `workspace-write` con el cwd DENTRO del árbol que se supone que solo debe
+auditar. La sesión encontró el patrón en vivo: el config global `~/.claude/goal.config.json` de esta
+máquina tenía `external_cmd: "codex exec"` sin el flag, heredado por varios proyectos.
+
+**Por qué el fix propuesto (agregar `-s read-only` al fallback) NO se aplicó**: ya está documentado
+en `references/external-adversary-setup.md` y en memoria (`_learnings.md`) que `-s read-only` se
+probó contra un partner real y lo rompió — las escrituras legítimas a scratch fallaban y volvían
+disfrazadas de hallazgos `ungrounded`, un instrumento roto fabricando violaciones. El arreglo
+registrado fue ENSANCHAR el sandbox (`-s workspace-write -c sandbox_workspace_write.network_access=true`),
+no angostarlo. Este hook tampoco puede imponer un modo de sandbox de forma portable: `external_cmd`
+es del operador. La mitigación real ya existe y es de detección, no de prevención: el fingerprint de
+contenido antes/después que degrada un `hold` a `UNVERIFIED` si el partner tocó el árbol.
+
+**Cambio**: `external-adversary.sh` ahora emite un aviso en stderr (nunca cambia el verdict) cuando
+el binario resuelto es literalmente `codex` y `$EXT_CMD` no trae ningún flag de sandbox
+(`-s`, `--sandbox`, `-c sandbox_...`) — para que el caso "config heredado sin flag" deje de ser
+silencioso. `route-external-adversary.sh` comparte el mismo fallback pero solo lo menciona en un
+mensaje (nunca ejecuta el comando), así que no necesitó cambio. Se documentó el mismo punto en
+`references/external-adversary-setup.md`. Dos casos nuevos (22/23) en
+`test/external-adversary-branches.py`; `--compare` contra el hook pre-edición confirma que ninguna
+otra rama cambió.
+
 ## [0.44.5] - 2026-09-15
 
 ### `gate-goal-close.sh` separa audiencia en TODO `remind()`, y calla los avisos repetidos sin progreso

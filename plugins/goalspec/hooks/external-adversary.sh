@@ -70,6 +70,20 @@ if ! command -v "$BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
+# Advisory only — never add a sandbox flag here. -s read-only was tried against a real codex partner
+# and broke it: legitimate scratch writes failed and came back disguised as `ungrounded` findings (see
+# references/external-adversary-setup.md, "Your partner keeps its write sandbox"). external_cmd belongs
+# to the operator; this hook cannot impose a mode portably. What actually catches an overreaching
+# partner is the before/after content fingerprint below, not a mode picked here.
+case "$BIN" in
+  codex)
+    case "$EXT_CMD" in
+      *-s\ *|*--sandbox*|*sandbox_*) ;;
+      *) echo "external-adversary: '$EXT_CMD' sets no sandbox mode — codex's own ~/.codex/config.toml trust level for this cwd decides, and a trusted repo gets workspace-write here. Repo writes are DETECTED after the run (content fingerprint), not prevented. See references/external-adversary-setup.md." >&2 ;;
+    esac
+    ;;
+esac
+
 PAYLOAD=$(cat)
 
 # EDITING THE PROMPT BELOW: keep single quotes/apostrophes BALANCED inside this heredoc. It sits in a

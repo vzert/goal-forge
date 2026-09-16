@@ -149,6 +149,15 @@ CASES = [
     # The other half of the same rule, unchanged: a HOLD that exits nonzero still degrades. Without
     # this control, "preserve the break" could be widened into "preserve anything".
     ("21-hold-with-nonzero-exit", "STUB_HOLD_RC", {}, None, "unfilled"),
+    # --- codex sandbox advisory (0.44.6). -s read-only was tried against a real codex partner and
+    # broke it (references/external-adversary-setup.md); this hook does not impose a sandbox mode.
+    # It only warns when the resolved binary is literally `codex` and no sandbox flag is present —
+    # a bare fallback inherits whatever trust level codex's OWN config gives this cwd.
+    ("22-codex-fallback-no-flag", None, {"GOAL_ADVERSARY_CMD": "codex"}, None, "pass+codexwarned"),
+    # Control: any sandbox flag present (however configured) silences the advisory — it is not this
+    # hook's job to judge whether the chosen mode is the right one, only to flag total silence on it.
+    ("23-codex-with-sandbox-flag", None, {"GOAL_ADVERSARY_CMD": "codex -s read-only"}, None,
+     "pass+codexsilent"),
 ]
 
 
@@ -204,6 +213,15 @@ echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
 exit 3
+""" % (MODEL, HOLD)
+
+# A fake binary literally named `codex`, placed on PATH — the advisory keys on the resolved bin
+# name, not on how it got invoked, so this must be a real file named `codex`, not a wrapper.
+CODEX_STUB = """#!/bin/bash
+cat >/dev/null
+echo "%s"
+echo "- probe: one real evidence line"
+echo "%s"
 """ % (MODEL, HOLD)
 
 
@@ -295,16 +313,25 @@ def classify(res, case_name):
                           else "mutation-not-degraded")
         else:
             branch += "+mutation-missed" if not said else "+mutation-unnamed"
+    if case_name.startswith("22") or case_name.startswith("23"):
+        branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
     return branch
 
 
 def suite(hook, workdir):
     rows = []
+    fakebin = os.path.join(workdir, "fakebin")
+    os.makedirs(fakebin, exist_ok=True)
+    codex_path = os.path.join(fakebin, "codex")
+    with open(codex_path, "w") as f:
+        f.write(CODEX_STUB)
+    os.chmod(codex_path, 0o755)
     for name, transcript, env_extra, cwd, expect in CASES:
         env = dict(os.environ)
         env.pop("GOAL_ADVERSARY_ACTIVE", None)
         env.pop("GOAL_ADVERSARY_CMD", None)
         env.pop("GOAL_CONFIG_PATH", None)
+        env["PATH"] = fakebin + os.pathsep + env.get("PATH", "")
         stubs = {"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD, "STUB_WRAP": STUB_WRAP,
                  "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,
                  "STUB_CLEAN": STUB_CLEAN, "STUB_MUTATE_RUNSTATE": STUB_MUTATE_RUNSTATE,
