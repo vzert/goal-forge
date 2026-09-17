@@ -44,17 +44,17 @@ ya incluía (la rama `*`/default NO lo incluye — un comentario que afirmaba lo
 corrigió) — agregado.
 
 **Segunda ronda, acotada al delta anterior**: ambos backends volvieron a romper, esta vez sobre el
-propio delta — dos hallazgos `[ungrounded]`/`[incomplete]` menores en los COMENTARIOS que describían
-el fix (uno atribuía el piso mecánico del waiver al paso equivocado del archivo; el otro afirmaba,
-falso, que la rama default también declara `(≥20 chars)` para el waiver), y un hallazgo
-`[ungrounded]`, confirmado por ambos backends de forma independiente, sobre ESTA MISMA sección del
-CHANGELOG: afirmaba una verificación de dos backends que, al momento de escribirse, todavía no había
-corrido. Corregido — ver abajo, en vez de reafirmar aquí una verificación que este archivo no puede
-demostrar por sí mismo.
+propio delta — tres hallazgos `[ungrounded]` en los COMENTARIOS que describían el fix (uno atribuía
+el piso mecánico del waiver al paso equivocado del archivo; otro afirmaba, falso, que la rama default
+también declara `(≥20 chars)` para el waiver; el tercero, confirmado por ambos backends de forma
+independiente, era sobre ESTA MISMA sección del CHANGELOG: afirmaba una verificación de dos backends
+que, al momento de escribirse, todavía no había corrido). Corregido — ver abajo, en vez de reafirmar
+aquí una verificación que este archivo no puede demostrar por sí mismo. Una tercera ronda, acotada a
+ese arreglo, sostuvo limpio en ambos backends (`hold`, cero hallazgos).
 
 **Verificación**: `test/gate-branches.py --compare` contra el script pre-edición, en modo default y
-con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos, en cada una de las tres
-rondas de edición de este release: ninguna rama de clasificación cambió nunca, solo el contenido de
+con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos, antes de cada commit de
+este release: ninguna rama de clasificación cambió nunca, solo el contenido de
 texto de las dos ramas tocadas. El suite propio de audience-split se actualizó para reflejar el
 nuevo diseño (`systemMessage == additionalContext` para estas dos ramas específicamente, marcadas
 `UNIFIED`; el resto sigue exigiendo que difieran).
