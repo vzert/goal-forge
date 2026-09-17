@@ -103,6 +103,11 @@ CASES = [
     ("09-reported-once", ONE_ROUND, SESSION, {}, "silent-on-second"),
     # No session id in the payload: nothing to key on, so nothing to read. Fail-open.
     ("10-no-session-id", ONE_ROUND, SESSION, {"drop_session": True}, "silent"),
+    # THE AUDIENCE SPLIT assertion (0.44.7). systemMessage must be short, Spanish, human-facing, and
+    # DIFFERENT from the technical additionalContext — mirroring the split gate-goal-close.sh's
+    # remind() got in 0.44.5. Before this release the hook sent the identical long English text to
+    # BOTH fields; the human read the same dense wall the agent did.
+    ("11-audience-split", ONE_ROUND, SESSION, {}, "split-ok"),
 ]
 
 
@@ -111,9 +116,26 @@ def classify(res, name, findings_path):
     if not out:
         return "silent"
     try:
-        msg = json.loads(out).get("systemMessage") or ""
+        d = json.loads(out)
+        sysmsg = d.get("systemMessage") or ""
+        agent_msg = (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     except Exception:
         return "malformed-json"
+
+    if name.startswith("11"):
+        if not sysmsg or not agent_msg:
+            return "missing-field:sys=%r,agent=%r" % (bool(sysmsg), bool(agent_msg))
+        if sysmsg == agent_msg:
+            return "NOT-SPLIT"
+        if len(sysmsg) > 300:
+            return "systemMessage-too-long:%d" % len(sysmsg)
+        if sysmsg.isascii() and any(c.isalpha() for c in sysmsg):
+            return "systemMessage-looks-english"
+        return "split-ok"
+
+    # Everything else — including the audience-line case (08) — reads the technical text, which now
+    # lives in additionalContext only.
+    msg = agent_msg
     paths = sorted(ln.strip()[2:] for ln in msg.splitlines() if ln.strip().startswith("- "))
     if not paths:
         return "reported-unnamed"
@@ -183,6 +205,12 @@ MUTATIONS = [
     ("the session key ignored",
      'FINDINGS="$SNAP_DIR/$SESSION_KEY.findings"', 'FINDINGS=$(ls "$SNAP_DIR"/*.findings 2>/dev/null | head -1)',
      "04"),
+    ("the audience split collapsed back to one string",
+     'print(json.dumps({"systemMessage": os.environ["MSG"],\n'
+     '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
+     'print(json.dumps({"systemMessage": os.environ["AGENT_MSG"],\n'
+     '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
+     "11"),
 ]
 
 

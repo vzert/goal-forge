@@ -6,6 +6,29 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.7] - 2026-09-17
+
+### `report-adversary-writes.sh` gana el mismo split de audiencia que `gate-goal-close.sh` (0.44.5)
+
+**Reportado por el usuario, en vivo**: dos ejemplos reales de "Stop hook feedback" densos en la
+terminal. Uno de los dos (el riel de solo-lectura del adversario, `report-adversary-writes.sh`)
+nunca recibió el arreglo de 0.44.5 — ese hook es un archivo separado de `gate-goal-close.sh`, así
+que el patrón `MSG` (corto, español, `systemMessage`) / `AGENT_MSG` (técnico, inglés,
+`additionalContext`) no lo cubría. Mandaba el mismo texto largo en inglés a ambos campos.
+
+**Cambio**: `report-adversary-writes.sh` ahora separa `MSG`/`AGENT_MSG` igual que `remind()` en
+`gate-goal-close.sh` — el contenido técnico (línea de audiencia, rondas, rutas, las dos lecturas)
+no cambia, solo deja de ir también a `systemMessage`. Un caso nuevo (11/11) en
+`test/adversary-report-branches.py` verifica que ambos campos difieran y que `systemMessage` sea
+corto; `--selftest` cubre la mutación que los volvería a colapsar en uno.
+
+**Aparte, sin cambio de código**: la observación en vivo del OTRO ejemplo (rama
+`completion-review:stale-terminal-action-after-close` de `gate-goal-close.sh`, ya con el split de
+0.44.5) salió negativa — el humano siguió viendo el `AGENT_MSG` largo. La hipótesis ahora es que la
+UI de Claude Code no distingue `systemMessage` de `additionalContext` al mostrar "Stop hook
+feedback", lo cual — de confirmarse — afecta a todo el mecanismo, no solo a este archivo. Queda
+anotado en el pendiente `p-a95b61154a`, sin resolver.
+
 ## [0.44.6] - 2026-09-15
 
 ### `external-adversary.sh` avisa cuando el fallback a `codex` no fija modo de sandbox

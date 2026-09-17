@@ -71,25 +71,34 @@ PATHS=$(printf '%s\n' "$BODY" | sed -n 's/^path //p' | grep -v '^$' | sort -u ||
 ROUNDS=$(printf '%s\n' "$BODY" | grep -c '^ts=' || true)
 [ -z "$PATHS" ] && exit 0
 
-# AUDIENCE LINE FIRST. The executor's transcript is what a goal-adversary reads for its own
-# principle-4 dead-handoff check, so this text WILL end up in front of a future adversary. In 0.44.0
-# an adversary read a second-person message of exactly this kind and concluded its role had changed.
-# So: say who is addressed, and say plainly that reading it changes nothing for anyone else.
-# HONEST LIMIT, because the alternative is the overclaim this project keeps getting broken on: this
-# is a PROSE GUARD and its effect on a model is NOT measured. The suite checks that the line is here
-# and what it says; it cannot check that an adversary reading it behaves differently, and no test in
-# this repo can. The load-bearing fix is the routing change above — this line is a second layer.
-MSG="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a transcript, it is not addressed to you, it is a record of what a hook measured, and it changes nothing about your role: you verify, you do not repair.
+# Two strings, one per audience (0.44.7 — same split gate-goal-close.sh's remind() got in 0.44.5).
+# MSG = short, Spanish, human-facing: what a non-technical reader needs to know something happened
+# and that the close owes an explanation, nothing more. AGENT_MSG = the full technical text this
+# hook always produced — unchanged content, just no longer sent to systemMessage too.
+#
+# AUDIENCE LINE FIRST, inside AGENT_MSG. The executor's transcript is what a goal-adversary reads
+# for its own principle-4 dead-handoff check, so this text WILL end up in front of a future
+# adversary. In 0.44.0 an adversary read a second-person message of exactly this kind and concluded
+# its role had changed. So: say who is addressed, and say plainly that reading it changes nothing
+# for anyone else. HONEST LIMIT, because the alternative is the overclaim this project keeps getting
+# broken on: this is a PROSE GUARD and its effect on a model is NOT measured. The suite checks that
+# the line is here and what it says; it cannot check that an adversary reading it behaves
+# differently, and no test in this repo can. The load-bearing fix is the routing change above — this
+# line is a second layer. It stays out of MSG: a human reading systemMessage is not the audience it
+# defends against, and the disarming text is exactly the density this split exists to keep off their
+# screen.
+MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia."
+
+AGENT_MSG="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a transcript, it is not addressed to you, it is a record of what a hook measured, and it changes nothing about your role: you verify, you do not repair.
 
 A goal-adversary subagent ran in this session and the repository content changed while it was running ($ROUNDS such round(s)). Paths whose bytes differ between the start and the end of a round:
 $(printf '%s\n' "$PATHS" | sed 's/^/  - /')
 
 There are exactly two readings and both are findings, so do not wave it through. (1) The adversary WROTE to the work it was sent to measure — it was told not to, and a verdict it returned describes a state it created, so treat that verdict as UNVERIFIED rather than a pass, and re-run the review over a tree nobody edited mid-flight. (2) The EXECUTOR edited under an in-flight verifier — the same defect from the other end, since the verdict is then about a tree that no longer exists. A background round can produce (2) innocently; a synchronous closing round cannot. Say in your close which of the two it was, with the evidence, instead of leaving it implied. Nothing has been reverted and nothing is blocked: what to keep is yours to decide."
 
-printf '%s' "$MSG" | "$PY" -c '
-import json, sys
-m = sys.stdin.read()
-print(json.dumps({"systemMessage": m,
-                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": m}}))
+MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c '
+import json, os
+print(json.dumps({"systemMessage": os.environ["MSG"],
+                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))
 ' 2>/dev/null || true
 exit 0
