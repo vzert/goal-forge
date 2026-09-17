@@ -613,14 +613,26 @@ case "$DETAIL" in
     # additionalContext was an agent-only channel on a Stop hook; the official hooks reference says
     # the opposite — it's the exact field the transcript labels "Stop hook feedback" and shows the
     # human. So shortening only AGENT_MSG never reduced what the human actually saw. One message now,
-    # short enough for both, pointing at SKILL.md's own grammar spec instead of re-deriving it here —
-    # the agent already carries that file. See memory/_pendientes.md p-a95b61154a for the finding.
-    MSG="model=different no se pudo confirmar por formato (${DETAIL}) — no es defecto grave. Si el adversario reportó UNKNOWN o el mismo modelo, usa model=same. Si no, vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual — sin negritas, nada después del \`]\`. Ver SKILL.md, «Completion-review declaration»."
+    # short enough for both. Pointing at SKILL.md alone was NOT enough here and shipped that way for
+    # one round (caught by an adversary round on this same release, [ungrounded]): the OLD AGENT_MSG's
+    # three causes split across two homes — SKILL.md:37-38 covers the OUTER grammar (own line, plain
+    # text, nothing after the closing `]`), but the INNER grammar (the id token after `/`, and where
+    # an independence caveat goes) lives only in agents/goal-adversary.md and external-adversary.sh —
+    # files the EXECUTOR reading this hook's output never loads (those are the adversary's own prompt
+    # and the external-backend script). So the inner-grammar detail is repeated here, not pointed at,
+    # because there is nowhere in the executor's own context that already carries it. See
+    # memory/_pendientes.md p-a95b61154a for the finding this whole branch responds to.
+    MSG="model=different no se pudo confirmar por formato (${DETAIL}) — no es defecto grave. Si el adversario reportó UNKNOWN o el mismo modelo, usa model=same. Si no: vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual, en su propia línea, sin negritas ni texto después del \`]\`; el id después de la \`/\` debe ser un solo token sin espacios (nunca prosa), y cualquier aviso de independencia va en la línea SIGUIENTE, nunca dentro del corchete. Ver SKILL.md, «Completion-review declaration», para la gramática externa."
     AGENT_MSG="$MSG"
     ;;
   completion-review:stale-terminal-action-after-close)
-    # 0.44.8 — same collapse as above, same reason.
-    MSG="Hubo una acción difícil de deshacer después del último cierre declarado (${DETAIL}) — ese cierre no cubre esta acción. Repite 4b + 6 para ESTA acción y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] si de verdad es bajo riesgo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
+    # 0.44.8 — same collapse as above, same reason. The waiver mention below needs its own
+    # "(≥20 chars)" qualifier spelled out (caught by an adversary round on this same release,
+    # [incomplete]): the mechanical floor at step 5 above requires reason=[^\]]{20,}, the sibling
+    # branches (closed-over-break, the default case) both state the length, and SKILL.md:164 (the
+    # section this message points at) covers what a stale review means, never the waiver's own
+    # grammar — so, same as the branch above, this detail is stated here, not assumed inherited.
+    MSG="Hubo una acción difícil de deshacer después del último cierre declarado (${DETAIL}) — ese cierre no cubre esta acción. Repite 4b + 6 para ESTA acción y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
     AGENT_MSG="$MSG"
     ;;
   *)

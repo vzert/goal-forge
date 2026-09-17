@@ -24,15 +24,32 @@ formas veía completo en el otro campo.
 corto, en `systemMessage` Y `additionalContext` por igual — apuntando a la sección correspondiente de
 `SKILL.md` (`«A completion-review closes the spec, not the session»` y
 `«Completion-review declaration»`) en vez de re-derivar la instrucción técnica completa inline. El
-agente ya carga `SKILL.md` en contexto cada sesión, así que no se pierde información, solo se deja de
-duplicarla en el hook. El resto de las ramas de `remind()` (incluida la del piso de convergencia,
-streak≥3) **no se tocaron** — quedan con el split viejo hasta que se decida extender el patrón.
+resto de las ramas de `remind()` (incluida la del piso de convergencia, streak≥3) **no se tocaron** —
+quedan con el split viejo hasta que se decida extender el patrón.
+
+**Corrección tras la primera ronda de adversario (mismo release, ambos backends)**: la afirmación
+original de este párrafo — "el agente ya carga SKILL.md, así que no se pierde información" — era
+falsa para una de las dos ramas, y quedó corregida en código antes de publicar, no solo aquí.
+El adversario en Opus (`[ungrounded]`) encontró que la gramática que el `AGENT_MSG` viejo de
+`model-different-needs-nonunknown-self-report` cubría tenía TRES causas; la sección de `SKILL.md`
+a la que apunta el mensaje nuevo solo cubre la gramática *externa* del marcador (línea sola, texto
+plano). La gramática *interna* (el id después de `/` debe ser un token sin espacios, nunca prosa; un
+aviso de independencia va en la línea siguiente, nunca dentro del corchete) vive solo en
+`agents/goal-adversary.md` y `external-adversary.sh` — archivos que el EJECUTOR que lee este hook
+nunca carga. Esa gramática se restauró, escrita inline, en el mensaje mismo (no como puntero, porque
+no hay dónde apuntar). El mismo adversario (`[incomplete]`) encontró que el mensaje de la rama
+`stale-terminal-action-after-close` citaba `[GOAL-CLOSE-WAIVED reason=…]` sin el calificador
+`(≥20 chars)` que el piso mecánico de esa gramática exige y que las ramas hermanas sí incluyen —
+agregado.
 
 **Verificación**: `test/gate-branches.py --compare` contra el script pre-edición, en modo default y
-con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos: ninguna rama de
-clasificación cambió, solo el contenido de texto de las dos ramas tocadas. El suite propio de
-audience-split se actualizó para reflejar el nuevo diseño (`systemMessage == additionalContext` para
-estas dos ramas específicamente, marcadas `UNIFIED`; el resto sigue exigiendo que difieran).
+con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos, antes Y después de la
+corrección: ninguna rama de clasificación cambió, solo el contenido de texto de las dos ramas
+tocadas. El suite propio de audience-split se actualizó para reflejar el nuevo diseño
+(`systemMessage == additionalContext` para estas dos ramas específicamente, marcadas `UNIFIED`; el
+resto sigue exigiendo que difieran). Dos backends (subagente Opus, contexto fresco + modelo distinto;
+externo codex/GPT-5, vendor distinto) verificaron el diff final — ver el commit para los veredictos
+citados.
 
 **Sigue sin observar en vivo**: si el ruido humano-percibido de verdad baja con esto — el mecanismo
 ahora es honesto sobre lo que hace (ya no promete ocultar nada), pero el mensaje sigue siendo visible,
