@@ -628,10 +628,14 @@ case "$DETAIL" in
   completion-review:stale-terminal-action-after-close)
     # 0.44.8 — same collapse as above, same reason. The waiver mention below needs its own
     # "(≥20 chars)" qualifier spelled out (caught by an adversary round on this same release,
-    # [incomplete]): the mechanical floor at step 5 above requires reason=[^\]]{20,}, the sibling
-    # branches (closed-over-break, the default case) both state the length, and SKILL.md:164 (the
-    # section this message points at) covers what a stale review means, never the waiver's own
-    # grammar — so, same as the branch above, this detail is stated here, not assumed inherited.
+    # [incomplete], and its own delta-round found this comment ALSO mis-cited the floor's location —
+    # fixed here too): the mechanical floor lives at step 3 above ("Explicit close-over-break
+    # waiver"), reason=[^\]]{20,} — NOT step 5, whose own reason floor is a DIFFERENT regex
+    # (reason=.{20,}) governing `[COMPLETION-REVIEW: none reason=…]`, not the waiver. Only the
+    # closed-over-break branch already states the waiver's length; the default case ("*", below)
+    # does not — do not assume it does. SKILL.md:164 (the section this message points at) covers
+    # what a stale review means, never the waiver's own grammar — so this detail is stated here, not
+    # assumed inherited.
     MSG="Hubo una acción difícil de deshacer después del último cierre declarado (${DETAIL}) — ese cierre no cubre esta acción. Repite 4b + 6 para ESTA acción y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
     AGENT_MSG="$MSG"
     ;;

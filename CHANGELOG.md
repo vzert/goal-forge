@@ -39,17 +39,25 @@ aviso de independencia va en la línea siguiente, nunca dentro del corchete) viv
 nunca carga. Esa gramática se restauró, escrita inline, en el mensaje mismo (no como puntero, porque
 no hay dónde apuntar). El mismo adversario (`[incomplete]`) encontró que el mensaje de la rama
 `stale-terminal-action-after-close` citaba `[GOAL-CLOSE-WAIVED reason=…]` sin el calificador
-`(≥20 chars)` que el piso mecánico de esa gramática exige y que las ramas hermanas sí incluyen —
-agregado.
+`(≥20 chars)` que el piso mecánico de esa gramática exige y que la rama hermana `closed-over-break`
+ya incluía (la rama `*`/default NO lo incluye — un comentario que afirmaba lo contrario también se
+corrigió) — agregado.
+
+**Segunda ronda, acotada al delta anterior**: ambos backends volvieron a romper, esta vez sobre el
+propio delta — dos hallazgos `[ungrounded]`/`[incomplete]` menores en los COMENTARIOS que describían
+el fix (uno atribuía el piso mecánico del waiver al paso equivocado del archivo; el otro afirmaba,
+falso, que la rama default también declara `(≥20 chars)` para el waiver), y un hallazgo
+`[ungrounded]`, confirmado por ambos backends de forma independiente, sobre ESTA MISMA sección del
+CHANGELOG: afirmaba una verificación de dos backends que, al momento de escribirse, todavía no había
+corrido. Corregido — ver abajo, en vez de reafirmar aquí una verificación que este archivo no puede
+demostrar por sí mismo.
 
 **Verificación**: `test/gate-branches.py --compare` contra el script pre-edición, en modo default y
-con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos, antes Y después de la
-corrección: ninguna rama de clasificación cambió, solo el contenido de texto de las dos ramas
-tocadas. El suite propio de audience-split se actualizó para reflejar el nuevo diseño
-(`systemMessage == additionalContext` para estas dos ramas específicamente, marcadas `UNIFIED`; el
-resto sigue exigiendo que difieran). Dos backends (subagente Opus, contexto fresco + modelo distinto;
-externo codex/GPT-5, vendor distinto) verificaron el diff final — ver el commit para los veredictos
-citados.
+con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos, en cada una de las tres
+rondas de edición de este release: ninguna rama de clasificación cambió nunca, solo el contenido de
+texto de las dos ramas tocadas. El suite propio de audience-split se actualizó para reflejar el
+nuevo diseño (`systemMessage == additionalContext` para estas dos ramas específicamente, marcadas
+`UNIFIED`; el resto sigue exigiendo que difieran).
 
 **Sigue sin observar en vivo**: si el ruido humano-percibido de verdad baja con esto — el mecanismo
 ahora es honesto sobre lo que hace (ya no promete ocultar nada), pero el mensaje sigue siendo visible,
