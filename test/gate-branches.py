@@ -676,6 +676,10 @@ def stale_suite(gate):
 # payload-shape section above already gives for the floor. Reuses run_payload_shape() rather than a
 # new subprocess helper — it already extracts systemMessage/additionalContext/reason correctly and is
 # tested by the floor cases above; only the assertions here are new.
+# 0.44.8: two branches (marked `unified` below) DROP this split — the premise that
+# additionalContext is invisible to the human on a Stop hook is false per the official hooks
+# reference (it's literally labeled "Stop hook feedback"), so those two now assert the OPPOSITE:
+# systemMessage == additionalContext. The rest of remind() is untouched and still enforces the split.
 AUDIENCE_SPLIT_CASES = [
     # (name, lam, turns, enforce, must_be_in_system, must_be_in_agent, unified)
     # unified=False (default, 0.44.5 shape): systemMessage (short, Spanish, human) MUST differ from
@@ -862,7 +866,8 @@ def main():
         return 1
 
     # Audience split — every remind() branch, not just the floor (0.44.5).
-    print("\n--- audience split: short Spanish systemMessage vs technical additionalContext/reason ---")
+    print("\n--- audience split: short Spanish systemMessage vs technical additionalContext/reason"
+          " (UNIFIED cases are the 0.44.8 exception: both fields equal on purpose) ---")
     audience_failures = []
     for i, (name, system, agent) in enumerate(audience_split_suite(a.gate)):
         _, _, _, _, want_system, want_agent, unified = AUDIENCE_SPLIT_CASES[i]

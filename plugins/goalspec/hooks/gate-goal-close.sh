@@ -580,12 +580,19 @@ case "$STREAK" in ''|*[!0-9]*) STREAK=0 ;; esac
 case "$LAMV" in 0|1) : ;; *) LAMV=1 ;; esac
 case "$REENTRANT" in 0|1) : ;; *) REENTRANT=1 ;; esac
 
-# Every branch below sets TWO strings, not one (0.44.5 — extends the floor's own audience split,
-# below, to the rest of remind(); see the header note by the floor for why the split exists at all).
-# MSG = short, Spanish, human-facing — one sentence, same register as the floor's line, and it
-# always carries the literal "(${DETAIL})" the branch classifier greps for. AGENT_MSG = the
-# technical, English text that used to be the ONLY message this case produced — moved verbatim,
-# content unchanged, just renamed.
+# Every branch below sets TWO variables, MSG and AGENT_MSG (0.44.5 — extends the floor's own
+# audience split, below, to the rest of remind()). MOST branches still carry two DIFFERENT strings:
+# MSG = short, Spanish, human-facing, always carrying the literal "(${DETAIL})" the branch classifier
+# greps for; AGENT_MSG = technical, English, unchanged content.
+# EXCEPTION (0.44.8, pilot on 2 branches — completion-review:stale-terminal-action-after-close and
+# completion-review:model-different-needs-nonunknown-self-report): the split assumed additionalContext
+# was invisible to the human on a Stop hook. The official hooks reference says the opposite —
+# Stop/SubagentStop additionalContext "is shown in the transcript as hook feedback", literally
+# labeled "Stop hook feedback" — so shortening only AGENT_MSG never reduced what the human saw. Those
+# two branches now set AGENT_MSG="$MSG": ONE short message in both fields, pointing at the matching
+# SKILL.md section instead of re-deriving the instruction inline. See memory/_pendientes.md
+# p-a95b61154a for the finding and CHANGELOG [0.44.8]. The other branches below are UNCHANGED and
+# still keep the two-string split until/unless a future release extends this collapse to them.
 case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
     MSG="Un revisor independiente marcó un problema sin resolver (${DETAIL}) — el cierre no lo puede pasar por alto todavía."
