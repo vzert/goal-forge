@@ -677,16 +677,26 @@ def stale_suite(gate):
 # new subprocess helper — it already extracts systemMessage/additionalContext/reason correctly and is
 # tested by the floor cases above; only the assertions here are new.
 AUDIENCE_SPLIT_CASES = [
-    # (name, lam, turns, enforce, must_be_in_system, must_be_in_agent)
+    # (name, lam, turns, enforce, must_be_in_system, must_be_in_agent, unified)
+    # unified=False (default, 0.44.5 shape): systemMessage (short, Spanish, human) MUST differ from
+    # additionalContext/reason (technical, English, agent) — the original split assumption.
+    # unified=True (0.44.8 pilot, two branches only): the split was retired for these — the official
+    # hooks reference confirms additionalContext on a Stop hook is ALWAYS shown to the human as
+    # "Stop hook feedback", so a separate technical string never hid anything; both fields now carry
+    # the SAME short message, pointing at SKILL.md instead of re-deriving the full instruction here.
+    # See memory/_pendientes.md p-a95b61154a for the finding this reverses.
     ("audience-absent-default", SPEC + "I did the work.", None, False,
-     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared"),
+     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared", False),
     ("audience-absent-ENFORCE", SPEC + "I did the work.", None, True,
-     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared"),
+     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared", False),
     ("audience-closed-over-break", SPEC + CR_ADV + V_BREAK_A, None, False,
-     "Un revisor independiente marcó un problema sin resolver", "cannot close over it as-is"),
-    ("audience-model-diff-unknown", SPEC + CR_ADV_DIFF + V_HOLD, None, False,
-     "no se pudo confirmar por formato", "OUTER grammar this gate reads"),
+     "Un revisor independiente marcó un problema sin resolver", "cannot close over it as-is", False),
+    ("audience-model-diff-unknown-UNIFIED", SPEC + CR_ADV_DIFF + V_HOLD, None, False,
+     "no se pudo confirmar por formato", "SKILL.md, «Completion-review declaration»", True),
 ]
+# audience-stale-terminal-UNIFIED lives with the staleness backstop suite below (run_stale_audience),
+# not here — the stale-terminal-action-after-close DETAIL only fires from the real git/transcript
+# fixture stale_repo()/stale_transcript() build, not from a bare last_assistant_message string.
 
 
 def run_audience_split(gate, name, lam, turns, enforce):
@@ -707,7 +717,7 @@ def run_audience_split(gate, name, lam, turns, enforce):
 
 def audience_split_suite(gate):
     return [(name,) + run_audience_split(gate, name, lam, turns, enforce)
-            for name, lam, turns, enforce, _, _ in AUDIENCE_SPLIT_CASES]
+            for name, lam, turns, enforce, _, _, _ in AUDIENCE_SPLIT_CASES]
 
 
 # --- general parked-turn silence (0.44.5) -----------------------------------------------------------
@@ -855,12 +865,43 @@ def main():
     print("\n--- audience split: short Spanish systemMessage vs technical additionalContext/reason ---")
     audience_failures = []
     for i, (name, system, agent) in enumerate(audience_split_suite(a.gate)):
-        _, _, _, _, want_system, want_agent = AUDIENCE_SPLIT_CASES[i]
-        ok = (want_system in system and want_agent in agent and system != agent and system)
+        _, _, _, _, want_system, want_agent, unified = AUDIENCE_SPLIT_CASES[i]
+        same_check = (system == agent) if unified else (system != agent)
+        ok = bool(want_system in system and want_agent in agent and same_check and system)
         if not ok:
             audience_failures.append("%s: system=%r agent=%r" % (name, system[:80], agent[:80]))
-        print("%-30s sys=%-60s agentlen=%-4d%s"
+        print("%-38s sys=%-60s agentlen=%-4d%s"
               % (name, system[:60], len(agent), "" if ok else "   <-- FAILS"))
+
+    # audience-stale-terminal-UNIFIED — reuses stale-01's own git/transcript fixture, the only way to
+    # actually fire completion-review:stale-terminal-action-after-close (see comment above
+    # AUDIENCE_SPLIT_CASES). 0.44.8: this branch is the other half of the pilot collapse; systemMessage
+    # and additionalContext/reason must now be the SAME short, SKILL.md-pointing text.
+    name, _, events, lam = STALE_CASES[0]
+    assert name.startswith("stale-01"), "STALE_CASES[0] must stay stale-01 for this reuse to be valid"
+    # Own repo dir ("aud-s01"), not stale_suite()'s "s01" — that one is already built by the time
+    # this section runs (staleness backstop prints first), and stale_repo() doesn't tolerate a
+    # pre-existing work dir.
+    repo = stale_repo("aud-s01", {"src/app.js": "code"}, T2)
+    tpath = stale_transcript(events, "aud-stale-01")
+    payload = {"transcript_path": tpath, "cwd": repo, "last_assistant_message": lam}
+    # CLAUDE_PLUGIN_ROOT required for the gate's terminal_actions.py import — see run_stale()'s own
+    # comment above; without it step 5b silently no-ops and this always reads "silent".
+    env = dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"),
+              GOAL_GATE_ENFORCE="")
+    out = subprocess.run(["bash", a.gate], input=json.dumps(payload), capture_output=True,
+                         text=True, env=env).stdout.strip()
+    d = json.loads(out) if out else {}
+    sys_msg = d.get("systemMessage") or ""
+    agent_msg = d.get("hookSpecificOutput", {}).get("additionalContext") or (d.get("reason") or "")
+    want = "ese cierre no cubre esta acción"
+    ok = bool(want in sys_msg and sys_msg == agent_msg and sys_msg)
+    print("%-38s sys=%-60s agentlen=%-4d%s"
+          % ("audience-stale-terminal-UNIFIED", sys_msg[:60], len(agent_msg), "" if ok else "   <-- FAILS"))
+    if not ok:
+        audience_failures.append("audience-stale-terminal-UNIFIED: system=%r agent=%r"
+                                 % (sys_msg[:80], agent_msg[:80]))
+
     if audience_failures:
         print("\nAUDIENCE-SPLIT FAILURES: %d\n  %s" % (len(audience_failures), "\n  ".join(audience_failures)))
         return 1

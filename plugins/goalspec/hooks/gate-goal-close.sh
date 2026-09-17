@@ -602,12 +602,19 @@ case "$DETAIL" in
     AGENT_MSG="$MSG"
     ;;
   completion-review:model-different-needs-nonunknown-self-report)
-    MSG="El aviso de verificación con un modelo distinto no se pudo confirmar por formato (${DETAIL}) — no es un defecto grave, falta ajustar cómo se cita la línea."
-    AGENT_MSG="Goal-spec present but your model=different claim isn't backed by a matching [ADVERSARY-MODEL: …] line (${DETAIL}). Three distinct causes need three different responses: (1) the adversary genuinely self-reported UNKNOWN or the same model as yours — say model=same, that is the honest degrade, not a defect; or (2) the marker line doesn't match the OUTER grammar this gate reads — it must be its OWN line, in PLAIN TEXT: no bold/markdown wrapping (\`**[ADVERSARY-MODEL: …]**\` does not match) and nothing appended after the closing \`]\` on that same line (a trailing citation or comment breaks the match too, even a real one); or (3) the marker's INNER grammar is broken — the id field after the \`/\` must be exactly one whitespace-free token (the bare id, e.g. \`claude-opus-5\` or \`claude-opus-5[1m]\`), never prose. If the adversary wants to disclose an independence caveat (e.g. 'I may be the same tier as the executor'), that belongs on the line AFTER the marker, in ordinary prose — never inside the brackets, and never appended to the id field. Re-quote the adversary's [ADVERSARY-MODEL: …] line verbatim, alone and unformatted, on its own line, with a bare \`<name> / <id>\` — then this check passes."
+    # 0.44.8 — collapsed from two divergent strings (MSG/AGENT_MSG) to one. The split assumed
+    # additionalContext was an agent-only channel on a Stop hook; the official hooks reference says
+    # the opposite — it's the exact field the transcript labels "Stop hook feedback" and shows the
+    # human. So shortening only AGENT_MSG never reduced what the human actually saw. One message now,
+    # short enough for both, pointing at SKILL.md's own grammar spec instead of re-deriving it here —
+    # the agent already carries that file. See memory/_pendientes.md p-a95b61154a for the finding.
+    MSG="model=different no se pudo confirmar por formato (${DETAIL}) — no es defecto grave. Si el adversario reportó UNKNOWN o el mismo modelo, usa model=same. Si no, vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual — sin negritas, nada después del \`]\`. Ver SKILL.md, «Completion-review declaration»."
+    AGENT_MSG="$MSG"
     ;;
   completion-review:stale-terminal-action-after-close)
-    MSG="Hubo una acción difícil de deshacer (push, merge o despliegue) después del último cierre declarado (${DETAIL}) — falta revisarla aparte."
-    AGENT_MSG="Your operative [COMPLETION-REVIEW: …] was declared BEFORE what looks like a terminal action (push to a protected branch, merge, deploy/publish, or a destructive command) that ran afterward in this same session, and the files it touched are not all low-risk (memory/docs/checkpoint) content (${DETAIL}). A completion-review closes the spec it was written against, not the session — a NEW terminal action needs its OWN review, not the old one standing in for it (see SKILL.md, \"A completion-review closes the spec, not the session\"). Re-enter targeted: 4b (ratify, naming THIS action's scope/blast-radius) then 6 (adversary) for this action specifically, then declare a FRESH [COMPLETION-REVIEW: …]. If this really is low-risk content that the exemption failed to recognize, say so and add \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) to proceed."
+    # 0.44.8 — same collapse as above, same reason.
+    MSG="Hubo una acción difícil de deshacer después del último cierre declarado (${DETAIL}) — ese cierre no cubre esta acción. Repite 4b + 6 para ESTA acción y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] si de verdad es bajo riesgo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
+    AGENT_MSG="$MSG"
     ;;
   *)
     MSG="Sigue sin haber un cierre formal de este trabajo (${DETAIL}) — la decisión de cerrarlo o seguir es tuya."

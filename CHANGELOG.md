@@ -6,6 +6,38 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.8] - 2026-09-17
+
+### Piloto: el split MSG/AGENT_MSG se retira en 2 ramas de `gate-goal-close.sh` — la premisa era falsa
+
+**Reportado y confirmado por el usuario, mismo hilo que 0.44.7**: el split de audiencia (`systemMessage`
+corto en español para el humano, `hookSpecificOutput.additionalContext` técnico en inglés para el
+agente) asumía que `additionalContext` era invisible para el humano en un hook `Stop`. La
+documentación oficial de Claude Code dice lo contrario, textual: en `Stop`/`SubagentStop`,
+`additionalContext` **"is shown in the transcript as hook feedback"** y **"the transcript labels it
+'Stop hook feedback'"**. El split nunca ocultó nada — solo acortaba el string que el humano de todas
+formas veía completo en el otro campo.
+
+**Cambio, piloto de 2 ramas** (las dos que el usuario reportó viendo en vivo):
+`completion-review:stale-terminal-action-after-close` y
+`completion-review:model-different-needs-nonunknown-self-report` ahora emiten **un solo mensaje**,
+corto, en `systemMessage` Y `additionalContext` por igual — apuntando a la sección correspondiente de
+`SKILL.md` (`«A completion-review closes the spec, not the session»` y
+`«Completion-review declaration»`) en vez de re-derivar la instrucción técnica completa inline. El
+agente ya carga `SKILL.md` en contexto cada sesión, así que no se pierde información, solo se deja de
+duplicarla en el hook. El resto de las ramas de `remind()` (incluida la del piso de convergencia,
+streak≥3) **no se tocaron** — quedan con el split viejo hasta que se decida extender el patrón.
+
+**Verificación**: `test/gate-branches.py --compare` contra el script pre-edición, en modo default y
+con `GOAL_GATE_ENFORCE=1` — `parity OK, 45 branches, 0 unexpected` en ambos: ninguna rama de
+clasificación cambió, solo el contenido de texto de las dos ramas tocadas. El suite propio de
+audience-split se actualizó para reflejar el nuevo diseño (`systemMessage == additionalContext` para
+estas dos ramas específicamente, marcadas `UNIFIED`; el resto sigue exigiendo que difieran).
+
+**Sigue sin observar en vivo**: si el ruido humano-percibido de verdad baja con esto — el mecanismo
+ahora es honesto sobre lo que hace (ya no promete ocultar nada), pero el mensaje sigue siendo visible,
+solo más corto. Anotado en `memory/_pendientes.md` `p-a95b61154a`.
+
 ## [0.44.7] - 2026-09-17
 
 ### `report-adversary-writes.sh` gana el mismo split de audiencia que `gate-goal-close.sh` (0.44.5)
