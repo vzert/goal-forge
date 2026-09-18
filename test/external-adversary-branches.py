@@ -314,7 +314,19 @@ def classify(res, case_name):
         seen = os.path.realpath(m.group(1).strip()) if m else "?"
         gcd_m = re.search(r"STUB-GCD=(.+)", out)
         gcd = os.path.realpath(gcd_m.group(1).strip()) if gcd_m else "?"
-        repo_git = os.path.realpath(os.path.join(REPO, ".git"))
+        # NOT os.path.join(REPO, ".git"): when REPO is itself a linked worktree (e.g. this suite
+        # run from inside one — exactly what happens when an external adversary reviews the fix
+        # from its own isolated copy), REPO/.git is a FILE (a gitdir pointer), not the shared
+        # common dir, so that join silently produced the wrong path and this branch fell through
+        # to the generic +cwd: catch-all. Ask git for REPO's real common dir instead — correct
+        # whether REPO is the main worktree or a linked one. Confirmed break, 2026-09-17: the
+        # external adversary reviewing THIS fix ran from inside the isolated copy it was handed,
+        # and this suite (run from there) inherited the same mismatch.
+        repo_git = os.path.realpath(subprocess.run(
+            ["git", "-C", REPO, "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, check=True).stdout.strip())
+        if not os.path.isabs(repo_git):
+            repo_git = os.path.realpath(os.path.join(REPO, repo_git))
         if seen == os.path.realpath(REPO):
             branch += "+root"  # isolation unavailable — un-isolated fallback landed at REPO itself
         elif gcd == repo_git and seen.startswith(repo_git + os.sep):
