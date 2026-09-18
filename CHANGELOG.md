@@ -61,10 +61,14 @@ compartido, cuando `REPO` es en sí mismo un worktree enlazado — y lo document
 que el adversario externo reportó. **Un tercer adversario (subagente, Opus, fuera de cualquier
 sandbox) encontró que esa atribución era falsa** (`unfalsified=1`): ese bug de `REPO/.git` produce
 `pass+cwd:...`, nunca `pass+root` — lo reprodujo directamente, con y sin el fix, en un worktree
-anidado sin sandbox. `pass+root` solo puede venir de que el propio `git worktree add` del hook haya
-fallado; eso es lo que realmente le pasa al adversario externo en AMBAS rondas (mismo `Operation not
-permitted`, causa probable pero no confirmada: su sandbox solo le da escritura bajo su propio
-`workdir`, y `.git/worktrees/` queda fuera de eso). Es decir: dos defectos reales y distintos, no
+anidado sin sandbox. `pass+root` viene de que CUALQUIER paso del intento de aislamiento no se
+complete (resolver el `git-common-dir`, `mktemp`, `rmdir`, el propio `git worktree add`, o
+materializar el estado revisado ahí dentro) — no solo de `worktree add`, corrección que una CUARTA
+ronda (externo, codex, delta acotado a la corrección anterior) encontró todavía redactada como
+exclusiva. En los dos casos observados, específicamente, sí fue `worktree add` el que falló; eso es
+lo que realmente le pasa al adversario externo en AMBAS rondas (mismo `Operation not permitted`,
+causa probable pero no confirmada: su sandbox solo le da escritura bajo su propio `workdir`, y
+`.git/worktrees/` queda fuera de eso). Es decir: dos defectos reales y distintos, no
 uno — el del `REPO/.git` (arreglado, confirmado con la reproducción sin sandbox) y el del sandbox
 del adversario externo negando el worktree anidado (no es un defecto del hook; es del entorno del
 revisor). Documentado con la atribución correcta en el propio archivo de test. La aserción estricta
@@ -92,6 +96,20 @@ está disponible" sin acotar a qué entorno], no ningún código.)
 Sonnet 5): confirmó por su cuenta, corriendo el suite y la reproducción anidada él mismo, que la
 disposición del ejecutor sobre el hallazgo del sandbox era correcta, y encontró los dos defectos de
 arriba. Cero hallazgos falsos de su parte.
+
+**Ronda 4, acotada al fix de la ronda 3** (externo, codex, cuarta ronda seguida con `break`):
+`ungrounded=0 unfalsified=1 incomplete=2 unsafe=0`. Un hallazgo real y corregido: la redacción decía
+que `pass+root` "solo puede venir" de que fallara `worktree add`, cuando en realidad cualquier paso
+del intento de aislamiento sin completar cae en la misma rama — corregido arriba y en el propio
+archivo de test. Los otros dos (`incomplete`) son el MISMO artefacto de sandbox ya adjudicado en la
+ronda 3 por un backend sin sandbox: codex no pudo correr `test/external-adversary-branches.py` limpio
+ni `manifest-checks.py` (por las mismas dos razones ya documentadas — worktree anidado denegado,
+PyYAML ausente en su entorno) y contó eso como incompleto pese a que el payload de esta ronda ya
+decía explícitamente que la ronda 3 había confirmado la mecánica fuera de cualquier sandbox. Piso de
+convergencia alcanzado (4 `break` seguidos): en vez de correr una quinta ronda contra el mismo
+backend que no puede evadir su propio sandbox para este caso puntual, se cierra con
+`[GOAL-CLOSE-WAIVED]` sobre ese residuo — ya verificado, dos veces, por un backend sin esa
+limitación (el ejecutor mismo, sin sandbox, y el subagente Opus, ronda 3).
 
 ## [0.44.8] - 2026-09-17
 

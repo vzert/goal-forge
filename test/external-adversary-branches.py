@@ -322,13 +322,17 @@ def classify(res, case_name):
         # (an UNSANDBOXED nested worktree, pre-fix hook) and independently reproduced again by a
         # subagent adversary (Opus) running outside any sandbox.
         # CORRECTION, same day: this join bug is NOT what caused the external adversary's own
-        # `pass+root` reports in rounds 1 and 2 — that symptom can only come from the branch below
-        # (`seen == REPO`, meaning the hook's OWN worktree-add attempt failed), which this join fix
-        # cannot touch. The executor's original comment here claimed otherwise; a follow-up
-        # adversary round (Opus, fresh context, outside codex's sandbox) proved it false by
+        # `pass+root` reports in rounds 1 and 2 — that symptom comes from the branch below (`seen
+        # == REPO`, REVIEW_ROOT staying at REPO_ROOT because SOME step of the isolation attempt did
+        # not complete — the hook's `worktree add` call itself, or an earlier prerequisite:
+        # git-common-dir resolution, `mktemp`, `rmdir`, or `_adv_materialize_reviewed_state`; ANY of
+        # those failing takes this same fallback path), which this join fix cannot touch. The
+        # executor's original comment here claimed the join fix explained the symptom; a follow-up
+        # adversary round (Opus, fresh context, outside codex's sandbox) proved that false by
         # reproducing the PRE-fix hook from inside an unsandboxed nested worktree and getting
         # `pass+cwd:...`, never `pass+root`. Two separate, real defects, not one — see the comment
-        # on the `+root` branch below for what actually explains rounds 1 and 2.
+        # on the `+root` branch below for what actually explains rounds 1 and 2 (worktree add
+        # specifically, in those two observed cases — not asserted as the only possible cause).
         repo_git = os.path.realpath(subprocess.run(
             ["git", "-C", REPO, "rev-parse", "--git-common-dir"],
             capture_output=True, text=True, check=True).stdout.strip())
@@ -336,11 +340,15 @@ def classify(res, case_name):
             repo_git = os.path.realpath(os.path.join(REPO, repo_git))
         if seen == os.path.realpath(REPO):
             # isolation unavailable, un-isolated fallback landed at REPO itself — CORRECT here, not
-            # only a degraded case: this branch is EXPECTED (not a regression) when the HOOK'S OWN
-            # `git worktree add` call fails, e.g. from inside a write-restricted sandbox that cannot
-            # create a second linked worktree. THIS is what actually explains the external
-            # adversary's `pass+root` in rounds 1 and 2 (2026-09-17) — not the git-common-dir join
-            # fix above, which cannot produce this branch (see the CORRECTION comment there).
+            # only a degraded case: this branch is EXPECTED (not a regression) whenever ANY step of
+            # the hook's isolation attempt does not complete (common-dir resolution, `mktemp`,
+            # `rmdir`, the `git worktree add` call itself, or materializing the reviewed state into
+            # it), e.g. from inside a write-restricted sandbox that cannot create a second linked
+            # worktree. In the two observed cases below THIS is what actually explains the external
+            # adversary's `pass+root` in rounds 1 and 2 (2026-09-17) — specifically `worktree add`
+            # failing, not the git-common-dir join fix above, which cannot produce this branch (see
+            # the CORRECTION comment there) — but the branch itself is reached by any of the steps
+            # named above, not only that one.
             # Observed live: the external adversary reviewing this fix, itself already running from
             # an isolated review copy, hit `Operation not permitted` attempting the nested worktree
             # its own reproduction needed and correctly fell back here. (Likely cause, NOT
