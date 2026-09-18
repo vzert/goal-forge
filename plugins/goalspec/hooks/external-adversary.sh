@@ -419,10 +419,15 @@ if [ -n "$REPO_ROOT" ] && git -C "$REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; th
     GIT_COMMON_DIR=$(cd "$REPO_ROOT" && cd "$_GCD_REL" 2>/dev/null && pwd)
   fi
   if [ -n "$GIT_COMMON_DIR" ] && [ -d "$GIT_COMMON_DIR" ]; then
-    # A prior run killed before its EXIT trap ran (SIGKILL, a crash) leaves a stale
-    # goalspec-review-* registration and directory behind — harmless (git status/ls-files never
-    # see anything under .git/) but worth reclaiming since it costs nothing here.
-    git -C "$REPO_ROOT" worktree prune >/dev/null 2>&1
+    # Deliberately NOT paired with `git worktree prune`: bare `prune` has no name filter and
+    # removes ANY stale worktree registration in this repo, not only ones this hook created — a
+    # worktree the operator has elsewhere (e.g. on an unmounted device or network share; git's own
+    # docs name exactly this and prescribe `worktree lock` against it) loses its administrative
+    # data immediately, with no grace period `git gc`'s own default (`gc.worktreePruneExpire`,
+    # 3 months) gives it. Tried and reverted, 2026-09-17: an external adversary reproduced the
+    # data-loss path directly. A prior run killed before its EXIT trap ran (SIGKILL, a crash)
+    # leaves a stale goalspec-review-* registration and directory behind — harmless (nothing under
+    # .git/ is visible to `git status`/`ls-files`) and left alone rather than risk this.
     WORKTREE_DIR=$(mktemp -d "$GIT_COMMON_DIR/goalspec-review-XXXXXX" 2>/dev/null)
     if [ -n "$WORKTREE_DIR" ]; then
       rmdir "$WORKTREE_DIR" 2>/dev/null

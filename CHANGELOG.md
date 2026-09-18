@@ -52,26 +52,46 @@ mejor diagnosticada); los 23 casos previos se mantienen sin cambio de rama (`09`
 reflejar la nueva forma correcta: el partner corre bajo el `git-common-dir` del repo, no literalmente
 en su raíz). Las diez suites de rama del proyecto más `manifest-checks.py` corrieron en verde.
 
-**El adversario externo (Codex/GPT-5) rompió la primera versión** (`ungrounded=1 incomplete=1`): el
-caso `09` comparaba `REPO/.git` literal contra el `git-common-dir` real — correcto cuando `REPO` es
-el checkout principal, pero `REPO/.git` es un ARCHIVO (puntero a gitdir), no el directorio compartido,
-cuando `REPO` es en sí mismo un worktree enlazado — exactamente la situación en la que cae el propio
-adversario externo al revisar este cambio desde su copia aislada. Corregido pidiéndole a git su
-`--git-common-dir` real en vez de concatenar `.git` a mano; reproducido a mano (worktree anidado
-real, no solo el caso sintético) antes y después del fix. Una ronda acotada al delta confirmó que el
-fix resuelve el caso normal, pero encontró un segundo matiz real (no un defecto de código): dentro
-del propio sandbox restringido del adversario externo, crear un worktree anidado por segunda vez
-puede fallar con `Operation not permitted` (el mensaje textual que devolvió; la causa más probable,
-NO confirmada aquí, es que su sandbox solo le da escritura bajo su propio `workdir` y `.git/worktrees/`
-queda fuera de eso — hipótesis razonable, no verificada de forma independiente) — ahí el hook cae
-correctamente al modo sin aislar (`pass+root`), el comportamiento fail-open documentado, no una
-falla silenciosa. La aserción estricta del caso `09`
-se deja como está porque es la que protege un entorno normal (CI, un checkout sin sandbox) — un
-comentario en el propio archivo documenta este matiz para no reabrirlo como si fuera nuevo.
-(El otro hallazgo de esa misma ronda — `manifest-checks.py` fallando por falta de PyYAML — es la
-MISMA clase que el hallazgo idéntico documentado más abajo, en 0.44.5: limitación del sandbox del
-propio verificador, no del cambio; corregida aquí solo la imprecisión de la afirmación original
-["PyYAML está disponible" sin acotar a qué entorno], no ningún código.)
+**El adversario externo (Codex/GPT-5) rompió la primera versión, dos rondas seguidas**
+(`ungrounded=1 incomplete=1` ambas veces): las dos reportaron el caso `09` como `pass+root` en vez
+de `pass+isolatedroot`. El ejecutor arregló un defecto real que encontró al reproducir a mano —
+el caso `09` comparaba `REPO/.git` literal contra el `git-common-dir` real, correcto cuando `REPO`
+es el checkout principal, pero `REPO/.git` es un ARCHIVO (puntero a gitdir), no el directorio
+compartido, cuando `REPO` es en sí mismo un worktree enlazado — y lo documentó como la causa de lo
+que el adversario externo reportó. **Un tercer adversario (subagente, Opus, fuera de cualquier
+sandbox) encontró que esa atribución era falsa** (`unfalsified=1`): ese bug de `REPO/.git` produce
+`pass+cwd:...`, nunca `pass+root` — lo reprodujo directamente, con y sin el fix, en un worktree
+anidado sin sandbox. `pass+root` solo puede venir de que el propio `git worktree add` del hook haya
+fallado; eso es lo que realmente le pasa al adversario externo en AMBAS rondas (mismo `Operation not
+permitted`, causa probable pero no confirmada: su sandbox solo le da escritura bajo su propio
+`workdir`, y `.git/worktrees/` queda fuera de eso). Es decir: dos defectos reales y distintos, no
+uno — el del `REPO/.git` (arreglado, confirmado con la reproducción sin sandbox) y el del sandbox
+del adversario externo negando el worktree anidado (no es un defecto del hook; es del entorno del
+revisor). Documentado con la atribución correcta en el propio archivo de test. La aserción estricta
+del caso `09` (`pass+isolatedroot`) se deja como está porque protege un entorno normal (CI, un
+checkout sin sandbox) — verificado limpio, sin sandbox, dos veces independientes (ejecutor y el
+subagente Opus).
+
+**El mismo subagente Opus encontró un segundo defecto real** (`unsafe=1`): un follow-up agregó
+`git worktree prune` sin filtro de nombre antes de crear la copia aislada, pensado solo para
+limpiar registros propios (`goalspec-review-*`) huérfanos de una corrida interrumpida — pero `prune`
+sin filtro borra CUALQUIER worktree del repo que git considere obsoleto, sin período de gracia,
+incluyendo uno del propio usuario en un disco desmontado o una red compartida (exactamente el
+escenario que la documentación de git nombra y para el que recomienda `worktree lock`). Reproducido
+por el adversario: el registro y los datos administrativos de un worktree ajeno desaparecen de
+inmediato y `worktree repair` no los recupera. Revertido — el hook ya no llama `prune`; el registro
+huérfano que dejaría una corrida interrumpida se queda ahí, inofensivo (nada bajo `.git/` es visible
+a `git status`/`ls-files`), en vez de arriesgar el repo de otra persona.
+
+(El hallazgo de la ronda 2 sobre `manifest-checks.py` fallando por falta de PyYAML es la MISMA clase
+que el hallazgo idéntico documentado más abajo, en 0.44.5: limitación del sandbox del propio
+verificador, no del cambio; corregida ahí solo la imprecisión de la afirmación original ["PyYAML
+está disponible" sin acotar a qué entorno], no ningún código.)
+
+**Ronda 3 completa** (subagente, Opus 5, independiente por contexto y por modelo — el ejecutor es
+Sonnet 5): confirmó por su cuenta, corriendo el suite y la reproducción anidada él mismo, que la
+disposición del ejecutor sobre el hallazgo del sandbox era correcta, y encontró los dos defectos de
+arriba. Cero hallazgos falsos de su parte.
 
 ## [0.44.8] - 2026-09-17
 

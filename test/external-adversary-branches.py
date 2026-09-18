@@ -315,13 +315,20 @@ def classify(res, case_name):
         gcd_m = re.search(r"STUB-GCD=(.+)", out)
         gcd = os.path.realpath(gcd_m.group(1).strip()) if gcd_m else "?"
         # NOT os.path.join(REPO, ".git"): when REPO is itself a linked worktree (e.g. this suite
-        # run from inside one — exactly what happens when an external adversary reviews the fix
-        # from its own isolated copy), REPO/.git is a FILE (a gitdir pointer), not the shared
-        # common dir, so that join silently produced the wrong path and this branch fell through
-        # to the generic +cwd: catch-all. Ask git for REPO's real common dir instead — correct
-        # whether REPO is the main worktree or a linked one. Confirmed break, 2026-09-17: the
-        # external adversary reviewing THIS fix ran from inside the isolated copy it was handed,
-        # and this suite (run from there) inherited the same mismatch.
+        # run from inside one), REPO/.git is a FILE (a gitdir pointer), not the shared common dir,
+        # so that join silently produced the wrong path and this branch fell through to the
+        # generic +cwd: catch-all. Ask git for REPO's real common dir instead — correct whether
+        # REPO is the main worktree or a linked one. Confirmed real, 2026-09-17: reproduced by hand
+        # (an UNSANDBOXED nested worktree, pre-fix hook) and independently reproduced again by a
+        # subagent adversary (Opus) running outside any sandbox.
+        # CORRECTION, same day: this join bug is NOT what caused the external adversary's own
+        # `pass+root` reports in rounds 1 and 2 — that symptom can only come from the branch below
+        # (`seen == REPO`, meaning the hook's OWN worktree-add attempt failed), which this join fix
+        # cannot touch. The executor's original comment here claimed otherwise; a follow-up
+        # adversary round (Opus, fresh context, outside codex's sandbox) proved it false by
+        # reproducing the PRE-fix hook from inside an unsandboxed nested worktree and getting
+        # `pass+cwd:...`, never `pass+root`. Two separate, real defects, not one — see the comment
+        # on the `+root` branch below for what actually explains rounds 1 and 2.
         repo_git = os.path.realpath(subprocess.run(
             ["git", "-C", REPO, "rev-parse", "--git-common-dir"],
             capture_output=True, text=True, check=True).stdout.strip())
@@ -329,16 +336,23 @@ def classify(res, case_name):
             repo_git = os.path.realpath(os.path.join(REPO, repo_git))
         if seen == os.path.realpath(REPO):
             # isolation unavailable, un-isolated fallback landed at REPO itself — CORRECT here, not
-            # only a degraded case: this branch is EXPECTED (not a regression) when this suite runs
-            # from inside a write-restricted sandbox that cannot create a second linked worktree.
-            # Observed live, 2026-09-17, delta-scoped round: the external adversary reviewing THIS
-            # fix, itself already running from an isolated review copy, hit `Operation not
-            # permitted` attempting the nested reproduction and correctly fell back here. (Likely
-            # cause, NOT independently confirmed: its sandbox grants write access only under its own
-            # workdir, and git needs to write into the repo's shared .git/worktrees/, outside that —
-            # a plausible read of the error, not a verified mechanism.) This suite's own `expect` for
-            # case 09
-            # stays `pass+isolatedroot` on purpose — that is what MUST hold in a normal, unsandboxed
+            # only a degraded case: this branch is EXPECTED (not a regression) when the HOOK'S OWN
+            # `git worktree add` call fails, e.g. from inside a write-restricted sandbox that cannot
+            # create a second linked worktree. THIS is what actually explains the external
+            # adversary's `pass+root` in rounds 1 and 2 (2026-09-17) — not the git-common-dir join
+            # fix above, which cannot produce this branch (see the CORRECTION comment there).
+            # Observed live: the external adversary reviewing this fix, itself already running from
+            # an isolated review copy, hit `Operation not permitted` attempting the nested worktree
+            # its own reproduction needed and correctly fell back here. (Likely cause, NOT
+            # independently confirmed: its sandbox grants write access only under its own workdir,
+            # and git needs to write into the repo's shared .git/worktrees/, outside that — a
+            # plausible read of the error, not a verified mechanism.) A THIRD, independent adversary
+            # round (subagent, Opus, running outside any sandbox) confirmed the isolation mechanism
+            # itself is sound: both a normal run and a hand-built nested-worktree reproduction, run
+            # unsandboxed, reliably reach `pass+isolatedroot` — this `+root` fallback is specific to
+            # a write-restricted reviewer, not a property of the shipped hook. This suite's own
+            # `expect` for case 09 stays `pass+isolatedroot` on purpose — that is what MUST hold in a
+            # normal, unsandboxed
             # environment (every real CI run, every ordinary dev checkout), and weakening it would
             # hide a genuine future regression there. A sandboxed reviewer seeing `pass+root`
             # instead is this fallback working as designed, not a new defect to re-report.
