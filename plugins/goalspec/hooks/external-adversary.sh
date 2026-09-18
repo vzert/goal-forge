@@ -311,7 +311,10 @@ if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || ec
 # here (it is run state, not a deliverable) and is therefore hashed explicitly; other ignored paths
 # are out of reach. (2) A write outside the repo root is not covered, by design: TMPDIR is where the
 # partner is told to put scratch. (3) A partner that changes a file and changes it back is a no-op
-# to this check, and that is the correct answer — nothing was left modified.
+# to this check, and that is the correct answer — nothing was left modified. (4) Isolation (below)
+# only protects reads the partner makes RELATIVE to its cwd — a payload pointer that names an
+# ABSOLUTE path under the live repo root still resolves there, bypassing isolation for that one
+# read; narrows to the "paths, not prose, relative-in-repo" calling convention holding, not removed.
 _adv_fingerprint() {
   # $1 = repo root. Prints one line per fact; the caller diffs two of these captures.
   [ -z "${1:-}" ] && return 0
@@ -334,10 +337,111 @@ _adv_fingerprint() {
     printf '%s %s\n' "$(git -C "$1" hash-object -- "$_f" 2>/dev/null || echo unreadable)" "${_f#"$1"/}"
   done
 }
-# Captured OUTSIDE the `set +e` region on purpose: this must run before the partner does, and a
-# failure here is a broken instrument, not a finding. `|| true` keeps a git-less host fail-open —
-# REPO_ROOT is empty there and the function returns immediately anyway.
-FP_BEFORE=$(_adv_fingerprint "$REPO_ROOT" 2>/dev/null || true)
+# --- Isolate the reviewed state in a private linked worktree (best-effort, fail-open) ------------
+# The rail above measures MUTATION by diffing this fingerprint before/after — but a fingerprint of
+# the LIVE, shared REPO_ROOT cannot tell "the partner wrote this" from "anything else sharing this
+# working tree wrote this during the same window": another local session checkpointing (a plain
+# `git commit`), a background hook, a human's own concurrent edit. Observed live 2026-09-17/18: a
+# sibling session's routine checkpoint commit landed on a shared repo mid-round and was reported as
+# "the partner MODIFIED the repository" — a false accusation of the adversary for work a different
+# local process did. Materializing the exact reviewed state (staged + unstaged + untracked + the
+# gitignored .goalspec/ run state — the same set _adv_fingerprint already enumerates) into a
+# PRIVATE linked worktree removes the shared-tree precondition entirely: nothing else on this host
+# writes to that path, so a mutation found there is the partner's, full stop — no more heuristic
+# needed for that half.
+# Placed under the repo's own git-common-dir (never system /tmp): (1) `.git/` is never scanned by
+# `git status`/`ls-files`, so the scratch worktree cannot contaminate what it exists to protect, on
+# ANY repo, not only one with `.goalspec/` gitignored; (2) it is a physical descendant of REPO_ROOT,
+# which gives an external CLI's directory-trust resolution (see the codex sandbox advisory above)
+# the best available chance of inheriting the operator's own trust decision for this project — a
+# bet, not a verified guarantee, since no CLI's trust algorithm is queried here.
+# Fail-open, matching every other rail in this file: an unborn HEAD (no commits yet), a git too old
+# for `worktree add`, or any failure along the way falls back to reviewing REPO_ROOT directly —
+# today's un-isolated behavior, with the landed-commit note below as the remaining defense. Wrapped
+# in `set +e`/`set -e` rather than relied on via if-condition scoping alone, matching this file's
+# own convention elsewhere (around the partner invocation below) rather than trusting that nuance
+# identically across bash versions.
+_adv_materialize_reviewed_state() {
+  # $1 = live repo root (source), $2 = isolated worktree (already a clean checkout at HEAD). Copies
+  # exactly what _adv_fingerprint enumerates: unstaged tracked changes, untracked non-ignored files,
+  # staged changes (mirrored into $2's own index — every linked worktree keeps one separately), and
+  # the gitignored .goalspec/ run state. `--no-renames` on purpose: a rename becomes delete-old plus
+  # add-new to a NUL-delimited name-only scan, exactly how _adv_fingerprint itself already treats
+  # one — no separate rename-pair parsing to get wrong.
+  _src="$1"; _dst="$2"
+  _adv_cp_one() {
+    _d="$_dst/$1"
+    if [ -e "$_src/$1" ] || [ -L "$_src/$1" ]; then
+      mkdir -p "$(dirname "$_d")" && cp -p "$_src/$1" "$_d"
+    else
+      rm -f "$_d"
+    fi
+  }
+  git -C "$_src" diff --no-renames --name-only -z 2>/dev/null \
+    | while IFS= read -r -d '' _p; do _adv_cp_one "$_p" || return 1; done || return 1
+  git -C "$_src" ls-files -o --exclude-standard -z 2>/dev/null \
+    | while IFS= read -r -d '' _p; do _adv_cp_one "$_p" || return 1; done || return 1
+  git -C "$_src" diff --cached --no-renames --name-only -z 2>/dev/null \
+    | while IFS= read -r -d '' _p; do
+        _adv_cp_one "$_p" || return 1
+        if [ -e "$_dst/$_p" ]; then
+          git -C "$_dst" add -- "$_p" >/dev/null 2>&1 || return 1
+        else
+          git -C "$_dst" rm -q --cached -- "$_p" >/dev/null 2>&1 || true
+        fi
+      done || return 1
+  if [ -d "$_src/.goalspec" ]; then
+    mkdir -p "$_dst/.goalspec" || return 1
+    for _f in "$_src"/.goalspec/*; do
+      [ -f "$_f" ] || continue
+      cp -p "$_f" "$_dst/.goalspec/" || return 1
+    done
+  fi
+  return 0
+}
+
+REVIEW_ROOT="$REPO_ROOT"
+ISOLATED=0
+WORKTREE_DIR=""
+_adv_cleanup_worktree() {
+  if [ -n "$WORKTREE_DIR" ] && [ -d "$WORKTREE_DIR" ]; then
+    git -C "$REPO_ROOT" worktree remove --force "$WORKTREE_DIR" >/dev/null 2>&1 \
+      || rm -rf "$WORKTREE_DIR" 2>/dev/null || true
+  fi
+}
+trap _adv_cleanup_worktree EXIT
+
+set +e
+if [ -n "$REPO_ROOT" ] && git -C "$REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; then
+  _GCD_REL=$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null)
+  GIT_COMMON_DIR=""
+  if [ -n "$_GCD_REL" ]; then
+    GIT_COMMON_DIR=$(cd "$REPO_ROOT" && cd "$_GCD_REL" 2>/dev/null && pwd)
+  fi
+  if [ -n "$GIT_COMMON_DIR" ] && [ -d "$GIT_COMMON_DIR" ]; then
+    WORKTREE_DIR=$(mktemp -d "$GIT_COMMON_DIR/goalspec-review-XXXXXX" 2>/dev/null)
+    if [ -n "$WORKTREE_DIR" ]; then
+      rmdir "$WORKTREE_DIR" 2>/dev/null
+      if git -C "$REPO_ROOT" worktree add --detach -q "$WORKTREE_DIR" HEAD >/dev/null 2>&1 \
+         && _adv_materialize_reviewed_state "$REPO_ROOT" "$WORKTREE_DIR"; then
+        REVIEW_ROOT="$WORKTREE_DIR"
+        ISOLATED=1
+        cd "$WORKTREE_DIR"
+      else
+        echo "external-adversary: could not materialize an isolated review copy — reviewing $REPO_ROOT directly (un-isolated; same behavior as before this rail existed)." >&2
+        _adv_cleanup_worktree
+        WORKTREE_DIR=""
+      fi
+    fi
+  fi
+fi
+set -e
+
+# Captured OUTSIDE the `set +e` region above on purpose: this must run before the partner does, and
+# a failure here is a broken instrument, not a finding. `|| true` keeps a git-less host fail-open —
+# REVIEW_ROOT is empty there and the function returns immediately anyway.
+FP_BEFORE=$(_adv_fingerprint "$REVIEW_ROOT" 2>/dev/null || true)
+HEAD_BEFORE=$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)
 
 # Pipe the prompt to the external CLI on stdin. Some CLIs accept a prompt on stdin (codex exec,
 # claude -p); others want it as an argument (gemini -p) — wrap those in a small adapter.
@@ -375,9 +479,10 @@ MODEL_LINE=$(printf '%s' "$OUT" | grep -Eo '\[ADVERSARY-MODEL:[^]<>]+\]' | tail 
 set -e
 
 # READ-ONLY RAIL (verdict half). Name the paths whose content differs between the two captures.
-FP_AFTER=$(_adv_fingerprint "$REPO_ROOT" 2>/dev/null || true)
+FP_AFTER=$(_adv_fingerprint "$REVIEW_ROOT" 2>/dev/null || true)
+HEAD_AFTER=$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)
 MUTATED=""
-if [ -n "$REPO_ROOT" ] && [ "$FP_BEFORE" != "$FP_AFTER" ]; then
+if [ -n "$REVIEW_ROOT" ] && [ "$FP_BEFORE" != "$FP_AFTER" ]; then
   # Report the PATH column of every line present in exactly one capture, deduplicated. A changed
   # blob shows up as two differing lines for the same path; `sort -u` on the path collapses them.
   # The two HEADER lines carry no path, so they get named rather than stripped — without this the
@@ -390,6 +495,19 @@ if [ -n "$REPO_ROOT" ] && [ "$FP_BEFORE" != "$FP_AFTER" ]; then
                      -e 's/^[<>] [^ ]+ ?//' \
             | grep -v '^$' | sort -u || true)
   [ -z "$MUTATED" ] && MUTATED="(the fingerprint changed but no path could be named — inspect \`git status\` by hand)"
+fi
+
+# If HEAD moved, name what actually landed instead of leaving "(HEAD moved: ...)" as the only clue.
+# Isolated (ISOLATED=1): REVIEW_ROOT is a private worktree nothing else on this host writes to, so a
+# HEAD move there can only be the partner's own `git commit`/`checkout` — a real violation of the
+# read-only rail (it was told never to). Un-isolated (fallback): the partner is instructed never to
+# commit either, so an advancing HEAD on the LIVE shared repo is more likely a concurrent process —
+# another session, a hook — than the partner itself; the commit's author is the fastest way to tell.
+LANDED_COMMITS=""
+if [ -n "$MUTATED" ] && [ -n "$REVIEW_ROOT" ] && [ "$HEAD_BEFORE" != "$HEAD_AFTER" ] \
+   && [ "$HEAD_BEFORE" != "unborn" ] && [ "$HEAD_AFTER" != "unborn" ]; then
+  LANDED_COMMITS=$(git -C "$REVIEW_ROOT" log --format='  %h %an <%ae> %s' \
+                    "$HEAD_BEFORE..$HEAD_AFTER" 2>/dev/null || true)
 fi
 
 # A FILLED BREAK SURVIVES A NONZERO EXIT. Until 0.44.0 this branch tested `RC -ne 0` first, so a
@@ -445,6 +563,20 @@ fi
 # does not own (same rule that keeps it out of /tmp cleanup), and undoing a change the human may have
 # made themselves is exactly the no-harm violation it would be checking for. Naming the paths is the
 # whole job; what to do about them is the operator decision.
+_adv_print_landed_commits() {
+  [ -z "$LANDED_COMMITS" ] && return 0
+  if [ "$ISOLATED" = "1" ]; then
+    echo "HEAD advanced via the commit(s) below — REVIEW_ROOT is a private review copy nothing else"
+    echo "on this host writes to, so this is the partner's OWN git commit/checkout, a violation of"
+    echo "\"you verify, you do not repair\" (it was told never to):"
+  else
+    echo "HEAD advanced via the commit(s) below during the run — the partner is instructed never to"
+    echo "commit (see the read-only rail), so this is more likely a CONCURRENT process (another"
+    echo "session, a hook) sharing this un-isolated repo than the partner itself. Verify the author"
+    echo "before treating this as adversary tampering:"
+  fi
+  printf '%s\n' "$LANDED_COMMITS"
+}
 if [ -n "$MUTATED" ]; then
   if printf '%s' "$VERDICT" | grep -qE '\[ADVERSARY-VERDICT:[[:space:]]*hold'; then
     echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
@@ -453,6 +585,7 @@ if [ -n "$MUTATED" ]; then
       echo "returned a clean 'hold' — a verdict over a state it created. Degraded to UNVERIFIED; do"
       echo "not read it as a pass. Paths whose content changed during the run:"
       printf '%s\n' "$MUTATED" | sed 's/^/  /'
+      _adv_print_landed_commits
       echo "Decide yourself whether to keep or revert them — this hook does not touch files it does"
       echo "not own. Then re-run the review over a tree nobody edited mid-flight. Partner output:"
       printf '%s\n' "$OUT" | head -40
@@ -464,6 +597,7 @@ if [ -n "$MUTATED" ]; then
     echo "stands (findings are not suppressed), but every one of them was measured against a tree it"
     echo "had already changed — re-derive each before acting. Paths whose content changed:"
     printf '%s\n' "$MUTATED" | sed 's/^/  /'
+    _adv_print_landed_commits
   } >&2
 fi
 

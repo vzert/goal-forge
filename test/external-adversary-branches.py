@@ -16,11 +16,18 @@ The two 0.21.1 fixes are the point of this file:
   hold read as a verified one (observed live 2026-07-26). Case 03 is the control the old code also
   caught; 01/04 prove real bullets still pass; 05 pins the no-self-report fallback window.
 * P25 sandbox rails — cases 08/09/11: the partner gets a TMPDIR the hook's own process can write
-  to (08) and runs from the repo root when the invocation cwd is inside one (09); both sandbox
-  failures had come back disguised as ungrounded/UNVERIFIED findings. Host-side only: outside any
-  git repo there is no root to resolve, so that branch warns on stderr instead of relocating (11),
-  and a partner sandbox denying writes the hook's process can make (the v0.19.1 contra-dato) is
-  out of the hook's reach entirely.
+  to (08) and runs from an isolated review copy of the repo root when the invocation cwd is inside
+  one (09); both sandbox failures had come back disguised as ungrounded/UNVERIFIED findings.
+  Host-side only: outside any git repo there is no root to resolve, so that branch warns on stderr
+  instead of relocating (11), and a partner sandbox denying writes the hook's process can make (the
+  v0.19.1 contra-dato) is out of the hook's reach entirely.
+* Reviewed-state isolation (worktree-isolation change) — cases 09/16/17/18/19 now run against a
+  PRIVATE linked worktree materialized under the reviewed repo's own `.git/` (case 09's assertion
+  updated to match: it lands under REPO's git-common-dir, not literally at REPO). Case 24 is the
+  point of the whole change: a "sibling session" commits to the ORIGINAL repo mid-round (simulating
+  the live incident of 2026-09-17/18, a concurrent `/checkpoint-3t` commit misattributed to the
+  external adversary) and the isolated review must come back CLEAN — proof the false-positive class
+  is eliminated, not merely better-diagnosed, for a writer that never touches the isolated copy.
 
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11
@@ -73,6 +80,7 @@ echo "%s"
 
 STUB_PWD = """#!/bin/bash
 echo "STUB-PWD=$(pwd)"
+echo "STUB-GCD=$(cd "$(git rev-parse --git-common-dir)" && pwd)"
 echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
@@ -98,7 +106,7 @@ CASES = [
      None, "not-found"),
     ("08-unwritable-tmpdir", "STUB_TMPDIR", {"TMPDIR": "/nonexistent-goalspec-suite"},
      None, "pass+tmpdir-rw"),
-    ("09-invoked-from-subdir", "STUB_PWD", {}, os.path.join(REPO, "test"), "pass+root"),
+    ("09-invoked-from-subdir", "STUB_PWD", {}, os.path.join(REPO, "test"), "pass+isolatedroot"),
     ("10-recursion-guard", MODEL + "\n" + HOLD + "\n", {"GOAL_ADVERSARY_ACTIVE": "1"},
      None, "recursion"),
     # Outside ANY git repo there is no root to resolve (the recorded Fase 1 incident class:
@@ -158,6 +166,12 @@ CASES = [
     # hook's job to judge whether the chosen mode is the right one, only to flag total silence on it.
     ("23-codex-with-sandbox-flag", None, {"GOAL_ADVERSARY_CMD": "codex -s read-only"}, None,
      "pass+codexsilent"),
+    # --- reviewed-state isolation (worktree-isolation change). THE case: a "sibling session"
+    # commits to the ORIGINAL repo (found via git-common-dir, exactly like a concurrent
+    # /checkpoint-3t would) while the "partner" is running against the isolated copy. Must come
+    # back a clean pass, with NO "MODIFIED the repository" warning at all — proof the false
+    # positive is eliminated for this class, not just better-diagnosed.
+    ("24-concurrent-commit-immune", "STUB_CONCURRENT_COMMIT", {}, "MUTREPO", "pass+isolated-immune"),
 ]
 
 
@@ -213,6 +227,25 @@ echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
 exit 3
+""" % (MODEL, HOLD)
+
+# Simulates a CONCURRENT sibling session checkpointing the ORIGINAL repo while this "partner" runs
+# against its isolated review copy. Locates the original via git-common-dir (shared object db, so
+# every worktree — including the isolated review copy — resolves back to the SAME .git) exactly the
+# way a real sibling session sharing the repo would already be there, not the way this stub reaches
+# it. A different git identity than the suite's own ("sibling session") makes it unambiguous in a
+# failure message which commit is the simulated concurrent writer.
+STUB_CONCURRENT_COMMIT = """#!/bin/bash
+cat >/dev/null
+GCD=$(cd "$(git rev-parse --git-common-dir)" && pwd)
+ORIG=$(dirname "$GCD")
+echo "sibling checkpoint" > "$ORIG/sibling-checkpoint.md"
+git -C "$ORIG" add sibling-checkpoint.md
+git -C "$ORIG" -c user.email=sibling@example.invalid -c user.name="sibling session" \\
+    commit -qm "checkpoint: sibling session mid-run"
+echo "%s"
+echo "- probe: one real evidence line"
+echo "%s"
 """ % (MODEL, HOLD)
 
 # A fake binary literally named `codex`, placed on PATH — the advisory keys on the resolved bin
@@ -279,7 +312,15 @@ def classify(res, case_name):
     if case_name.startswith("09"):
         m = re.search(r"STUB-PWD=(.+)", out)
         seen = os.path.realpath(m.group(1).strip()) if m else "?"
-        branch += "+root" if seen == os.path.realpath(REPO) else "+cwd:" + seen
+        gcd_m = re.search(r"STUB-GCD=(.+)", out)
+        gcd = os.path.realpath(gcd_m.group(1).strip()) if gcd_m else "?"
+        repo_git = os.path.realpath(os.path.join(REPO, ".git"))
+        if seen == os.path.realpath(REPO):
+            branch += "+root"  # isolation unavailable — un-isolated fallback landed at REPO itself
+        elif gcd == repo_git and seen.startswith(repo_git + os.sep):
+            branch += "+isolatedroot"  # isolated review copy, provably under REPO's own git-common-dir
+        else:
+            branch += "+cwd:" + seen
     if case_name.startswith("14"):
         # The resolved bin must be the WRAPPER interpreter, never a vendor binary — that is the
         # whole point of refusing to read `command -v` as vendor evidence.
@@ -315,6 +356,10 @@ def classify(res, case_name):
             branch += "+mutation-missed" if not said else "+mutation-unnamed"
     if case_name.startswith("22") or case_name.startswith("23"):
         branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
+    if case_name.startswith("24"):
+        contaminated = "MODIFIED the repository" in err
+        branch = "pass+isolated-immune" if (branch == "pass" and not contaminated) \
+            else "FALSE-POSITIVE-" + branch
     return branch
 
 
@@ -335,7 +380,8 @@ def suite(hook, workdir):
         stubs = {"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD, "STUB_WRAP": STUB_WRAP,
                  "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,
                  "STUB_CLEAN": STUB_CLEAN, "STUB_MUTATE_RUNSTATE": STUB_MUTATE_RUNSTATE,
-                 "STUB_BREAK_RC": STUB_BREAK_RC, "STUB_HOLD_RC": STUB_HOLD_RC}
+                 "STUB_BREAK_RC": STUB_BREAK_RC, "STUB_HOLD_RC": STUB_HOLD_RC,
+                 "STUB_CONCURRENT_COMMIT": STUB_CONCURRENT_COMMIT}
         if transcript in stubs:
             stub = os.path.join(workdir, "stub-" + name + ".sh")
             with open(stub, "w") as f:

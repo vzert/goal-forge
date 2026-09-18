@@ -6,6 +6,46 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.9] - 2026-09-17
+
+### `external-adversary.sh` reviews an isolated copy of the repo — a concurrent commit from another
+### session can no longer be reported as the adversary tampering
+
+**Reportado por el usuario**: en un repo compartido por varias sesiones concurrentes (`claude-vzert`,
+2026-09-17/18), un checkpoint legítimo de `/checkpoint-3t` hecho por una sesión hermana aterrizó
+mientras OTRA sesión tenía una ronda del adversario externo corriendo, y el hook reportó "the
+partner MODIFIED the repository during its own review" — una acusación falsa: el adversario externo
+no tocó nada, un proceso local distinto sí. La causa: el fingerprint de mutación diffea el árbol de
+trabajo COMPARTIDO antes/después de la ronda, y no puede distinguir "lo escribió el partner" de "lo
+escribió cualquier otro proceso con acceso al mismo repo durante la ventana".
+
+**Cambio**: el hook ahora materializa el estado exacto bajo revisión (staged + unstaged + untracked +
+`.goalspec/`, el mismo conjunto que el fingerprint ya enumeraba) en un **worktree aislado**, creado
+bajo el propio `git-common-dir` del repo (nunca en `/tmp` del sistema) — así ningún otro proceso del
+host puede escribirle, y una mutación detectada ahí es del partner, sin ambigüedad. Best-effort y
+fail-open: si la aislación falla (HEAD sin nacer, git sin soporte de `worktree`, cualquier error en
+la materialización), el hook cae al comportamiento de antes (revisar el repo compartido en vivo) y lo
+dice por stderr. Para ese camino de reserva (y para el caso donde el partner sí corre `git commit`
+dentro de su copia aislada) se agregó una segunda mejora, puramente diagnóstica: cuando `HEAD` avanza
+se nombran el/los commit(s) que aterrizaron (hash, autor, mensaje) en vez de solo decir "modified the
+repository" — no cambia ninguna rama de decisión de seguridad (un `hold` sobre árbol mutado sigue
+degradando a UNVERIFIED, un `break` se sigue imprimiendo sin suprimir).
+
+**Hueco declarado, no resuelto**: la aislación solo protege lecturas del partner RELATIVAS a su cwd —
+un puntero del payload con una ruta ABSOLUTA dentro del repo en vivo sigue resolviendo ahí, saltando
+el aislamiento para esa lectura puntual. Y colocar el worktree bajo el propio repo (en vez de
+`/tmp`) es una apuesta, no una garantía verificada, de que la resolución de confianza de directorio
+de un CLI externo (p. ej. codex) la herede por ser un descendiente físico del proyecto — no se
+consultó el algoritmo de confianza de ningún CLI para confirmarlo.
+
+**Verificación**: `test/external-adversary-branches.py`, 24 casos (uno nuevo, `24-concurrent-commit-
+immune`, que simula exactamente el incidente reportado — una sesión hermana comprometiendo el repo
+original mientras el partner revisa su copia aislada — y exige un `pass` limpio, sin ningún aviso de
+"MODIFIED the repository", como prueba de que la clase de falso positivo queda eliminada y no solo
+mejor diagnosticada); los 23 casos previos se mantienen sin cambio de rama (`09` se actualizó para
+reflejar la nueva forma correcta: el partner corre bajo el `git-common-dir` del repo, no literalmente
+en su raíz). Las diez suites de rama del proyecto más `manifest-checks.py` corrieron en verde.
+
 ## [0.44.8] - 2026-09-17
 
 ### Piloto: el split MSG/AGENT_MSG se retira en 2 ramas de `gate-goal-close.sh` — la premisa era falsa
