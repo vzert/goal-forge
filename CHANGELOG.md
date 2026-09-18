@@ -36,7 +36,13 @@ un puntero del payload con una ruta ABSOLUTA dentro del repo en vivo sigue resol
 el aislamiento para esa lectura puntual. Y colocar el worktree bajo el propio repo (en vez de
 `/tmp`) es una apuesta, no una garantía verificada, de que la resolución de confianza de directorio
 de un CLI externo (p. ej. codex) la herede por ser un descendiente físico del proyecto — no se
-consultó el algoritmo de confianza de ningún CLI para confirmarlo.
+consultó el algoritmo de confianza de ningún CLI para confirmarlo. **Tampoco cubre el backend
+subagente**: `hooks/watch-adversary-writes.sh` sigue tomando la huella del árbol compartido en vivo
+y carga la misma exposición a un escritor concurrente que este release cerró solo del lado del CLI
+externo — el cwd de un subagente no se puede reubicar de la misma forma. Confirmado en vivo,
+2026-09-17: una ronda real contra `codex exec` corrió dentro de la copia aislada (`workdir:
+.../.git/goalspec-review-<id>`, `sandbox: workspace-write`) sin que codex la rechazara como no
+confiable — la apuesta de confianza de directorio se sostuvo, al menos en esa corrida.
 
 **Verificación**: `test/external-adversary-branches.py`, 24 casos (uno nuevo, `24-concurrent-commit-
 immune`, que simula exactamente el incidente reportado — una sesión hermana comprometiendo el repo
