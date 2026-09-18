@@ -266,11 +266,27 @@ is the only shape the old floor caught (control), **01/04** prove real bullets s
 pins the no-self-report fallback window.
 
 Cases **08/09/11** pin the P25 sandbox rails: the partner gets a `TMPDIR` the hook's own process
-can write to (08) and runs from the repo root when the invocation cwd is inside one (09) — both
-sandbox failures had come back disguised as ungrounded/UNVERIFIED findings across two consecutive
-phases. The rails are host-side only: from outside any git repo there is no root to resolve, so
-that branch warns on stderr instead of relocating (11), and a partner whose own sandbox denies
-writes the hook's process can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
+can write to (08) and, since 0.44.9, runs from an isolated review copy of the repo root (not the
+repo root itself) when the invocation cwd is inside a subdirectory (09) — both sandbox failures had
+come back disguised as ungrounded/UNVERIFIED findings across two consecutive phases. The rails are
+host-side only: from outside any git repo there is no root to resolve, so that branch warns on
+stderr instead of relocating (11), and a partner whose own sandbox denies writes the hook's process
+can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
+
+**Reviewed-state isolation (0.44.9)**, cases **09/16/17/18/19/24**: the hook materializes the exact
+reviewed state into a private linked worktree under the repo's own `git-common-dir` before invoking
+the partner, so a concurrent writer sharing the repo (another local session's commit landing
+mid-round — the live incident this closes, 2026-09-17/18) can no longer be misattributed to the
+partner. **24 is the case that matters most**: a "sibling session" commits to the ORIGINAL repo
+while the partner reviews its isolated copy, and the round must come back a clean pass with no
+"MODIFIED the repository" warning at all — proof the false-positive class is eliminated, not merely
+better-diagnosed. 09's assertion was updated to match the new shape (it lands under the repo's
+`git-common-dir`, verified via a second stub line, not literally at the repo root) — and carries a
+documented exception: a write-restricted external sandbox that cannot itself create a *second*
+nested worktree (observed live reviewing this very change) falls back to the pre-0.44.9 shape
+instead, which is the fail-open path working as designed, not a regression; the suite's `expect`
+stays strict because that fallback is not what a normal, unsandboxed run (every real CI job) should
+ever show.
 
 Cases **16/17/19** pin the read-only rail (0.44.0), and **18** is its control. **16 is the
 discriminating one**: the stub appends to a file the fixture repo has *already* modified, so the

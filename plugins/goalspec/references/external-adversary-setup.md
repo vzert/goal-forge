@@ -28,9 +28,15 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
      runs — `printf 'say OK' | codex exec`. The npm wrapper can be on PATH while its vendored binary
      is missing, which `command -v` cannot detect.) Bare `codex exec` — the hook's own fallback when
      nothing else configures `external_cmd` — sets no sandbox mode, so whatever trust level your own
-     `~/.codex/config.toml` gives this cwd decides it (a `trusted` project gets `workspace-write`).
-     `external-adversary.sh` warns about this on stderr when it detects it; it does not add a flag
-     for you (see "Your partner keeps its write sandbox" below for why `-s read-only` is not the fix).
+     `~/.codex/config.toml` gives the cwd it actually runs in decides it (a `trusted` project gets
+     `workspace-write`). Since 0.44.9 that cwd is usually an isolated review copy under the reviewed
+     repo's own `.git/` (see "Reviewed-state isolation" below), not the repo root itself — a physical
+     descendant of the project, which gives trust resolution its best chance of still applying, but
+     this is a bet, not a verified guarantee for any given CLI's trust algorithm. Observed live
+     2026-09-17: a real `codex exec` run against that isolated cwd reported `sandbox: workspace-write`
+     without refusing it as untrusted. `external-adversary.sh` warns on stderr when it detects no
+     sandbox flag; it does not add one for you (see "Your partner keeps its write sandbox" below for
+     why `-s read-only` is not the fix).
    - **Google Gemini CLI** — needs an adapter: `gemini -p` takes the prompt as an **argument**, not on
      stdin, so it cannot be used bare with this script. Wrap it, e.g. a `gemini-stdin` on your PATH:
      `#!/usr/bin/env bash` + `exec gemini -p "$(cat)"`, then `external_cmd: "gemini-stdin"`.
@@ -119,6 +125,28 @@ line in an already-modified file) before and after the run. If anything changed 
 and it degrades a `hold` to the same synthetic `UNVERIFIED` hold a broken partner gets. A `break` is
 printed unchanged: findings are never suppressed, the warning goes to stderr — and that holds for a
 nonzero exit too, since a crash is a reason to distrust a pass, never a reason to discard violations.
+
+**Reviewed-state isolation (0.44.9).** A fingerprint of the LIVE, shared repo cannot tell "the
+partner wrote this" from "anything else sharing this working tree wrote this during the same
+window" — another local session's routine commit landed on a shared repo mid-round and was reported
+as adversary tampering (2026-09-17). So before invoking the partner, the hook now materializes the
+exact reviewed state (unstaged + staged + untracked + `.goalspec/` — the same set the fingerprint
+already enumerates) into a **private linked worktree**, created under the repo's own
+`git-common-dir` (never system `/tmp`), and runs the partner and the fingerprint against that copy
+instead. Nothing else on the host writes there, so a mutation found there is the partner's, full
+stop. Fail-open: an unborn `HEAD`, a git without `worktree` support, or any materialization failure
+falls back to reviewing the live repo directly — today's (pre-0.44.9) behavior — with a diagnostic
+noting which commit(s) landed on `HEAD` during the run, if any, since the partner is told never to
+`git commit`. **Two declared gaps, not fixed by this**: (1) isolation only protects reads the
+partner makes RELATIVE to its cwd — an ABSOLUTE payload pointer into the live repo still resolves
+there, bypassing isolation for that one read; the "paths, not prose, relative-in-repo" calling
+convention is what keeps this narrow. (2) it is a **bet**, not a verified guarantee, that an
+external CLI's directory-trust resolution inherits from being a physical descendant of the project
+— see the codex note above for what was actually observed. **The subagent backend does NOT get this
+fix** — a subagent's cwd can't be relocated the way a spawned CLI's can, so it still fingerprints the
+shared live tree and carries the same concurrent-writer exposure this release closed only for the
+external-CLI side.
+
 **One limit, stated plainly**: the fingerprint covers tracked content, the staged diff and the
 gitignored `.goalspec/` run state; **other gitignored paths are invisible to it**, so a partner that
 writes into an ignored directory is not caught. Widening it to every ignored path would drown the
