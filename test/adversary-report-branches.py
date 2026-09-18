@@ -211,6 +211,14 @@ MUTATIONS = [
      'print(json.dumps({"systemMessage": os.environ["AGENT_MSG"],\n'
      '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
      "11"),
+    ("the human-facing message grown past the length budget",
+     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia."',
+     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia. Se agrega aquí texto adicional de relleno para asegurar que el mensaje humano supere ampliamente los trescientos caracteres de longitud total y ya no sea breve ni conciso."',
+     "11"),
+    ("the human-facing message switched to English",
+     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia."',
+     'MSG="An independent adversary ran while the file tree was changing (${ROUNDS} round(s)) - your close must state whether the adversary or you wrote, with the evidence."',
+     "11"),
 ]
 
 
