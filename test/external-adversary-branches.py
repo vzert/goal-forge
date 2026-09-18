@@ -330,12 +330,14 @@ def classify(res, case_name):
         if seen == os.path.realpath(REPO):
             # isolation unavailable, un-isolated fallback landed at REPO itself — CORRECT here, not
             # only a degraded case: this branch is EXPECTED (not a regression) when this suite runs
-            # from inside a write-restricted sandbox that cannot create a second linked worktree
-            # (git needs to write into the repo's shared .git/worktrees/, which sits OUTSIDE a
-            # sandbox scoped to its own workdir only — observed live, 2026-09-17, delta-scoped
-            # round: the external adversary reviewing THIS fix, itself already running from an
-            # isolated review copy, hit `Operation not permitted` attempting the nested
-            # reproduction and correctly fell back here). This suite's own `expect` for case 09
+            # from inside a write-restricted sandbox that cannot create a second linked worktree.
+            # Observed live, 2026-09-17, delta-scoped round: the external adversary reviewing THIS
+            # fix, itself already running from an isolated review copy, hit `Operation not
+            # permitted` attempting the nested reproduction and correctly fell back here. (Likely
+            # cause, NOT independently confirmed: its sandbox grants write access only under its own
+            # workdir, and git needs to write into the repo's shared .git/worktrees/, outside that —
+            # a plausible read of the error, not a verified mechanism.) This suite's own `expect` for
+            # case 09
             # stays `pass+isolatedroot` on purpose — that is what MUST hold in a normal, unsandboxed
             # environment (every real CI run, every ordinary dev checkout), and weakening it would
             # hide a genuine future regression there. A sandboxed reviewer seeing `pass+root`

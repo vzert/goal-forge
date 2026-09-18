@@ -55,9 +55,11 @@ adversario externo al revisar este cambio desde su copia aislada. Corregido pidi
 real, no solo el caso sintético) antes y después del fix. Una ronda acotada al delta confirmó que el
 fix resuelve el caso normal, pero encontró un segundo matiz real (no un defecto de código): dentro
 del propio sandbox restringido del adversario externo, crear un worktree anidado por segunda vez
-puede fallar con `Operation not permitted` (su sandbox solo le da escritura bajo su propio `workdir`,
-no bajo el resto de `.git/`) — ahí el hook cae correctamente al modo sin aislar (`pass+root`), el
-comportamiento fail-open documentado, no una falla silenciosa. La aserción estricta del caso `09`
+puede fallar con `Operation not permitted` (el mensaje textual que devolvió; la causa más probable,
+NO confirmada aquí, es que su sandbox solo le da escritura bajo su propio `workdir` y `.git/worktrees/`
+queda fuera de eso — hipótesis razonable, no verificada de forma independiente) — ahí el hook cae
+correctamente al modo sin aislar (`pass+root`), el comportamiento fail-open documentado, no una
+falla silenciosa. La aserción estricta del caso `09`
 se deja como está porque es la que protege un entorno normal (CI, un checkout sin sandbox) — un
 comentario en el propio archivo documenta este matiz para no reabrirlo como si fuera nuevo.
 (El otro hallazgo de esa misma ronda — `manifest-checks.py` fallando por falta de PyYAML — es la
