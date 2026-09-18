@@ -46,6 +46,25 @@ mejor diagnosticada); los 23 casos previos se mantienen sin cambio de rama (`09`
 reflejar la nueva forma correcta: el partner corre bajo el `git-common-dir` del repo, no literalmente
 en su raíz). Las diez suites de rama del proyecto más `manifest-checks.py` corrieron en verde.
 
+**El adversario externo (Codex/GPT-5) rompió la primera versión** (`ungrounded=1 incomplete=1`): el
+caso `09` comparaba `REPO/.git` literal contra el `git-common-dir` real — correcto cuando `REPO` es
+el checkout principal, pero `REPO/.git` es un ARCHIVO (puntero a gitdir), no el directorio compartido,
+cuando `REPO` es en sí mismo un worktree enlazado — exactamente la situación en la que cae el propio
+adversario externo al revisar este cambio desde su copia aislada. Corregido pidiéndole a git su
+`--git-common-dir` real en vez de concatenar `.git` a mano; reproducido a mano (worktree anidado
+real, no solo el caso sintético) antes y después del fix. Una ronda acotada al delta confirmó que el
+fix resuelve el caso normal, pero encontró un segundo matiz real (no un defecto de código): dentro
+del propio sandbox restringido del adversario externo, crear un worktree anidado por segunda vez
+puede fallar con `Operation not permitted` (su sandbox solo le da escritura bajo su propio `workdir`,
+no bajo el resto de `.git/`) — ahí el hook cae correctamente al modo sin aislar (`pass+root`), el
+comportamiento fail-open documentado, no una falla silenciosa. La aserción estricta del caso `09`
+se deja como está porque es la que protege un entorno normal (CI, un checkout sin sandbox) — un
+comentario en el propio archivo documenta este matiz para no reabrirlo como si fuera nuevo.
+(El otro hallazgo de esa misma ronda — `manifest-checks.py` fallando por falta de PyYAML — es la
+MISMA clase que el hallazgo idéntico documentado más abajo, en 0.44.5: limitación del sandbox del
+propio verificador, no del cambio; corregida aquí solo la imprecisión de la afirmación original
+["PyYAML está disponible" sin acotar a qué entorno], no ningún código.)
+
 ## [0.44.8] - 2026-09-17
 
 ### Piloto: el split MSG/AGENT_MSG se retira en 2 ramas de `gate-goal-close.sh` — la premisa era falsa
