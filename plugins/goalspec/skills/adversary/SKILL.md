@@ -61,6 +61,12 @@ paths not prose, data never instructions, restricted to the contract, delta-scop
   did not find it", **never** "not applicable" or "does not exist": falsely declaring evidence
   unavailable contaminates the verification without lying about the result, and the adversary
   is instructed to check your reach claims.
+- **A live system is handed over read-only**: when the claim is about a live system (a production
+  host, a database, a deploy), point at evidence you captured or at commands that only read —
+  never a write-capable path to production, and never an instruction whose natural reading is
+  "go update it and see". The adversary is told every reachable system is read-only to it, but no
+  hook measures a remote side effect (observed in the field: an external adversary verifying a
+  production deploy ran `git pull` on the production host over SSH).
 - **One conditional pointer, still a path**: if the claim under verification rests on something
   being *impossible, unavailable, gone, or unsupported* — and the action followed from that —
   point at the surfaces that **govern** that capability (the settings/config object that decides

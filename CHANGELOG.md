@@ -6,6 +6,36 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.44.10] - 2026-09-28
+
+### The adversary's read-only rule now reaches past the repository — a verifier must not change a live system
+
+**Reportado por un usuario**: le pidió al backend externo (`codex exec`, sandbox `workspace-write`)
+verificar un deploy a producción, con acceso SSH al host, y el adversario corrió `git pull` en el
+host de producción como efecto secundario de "verificar". **Causa**: la regla "you verify, you do
+not repair" nombraba solo *el repositorio bajo revisión* — no decía nada de hosts remotos, bases de
+datos, deploys ni APIs — y lo que la mide (la huella de contenido de `external-adversary.sh` y de
+`watch-adversary-writes.sh`) ve solo el repo local. El precheck de push tampoco lo ve: es un hook de
+Claude y el comando lo corrió un subproceso de codex. Nada en el camino podía atraparlo.
+
+**Cambio**: los dos prompts que los adversarios leen (`hooks/external-adversary.sh`,
+`agents/goal-adversary.md`) extienden la regla a todo sistema alcanzable: observar solo con comandos
+que leen; nunca uno que cambie estado (nombrando `git pull` en un host remoto, restart, deploy,
+migración, escritura a DB, `POST` que muta); y si la única forma de verificar una afirmación es un
+comando que cambia estado, no correrlo — reportarla como no verificable y contarla `ungrounded`.
+`SKILL.md` step 6 y el skill `/goalspec:adversary` (que repite el contrato del payload) le ponen la otra mitad al ejecutor: al adversario se le pasa evidencia capturada o
+comandos de solo lectura, nunca un camino con escritura a producción. `references/external-adversary-setup.md`
+agrega un safety rail con los arreglos mecánicos que son del operador (usuario/llave SSH o rol de DB
+de solo lectura; `-s read-only` o `-c sandbox_workspace_write.network_access=false` si quiere un muro duro).
+`test/claim-surface-carriers.py` fija la regla en sus cuatro carriers — incluido el prompt que el
+hook **emite de verdad** (capturado con un partner stub), no solo el archivo fuente; los 14 casos
+nuevos fallan todos sobre el árbol de 0.44.9.
+
+**Hueco declarado, no resuelto**: esta mitad es **instrucción, no medición**. Ningún hook ve un efecto
+remoto; un adversario que desobedezca sigue sin dejar rastro. No se cambió el sandbox por defecto:
+`-s read-only` ya rompió al partner una vez (ver la guía de setup) — un bloqueo mecánico queda como
+seguimiento, decisión del operador.
+
 ## [0.44.9] - 2026-09-17
 
 ### `external-adversary.sh` reviews an isolated copy of the repo — a concurrent commit from another

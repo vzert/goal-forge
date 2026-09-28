@@ -188,6 +188,21 @@ the very adversary it was about, and one of them read it as a role change and wr
 
 ## Safety rails
 
+- **Production is read-only to the partner — by instruction only, never by measurement.** The
+  widened sandbox above (`workspace-write` + `network_access=true`) plus whatever credentials the
+  partner inherits from your shell (SSH keys and agent, cloud CLIs, database URLs) means it *can*
+  change live systems. Observed in the field: a partner sent to verify a production deploy ran
+  `git pull` on the production host over SSH as a side effect of checking it. The prompt tells it
+  every reachable system is read-only and that a claim it can only verify by changing state is
+  reported unverifiable, not verified — but the content fingerprint sees the **local repo only**, so
+  a remote side effect leaves no trace and nothing degrades the verdict. The real rail is yours:
+  (1) in the payload, hand it captured evidence or read-only commands for live systems, never a
+  write-capable path; (2) don't run the partner from a shell holding write credentials to production
+  you aren't willing to have it use — a dedicated read-only SSH user/key or DB role is the mechanical
+  fix; (3) if you need a hard wall, configure one in `external_cmd` (e.g. `codex exec -s read-only`,
+  or `codex exec -s workspace-write -c sandbox_workspace_write.network_access=false`) and accept the
+  trade recorded above.
+
 - **Missing binary → fail-open.** If the configured CLI isn't on PATH, the script prints a `hold`
   verdict *plus a stderr note that no independent check ran* — treat that `hold` as UNVERIFIED, not
   as a pass. It never blocks the host.

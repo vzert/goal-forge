@@ -38,6 +38,14 @@ that adversary recorded it had "misread it as a cue that I had become the execut
 five files in the repo under review. Its carriers are `agents/goal-adversary.md` (the rule) and
 `hooks/report-adversary-writes.sh` (the audience line that makes the executor-facing message say so
 out loud). Same limit as above, doubly: presence is testable, obedience is not.
+
+THIRD RULE PINNED HERE (0.44.10): READ-ONLY BEYOND THE REPOSITORY. The "you verify, you do not
+repair" rail named only the repository under review; a user reported an external adversary that ran
+`git pull` on a production host over SSH while verifying a deploy. Carriers: the two prompts the
+adversaries read (`agents/goal-adversary.md`, `hooks/external-adversary.sh` -- the latter checked in
+the prompt the hook actually EMITS, via a stub partner), the executor-side payload rule in SKILL.md,
+and the setup reference. The remote half is not measured by any hook, and this suite does not
+change that.
 """
 
 import os
@@ -263,6 +271,55 @@ def main():
     # And the honest limit must travel with it, or the next reader takes a prose guard for a proof.
     check("role:report-states-the-guard-is-unmeasured",
           "PROSE GUARD and its effect on a model is NOT measured" in report)
+
+    # --- READ-ONLY BEYOND THE REPO (0.44.10): the third written rule this file pins. ---------
+    # Reported from the field: an external adversary sent to verify a production deploy ran
+    # `git pull` on the production host over SSH. The read-only rail named only "the repository
+    # under review", and the fingerprint that measures it sees only the local repo. Presence is
+    # testable; obedience is not -- same limit as the header states.
+    for name, text in (("agent", agent), ("external", external)):
+        flat = " ".join(text.split())
+        check("remote:%s-extends-rule-beyond-the-repo" % name,
+              "same rule holds beyond the repository" in flat.lower())
+        check("remote:%s-names-ssh-and-git-pull" % name,
+              "SSH" in flat and "pull" in flat and "production host" in flat)
+        check("remote:%s-says-state-changing-verification-is-not-run" % name,
+              "changes state" in flat and "count it" in flat and "ungrounded" in flat)
+        check("remote:%s-says-remote-half-is-not-measured" % name,
+              "local repository only" in flat)
+    flat_skill = " ".join(skill.split())
+    check("remote:skill-payload-hands-evidence-not-write-access",
+          "reaches past the repository and the measurement does not" in flat_skill
+          and "never a write-capable path to production" in flat_skill)
+    # A round found the standalone /goalspec:adversary skill -- which restates the payload
+    # contract -- missing from the first version of this list.
+    adv_skill = " ".join(read(os.path.join(P, "skills", "adversary", "SKILL.md")).split())
+    check("remote:adversary-skill-payload-hands-evidence-not-write-access",
+          "never a write-capable path to production" in adv_skill)
+    check("remote:setup-hard-wall-uses-real-codex-syntax",
+          "-c sandbox_workspace_write.network_access=false" in setup)
+    check("remote:setup-states-rail-is-instruction-not-measurement",
+          "Production is read-only to the partner" in setup and "local repo only" in setup)
+    # The prompt the partner actually receives, not the source file: run the hook with a stub
+    # partner that records its stdin, from a throwaway repo, and read what arrived.
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    subprocess.call(["git", "init", "-q", tmp])
+    subprocess.call(["git", "-C", tmp, "-c", "user.name=t", "-c", "user.email=t@t",
+                     "commit", "-q", "--allow-empty", "-m", "x"])
+    sink = os.path.join(tmp, "..", os.path.basename(tmp) + "-prompt.txt")
+    env = dict(os.environ, GOAL_ADVERSARY_CMD="tee " + sink)
+    subprocess.run(["bash", EXTERNAL], input=b"payload\n", cwd=tmp, env=env,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    emitted = read(sink) if os.path.exists(sink) else ""
+    check("remote:emitted-prompt-carries-the-rule",
+          "BEYOND THE REPOSITORY" in emitted and "git pull" in emitted,
+          "" if emitted else "stub partner received nothing")
+    # Same heredoc hazard as section 5: the added block must not carry an apostrophe, backtick or $.
+    rblk = external.split("THE SAME RULE HOLDS BEYOND THE REPOSITORY", 1)
+    rblk = rblk[1].split("the only rail there is.", 1)[0] if len(rblk) == 2 else ""
+    check("remote:added-block-is-heredoc-safe",
+          rblk and "'" not in rblk and "`" not in rblk and "$" not in rblk)
 
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]
