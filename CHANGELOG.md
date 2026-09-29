@@ -6,6 +6,30 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.1] - 2026-09-29
+
+### El backstop de staleness lee los commits del repo del `-C`, no los del cwd del hook
+
+**Qué pasaba**: desde 0.45.0 el backstop de staleness de `hooks/gate-goal-close.sh` ya veía un
+`git -C <dir> push` hecho después de una revisión de cierre, pero para decidir la exención por
+contenido (solo `memory/`, `docs/`, `.goalspec/` o `*.md` de la raíz) leía los commits recientes
+del repo donde corre la sesión, no los del repo que se empujó. Dos errores, uno por dirección: si
+la sesión solo tenía un commit de memoria y el `-C` empujaba código, el backstop lo eximía y no
+avisaba; en el caso espejo avisaba de más (p-adbf311b73).
+
+**Cambio**: `terminal_actions.staleness_repos()` devuelve, para cada comando terminal que ya
+corrió, el repo de cada `git [-C dir] push|merge` (el mismo parseo `git_calls` que usa el
+precheck), más el cwd cuando parte del comando no es uno de esos (`gh pr merge`, deploy,
+destructivo) o el parseo no reconstruyó ninguna llamada. El gate lee `commits_since()` en cada uno
+de esos repos y junta las rutas; si uno no se puede leer (un `-C` a un directorio que no existe),
+nada queda exento. El clasificador no cambia.
+
+**Verificación**: casos nuevos `stale-06` (código en el repo del `-C`, solo memoria en el cwd:
+debe avisar) y `stale-07` (el espejo: no debe avisar). Contra 0.46.0 fallan los dos, en
+direcciones opuestas. `stale-01`..`05` dan lo mismo que antes, y `--compare` contra el gate previo
+da paridad en modo normal y con `GOAL_GATE_ENFORCE=1` (esa paridad no ve el módulo compartido;
+lo cubren los casos stale, ver `test/README.md`).
+
 ## [0.46.0] - 2026-09-29
 
 ### Después de `/goalspec:interview`, el agente escribe el spec: el paso 4 lo ordena y un hook lo recuerda

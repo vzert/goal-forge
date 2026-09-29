@@ -539,7 +539,21 @@ if ta is not None and not lam_crs:
     if idx is not None:
         terminal_calls = ta.terminal_bash_after(items, idx)
         if terminal_calls:
-            paths = ta.commits_since(data.get("cwd") or os.getcwd(), items[idx].get("timestamp"))
+            # Read the repo each command acted on (`git -C <dir> push`), not only the hook cwd
+            # (0.46.1, p-adbf311b73). One unreadable repo makes the whole set not exempt.
+            cwd = data.get("cwd") or os.getcwd()
+            repos = []
+            for call in terminal_calls:
+                for r in ta.staleness_repos(call["command"], cwd):
+                    if r not in repos:
+                        repos.append(r)
+            paths = []
+            for r in repos:
+                p = ta.commits_since(r, items[idx].get("timestamp"))
+                if p is None:
+                    paths = None
+                    break
+                paths.extend(p)
             if not ta.all_exempt(paths):
                 remind("completion-review:stale-terminal-action-after-close", skip_general_silence=True)
 

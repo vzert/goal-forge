@@ -459,6 +459,25 @@ STALE_CASES = [
       {"timestamp": T2, "bash": "SKILL_AUTHORIZED=1 git -C /home/u/workspace/app push -u origin feat/x",
        "text": "pushed."}],
      "still working, no fresh review this turn"),
+    # 0.46.1 (p-adbf311b73) — the backstop must read the commits of the repo the `-C` names, not
+    # the hook cwd's. 06: the session repo holds only a memory commit, the `-C` repo a code commit
+    # -> STALE (before: exempt on cwd's memory commit, silent). 07 is its mirror: session repo has
+    # code, the `-C` repo only memory -> NOT stale (before: flagged on cwd's code). Both fail
+    # against 0.46.0, in opposite directions, so neither "also read cwd" nor "always stale" passes.
+    ("stale-06-dash-C-code-repo-cwd-memory-only-STALE",
+     lambda: (stale_repo("s06-other", {"src/app.js": "code"}, T2),
+              stale_repo("s06", {"memory/session.md": "notes"}, T2))[1],
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git -C " + os.path.join(STALE_TMP, "s06-other", "work")
+                                + " push origin main", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    ("stale-07-dash-C-memory-repo-cwd-code-NOT-STALE",
+     lambda: (stale_repo("s07-other", {"memory/session.md": "notes"}, T2),
+              stale_repo("s07", {"src/app.js": "code"}, T2))[1],
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git -C " + os.path.join(STALE_TMP, "s07-other", "work")
+                                + " push origin main", "text": "checkpoint pushed."}],
+     "still working, no fresh review this turn"),
 ]
 
 

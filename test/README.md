@@ -116,7 +116,7 @@ checkpoint and staleness sections, which run against the edited module only, are
 module. When a change touches `terminal_actions.py`, a `parity OK` line is a necessary check, never
 a sufficient one.
 
-**Staleness backstop cases (`stale-01`..`04`, 0.32.0)** live in this same file but run separately
+**Staleness backstop cases (`stale-01`..`07`; 01-04 from 0.32.0)** live in this same file but run separately
 from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
 `commits_since()`), unlike every other case here, which is pure-transcript with no filesystem
 involved. Each builds its own synthetic repo with a commit stamped at a fixed `GIT_COMMITTER_DATE`
@@ -129,7 +129,10 @@ uses (memory-only change, not flagged). **03** confirms a FRESH review declared 
 turn is never stale regardless of what ran earlier. **04** confirms no terminal command at all
 after the review means nothing to flag. **05** (0.45.0) is 01 with the field `/push` form,
 `SKILL_AUTHORIZED=1 git -C <repo> push -u origin <branch>`: `classify()` returned None for git's
-global options before 0.45.0, so this backstop never saw that push. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
+global options before 0.45.0, so this backstop never saw that push. **06**/**07** (0.46.1) pin
+*which* repo the backstop reads: the `-C` repo's commits, not the hook cwd's. 06 puts code in the
+`-C` repo and only memory in cwd (must flag); 07 is the mirror (must not). Both fail against 0.46.0,
+in opposite directions, so neither "also read cwd" nor "always flag" passes both. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
 subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, which resolves from
 it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
 from a passing case, which is exactly the trap the first draft of this suite fell into.

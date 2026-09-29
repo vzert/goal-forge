@@ -379,6 +379,29 @@ def commits_since(cwd, since_ts):
     return [p for p in out.splitlines() if p.strip()]
 
 
+def staleness_repos(command, cwd):
+    """-> the repos whose recent commits the staleness backstop must read for one terminal command
+    that already ran: the repo of every `git [-C dir] push|merge` in it (git_calls, the same parse
+    the precheck uses), plus cwd when some terminal part of the command is not one of those calls
+    (`gh pr merge`, a deploy, a destructive command) or the token parse rebuilt no call at all.
+    Before 0.46.1 the backstop always read cwd, so `git -C /other push origin main` was exempted or
+    flagged on the SESSION repo's commits, not the ones it pushed (p-adbf311b73)."""
+    pushes = git_calls(command, "push", cwd)
+    merges = git_calls(command, "merge", cwd)
+    repos = []
+    for d, _ in pushes + merges:
+        if d not in repos:
+            repos.append(d)
+    kinds = classify_all(command)
+    needs_cwd = (not repos
+                 or ("push" in kinds and not pushes)
+                 or ("merge" in kinds and (not merges or GH_MERGE_RE.search(command)))
+                 or "deploy" in kinds or "destructive" in kinds)
+    if needs_cwd and cwd not in repos:
+        repos.append(cwd)
+    return repos
+
+
 def diff_paths_for(kind, command, cwd):
     if kind == "push":
         calls = git_calls(command, "push", cwd)
