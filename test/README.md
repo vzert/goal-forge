@@ -1,6 +1,6 @@
 # test/
 
-**Ten** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Eleven** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a text-consistency check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -472,6 +472,34 @@ observation stays open, not something this suite closes. Nor does anything here 
 executor actually performs the new close-step deletion in a real multi-round run — that instruction
 lives in `SKILL.md` prose, not in this hook, so no hermetic test can assert it; it stays a second
 open live observation alongside the decomposition-skip case.
+
+
+## `interview-handoff-branches.py` — interview-to-spec reminder (0.46.0)
+
+For `hooks/nudge-interview-handoff.sh`. After `/goalspec:interview`, the agent is supposed to
+invoke the goalspec loop and write the `## Goal-spec`. Field data: on one team VPS 11 of 23
+interview sessions never did, and none of those 11 invoked the loop; on the maintainer machine 10
+of 70, 8 of which never invoked the loop and went on working. The hook adds one agent-facing line
+of context after an answered `AskUserQuestion`, and on UserPromptSubmit once work (Bash, Write or
+Edit) has followed the interview, while that handoff is still pending
+(`terminal_actions.interview_handoff_pending`). It blocks nothing. 18 cases, hermetic: the pending
+cases (typed or Skill-tool entry, a spec from an earlier cycle, the loop routing into the
+interview, a code edit), the discharging ones (loop invoked, spec in text, spec in the checkpoint
+file), and the silent ones (no interview, other tool, other event, tag inside a `tool_result`,
+malformed input, an interview that concluded "nothing to do" followed by plain conversation).
+
+```sh
+python3 test/interview-handoff-branches.py
+python3 test/interview-handoff-branches.py --selftest
+```
+
+The hook is new, so "fails against the previous version" would prove nothing. `--selftest` copies
+the plugin, applies nine mutations to the component (pending always true, loop entry ignored,
+checkpoint spec ignored, a spec before the interview counted, the tool filter dropped, the wrong
+`hookEventName`, the work requirement dropped, work never recorded, the interview kind lost) and
+requires at least one case to fail under each. Run
+over this machine's 70 real interview transcripts, the detector marks exactly the 8 that went on
+with no spec and no loop call. What no suite can show: that the agent then obeys the reminder.
 
 ## `terminal-precheck-branches.py` — PreToolUse terminal-push precheck suite
 

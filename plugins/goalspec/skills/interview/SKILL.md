@@ -18,7 +18,9 @@ job), adds **no new markers and no new gates**, and ends by handing off into the
 loop. One thing does key on it (since 0.45.0): invoking it marks the session goalspec-tracked, so
 the terminal-push precheck denies a push to a protected branch, a merge, or a deploy until the
 spec it hands off to is written and the adversary holds. The handoff is not optional — field
-sessions that stopped after the interview went on to merge with every rail off. It is the front door for fuzzy intent, not a replacement for any step of
+sessions that stopped after the interview went on to merge with every rail off. Since 0.46.0 a
+reminder hook also repeats the handoff to you, after each answered round and on each later user
+message, until the spec exists (`hooks/nudge-interview-handoff.sh`; advisory, it blocks nothing). It is the front door for fuzzy intent, not a replacement for any step of
 the loop — the ratify gate still fires later, because settling *intent* here is not the same as
 approving *the spec that intent becomes*.
 
@@ -82,8 +84,14 @@ some asks settle in one round, some need five. Two guards keep that honest:
 ## 4. Hand off to the goalspec loop — synthesize, don't re-interview
 
 When the interview ends, the settled understanding is the **input** to the full goalspec
-method — run it now (it auto-triggers on the substantive task you now have; do not re-inject
-the skill file via slash command if it already loaded this session). Two rules for the handoff:
+method — run it now, **in the same turn, before any other work**: invoke the Skill tool with
+`goalspec:goalspec`, passing the settled decisions as its args. Do not wait for it to
+auto-trigger — measured in the field, it often does not: on one team's VPS, 11 of 23 interview
+sessions never wrote a `## Goal-spec`, the loop was never invoked in any of those 11, and most of
+them went on to edit, push and merge. The one exception: if the goalspec loop is what routed you
+into this interview (its clarify step does that), it is already loaded — continue it instead of
+invoking it again. If the interview concluded that nothing should be done, say so plainly and
+stop; there is no spec to write. Two rules for the handoff:
 
 - **Do not re-ask anything settled here.** The loop's clarify step (step 2) should find nothing
   left to ask — its purpose was served upstream. Anything the user left unsettled goes in the

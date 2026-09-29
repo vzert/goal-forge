@@ -458,8 +458,10 @@ def _collect_event(ev, items):
             b.get("text") for b in (ucontent or [])
             if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str)
         ] if isinstance(ucontent, list) else []
-        if any(COMMAND_ENTRY_RE.match(u.lstrip()) for u in utexts):
-            items.append({"kind": "goalspec_entry", "timestamp": ev.get("timestamp"), "text": ""})
+        entry = next((m for m in (COMMAND_ENTRY_RE.match(u.lstrip()) for u in utexts) if m), None)
+        if entry:
+            items.append({"kind": "goalspec_entry", "timestamp": ev.get("timestamp"), "text": "",
+                          "skill": "interview" if "interview" in entry.group(0) else "goalspec"})
         elif utexts and not ev.get("isMeta") and not all(
                 u.lstrip().startswith(HARNESS_TEXT_PREFIXES) for u in utexts):
             # A real user prompt (not a tool_result, not a harness-injected meta
@@ -486,12 +488,16 @@ def _collect_event(ev, items):
             # 0.45.0: the same entry, invoked by the model through the Skill tool.
             sk = (blk.get("input") or {}).get("skill")
             if isinstance(sk, str) and sk.strip() in ENTRY_SKILLS:
-                items.append({"kind": "goalspec_entry", "timestamp": ts, "text": ""})
+                items.append({"kind": "goalspec_entry", "timestamp": ts, "text": "",
+                              "skill": "interview" if sk.strip().endswith("interview") else "goalspec"})
         elif blk.get("type") == "tool_use" and blk.get("name") == "Bash":
             cmd = (blk.get("input") or {}).get("command")
             if isinstance(cmd, str) and cmd:
                 items.append({"kind": "bash", "timestamp": ts, "command": cmd, "id": blk.get("id")})
         elif blk.get("type") == "tool_use" and blk.get("name") in ("Write", "Edit"):
+            # Every Write/Edit leaves a text-free "edit" item (0.46.0), so interview_handoff_pending
+            # can tell work done after an interview from a conversation that simply went on.
+            items.append({"kind": "edit", "timestamp": ts, "text": ""})
             # A ## Goal-spec can be written to disk (.goalspec/checkpoint.md, per
             # SKILL.md step 5's own checkpoint pattern for long-running tasks) instead
             # of posted as chat text. Confirmed live (goal-adversary, 2026-07-31): a
@@ -604,6 +610,54 @@ def has_goal_spec(text):
 
 def has_waiver(text):
     return bool(re.search(WAIVER_RE, text, re.I))
+
+
+def interview_handoff_pending(items, require_work=False):
+    """0.46.0 — True when the session's most recent `/goalspec:interview` has not yet been followed
+    by the goalspec loop being invoked or a `## Goal-spec` being written (chat text or the
+    checkpoint file). Field numbers behind it: on the VPS, 11 of 23 interview sessions never wrote a
+    spec, and in all 11 the loop was never invoked; on the maintainer machine, 10 of 70, 8 of which
+    never invoked the loop and went on to run Bash or edit files. The interview told the agent to rely on the loop auto-triggering, and it often did
+    not. False on any doubt (no interview, or anything after it that starts the spec).
+
+    require_work=True (the UserPromptSubmit path) also requires a Bash, Write or Edit call after the
+    interview: an interview that concluded "nothing to do" and a conversation that just goes on is
+    not the failure, and nudging on every later message there is noise (external adversary round on
+    0.46.0). The PostToolUse(AskUserQuestion) path does not require it: that is the handoff moment.
+
+    What counts as starting the spec is the plugin-wide signal (has_goal_spec on assistant text, a
+    checkpoint Write, a Skill call to the loop), read from the transcript as written: a Skill or
+    Write call that then failed still counts. For an advisory nudge that errs toward silence."""
+    last_iv = None
+    for i, it in enumerate(items):
+        if it["kind"] == "goalspec_entry" and it.get("skill") == "interview":
+            last_iv = i
+    if last_iv is None:
+        return False
+    worked = False
+    for it in items[last_iv + 1:]:
+        if it["kind"] in ("bash", "edit"):
+            worked = True
+        if it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec":
+            return False
+        if it["kind"] == "goal_spec_file":
+            return False
+        if it["kind"] == "text" and has_goal_spec(it["text"]):
+            return False
+    return worked or not require_work
+
+
+# Agent-facing text for hooks/nudge-interview-handoff.sh. Kept here, not in the hook, because that
+# hook runs python inside a single-quoted bash string, where one apostrophe breaks it silently.
+INTERVIEW_HANDOFF_NUDGE = (
+    "goalspec: this session ran /goalspec:interview and no ## Goal-spec exists yet. The interview "
+    "does not end at the last answer: when it is done, invoke the Skill tool with "
+    "goalspec:goalspec (pass the settled decisions as args), or, if the goalspec loop is what "
+    "routed you into the interview, continue that loop, and write the ## Goal-spec BEFORE any "
+    "other work. Until it exists, a push to a protected branch, a merge or a deploy is denied by "
+    "the terminal-push precheck. If the interview concluded that nothing should be done, say so "
+    "plainly and do no work; this reminder only returns once work starts without a spec."
+)
 
 
 def waiver_covers_command(items, command, tool_use_id=None):

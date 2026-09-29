@@ -6,6 +6,50 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.0] - 2026-09-29
+
+### Después de `/goalspec:interview`, el agente escribe el spec: el paso 4 lo ordena y un hook lo recuerda
+
+**Qué pasaba**: la entrevista termina entregando al loop de goalspec, que es quien escribe el
+`## Goal-spec`. El paso 4 de `skills/interview/SKILL.md` decía que el loop "se auto-dispara", y a
+menudo no pasaba. En el VPS de un equipo (auditoría de `claude-vzert`, 2026-09-08..29), 11 de 23
+sesiones con entrevista nunca escribieron un spec, y en las 11 el loop nunca se invocó; de las 12
+con spec, 11 invocaron el loop y 1 escribió el spec sin invocarlo. En la máquina del mantenedor,
+10 de 70: en 8 nunca se invocó el loop y las 8 siguieron corriendo Bash o editando archivos (entre
+6 y 160 llamadas a Bash y entre 3 y 53 ediciones por sesión, contadas después de la entrevista);
+en las otras 2 se invocó, pero no quedó un encabezado de spec. **Cómo se contó**: "spec" es un
+encabezado `## Goal-spec` en texto del asistente; en esta máquina también cuenta el checkpoint en
+disco, pero la auditoría del VPS (`audit_agentes.py`) solo mira texto, así que allí una sesión con
+el spec solo en el checkpoint contaría como sin spec. El conteo del VPS es de esa auditoría, no se
+re-corrió allá. Pasó con Opus, Sonnet
+y DeepSeek. El conteo solo reconoce un spec como encabezado `## Goal-spec` (texto o checkpoint).
+
+**Cambio**:
+- `skills/interview/SKILL.md` paso 4: al terminar la entrevista, en el mismo turno y antes de
+  cualquier otro trabajo, invocar el tool Skill con `goalspec:goalspec` y las decisiones acordadas
+  como args. Si fue el loop quien enrutó a la entrevista, se continúa ese loop. Si la entrevista
+  concluyó que no hay nada que hacer, se dice y se para.
+- Nuevo hook `hooks/nudge-interview-handoff.sh` (UserPromptSubmit y PostToolUse de
+  `AskUserQuestion`): mientras la última entrevista no tenga después una invocación del loop ni un
+  spec, añade una línea de contexto al agente con ese mismo paso. Tras una ronda respondida habla
+  siempre (es el momento de la entrega); en un mensaje nuevo del usuario, solo si después de la
+  entrevista ya hubo trabajo (Bash, Write o Edit), para no insistir tras una entrevista que
+  concluyó que no hay nada que hacer. Qué cuenta como "ya hay spec" es la misma señal que usan el
+  precheck y el Stop gate (un encabezado `## Goal-spec`, aunque venga vacío, o una llamada a Skill o
+  Write registrada, aunque luego haya fallado): el recordatorio se equivoca hacia el silencio, no
+  valida el contenido del spec. No bloquea nada; el bloqueo duro
+  sigue siendo el de 0.45.0 (push a rama protegida, merge o deploy). La lógica vive en
+  `terminal_actions.interview_handoff_pending()`, y las entradas registran ahora qué skill fue
+  (`interview` o `goalspec`).
+
+**Verificación**: suite nuevo `test/interview-handoff-branches.py`, 18 casos; su `--selftest`
+aplica 9 mutaciones al componente y cada una la detecta al menos un caso. Contra los 70
+transcripts reales con entrevista de esta máquina, el detector marca exactamente las 8 sesiones
+que siguieron sin spec y sin invocar el loop. `test/manifest-checks.py` revisa ahora también el
+conteo de suites que declara `.github/workflows/tests.yml` (decía "nine" cuando ya había diez
+suites de ramas; con este cambio son once). **No verificado**: que el agente obedezca el
+recordatorio; eso solo se ve en sesiones reales.
+
 ## [0.45.0] - 2026-09-29
 
 ### Tres huecos por los que una sesión con goalspec hacía push o merge sin adversario

@@ -517,6 +517,7 @@ goal-forge/
     hooks/watch-adversary-writes.sh       # SubagentStart/Stop: fingerprints repo content around an adversary run and records anything it changed
     hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor)
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
+    hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
 ```

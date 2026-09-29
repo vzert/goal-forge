@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Manifest and wiring checks — the silent-failure classes no branch suite can see.
 
-The nine branch suites drive hook CODE. Nothing checked the things that break a release without
+The branch suites drive hook CODE. Nothing checked the things that break a release without
 breaking a single test, each of which this project has actually been bitten by:
 
 * **A version that was not bumped.** The install cache is keyed by version
@@ -335,11 +335,13 @@ word = WORDS.get(n, str(n))
 # with a gap you can read here. What makes it bite anyway is that the count lives in exactly two
 # documents and is written the same way in both.
 COUNT_RE = re.compile(
-    r"\b([A-Za-z]+|\d+)\s+(?:mechanical\s+|branch\s+)?suites?\b", re.I)
+    r"\b([A-Za-z]+|\d+)\s+(?:mechanical\s+|hermetic\s+)?(?:branch\s+)?suites?\b", re.I)
 DIGITS = {"1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six",
           "7": "seven", "8": "eight", "9": "nine", "10": "ten", "11": "eleven", "12": "twelve"}
 
-for doc in ("test/README.md", "CLAUDE.md"):
+# The CI workflow header states the count too (0.46.0: it still said "nine" at eleven suites,
+# found by an external adversary round), so it is scanned like the two documents.
+for doc in ("test/README.md", "CLAUDE.md", ".github/workflows/tests.yml"):
     text = open(os.path.join(REPO, doc), encoding="utf-8").read()
     # Strip markdown emphasis so **Nine** reads as Nine.
     flat = text.replace("**", "").replace("*", "")
