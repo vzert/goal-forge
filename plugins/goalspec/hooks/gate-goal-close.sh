@@ -549,7 +549,7 @@ if ta is not None and not lam_crs:
                         repos.append(r)
             paths = []
             for r in repos:
-                p = ta.commits_since(r, items[idx].get("timestamp"))
+                p = ta.commits_since(r, items[idx].get("timestamp")) if r else None
                 if p is None:
                     paths = None
                     break

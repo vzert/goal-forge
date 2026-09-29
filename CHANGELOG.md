@@ -21,7 +21,8 @@ avisaba; en el caso espejo avisaba de más (p-adbf311b73).
 corrió, el repo de cada `git [-C dir] push|merge` (el mismo parseo `git_calls` que usa el
 precheck), más el cwd cuando parte del comando no es uno de esos (`gh pr merge`, deploy,
 destructivo) o el parseo reconstruyó menos push o merge de los que el comando contiene (p. ej.
-`(git -C /y push)`, cuyo token es `push)`). El gate lee `commits_since()` en cada uno
+`(git -C /y push)`, cuyo token es `push)`). Un `-C` con `$` o comilla invertida (`-C "$OTHER"`)
+nombra un repo que solo el shell conocía: cuenta como ilegible, igual que en el precheck. El gate lee `commits_since()` en cada uno
 de esos repos y junta las rutas; si uno no se puede leer (un `-C` a un directorio que no existe),
 nada queda exento. El clasificador no cambia.
 
@@ -29,7 +30,10 @@ nada queda exento. El clasificador no cambia.
 debe avisar) y `stale-07` (el espejo: no debe avisar). Contra 0.46.0 fallan los dos, en
 direcciones opuestas. `stale-08` (un segundo push dentro de un subshell que el parseo no
 reconstruye: se sigue leyendo el cwd) pasa contra 0.46.0 y fallaba contra el primer borrador de
-este cambio; lo encontró el adversario. `stale-01`..`05` dan lo mismo que antes, y `--compare` contra el gate previo
+este cambio; lo encontró el adversario. `stale-09` (`-C "$OTHER"` con un directorio literal
+`$OTHER` que solo tiene memoria) avisa; 0.46.0 callaba ahí porque el cwd también tenía solo
+memoria. Es el único caso donde 0.46.1 avisa y 0.46.0 no, además de `stale-06`. `stale-01`..`05`
+dan lo mismo que antes, y `--compare` contra el gate previo
 da paridad en modo normal y con `GOAL_GATE_ENFORCE=1` (esa paridad no ve el módulo compartido;
 lo cubren los casos stale, ver `test/README.md`).
 

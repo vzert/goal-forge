@@ -372,11 +372,12 @@ def _sh(args, cwd, env=None):
     return out.stdout
 
 
-def stale_repo(name, files_after_review, committer_date):
+def stale_repo(name, files_after_review, committer_date, work=None):
     """A repo with one pushed baseline commit, then ONE MORE commit — containing
     `files_after_review` — stamped at `committer_date` (ISO8601). That second commit is what
-    commits_since(review_ts) must find when review_ts is BEFORE committer_date."""
-    work = os.path.join(STALE_TMP, name, "work")
+    commits_since(review_ts) must find when review_ts is BEFORE committer_date. `work` puts the
+    working tree at an exact path instead (stale-09 needs a directory literally named `$OTHER`)."""
+    work = work or os.path.join(STALE_TMP, name, "work")
     bare = os.path.join(STALE_TMP, name, "bare.git")
     os.makedirs(work)
     _sh(["git", "init", "-q", "-b", "main", "."], work)
@@ -488,6 +489,16 @@ STALE_CASES = [
       {"timestamp": T2, "bash": "git -C " + os.path.join(STALE_TMP, "s08-other", "work")
                                 + " push origin main && (git -C /nonexistent/y push)",
        "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    # 09 (adversary round 2 on 0.46.1): `-C "$OTHER"` names a repo only the shell knew. A literal
+    # directory called `$OTHER` inside cwd holds only memory; reading it would exempt the push.
+    # The repo is unknown, so nothing is exempt -> STALE.
+    ("stale-09-shell-variable-dash-C-STALE",
+     lambda: (stale_repo("s09", {"memory/session.md": "notes"}, T2),
+              stale_repo("s09-other", {"memory/other.md": "notes"}, T2,
+                         work=os.path.join(STALE_TMP, "s09", "work", "$OTHER")))[0],
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": 'git -C "$OTHER" push origin main', "text": "pushed."}],
      "still working, no fresh review this turn"),
 ]
 

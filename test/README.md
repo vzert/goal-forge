@@ -116,7 +116,7 @@ checkpoint and staleness sections, which run against the edited module only, are
 module. When a change touches `terminal_actions.py`, a `parity OK` line is a necessary check, never
 a sufficient one.
 
-**Staleness backstop cases (`stale-01`..`08`; 01-04 from 0.32.0)** live in this same file but run separately
+**Staleness backstop cases (`stale-01`..`09`; 01-04 from 0.32.0)** live in this same file but run separately
 from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
 `commits_since()`), unlike every other case here, which is pure-transcript with no filesystem
 involved. Each builds its own synthetic repo with a commit stamped at a fixed `GIT_COMMITTER_DATE`
@@ -135,7 +135,11 @@ global options before 0.45.0, so this backstop never saw that push. **06**/**07*
 in opposite directions, so neither "also read cwd" nor "always flag" passes both. **08** (0.46.1,
 adversary round 1) is a second push the token parse cannot rebuild (`(git -C /y push)`, token
 `push)`): its repo is unknown, so cwd must still be read; the first draft of 0.46.1 read only the
-parsed `-C` repo and went silent where 0.46.0 flagged. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
+parsed `-C` repo and went silent where 0.46.0 flagged. **09** (adversary round 2) is `-C "$OTHER"`:
+the repo is one only the shell knew, so nothing is exempt (flag), the same direction the precheck
+takes for it. A literal `$OTHER` directory holding only memory, inside a memory-only cwd, is the
+trap; 0.46.0 (which read cwd) and the second draft of 0.46.1 (which read the literal path) were
+both silent there. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
 subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, which resolves from
 it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
 from a passing case, which is exactly the trap the first draft of this suite fell into.
@@ -223,7 +227,7 @@ after any active one (`silence-resets-after-active-turn-SPEAKS`) both speak; the
 consecutive parked turns (`silence-second-parked-SILENT`, `silence-third-parked-SILENT`) do not. The
 first case is the regression control for a real bug found while building this: an earlier draft
 counted the goal-spec-announcement turn itself as "the prior parked turn", which silenced the very
-first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`08` above)
+first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`09` above)
 is deliberately EXEMPT from this silence (`skip_general_silence=True` at its own call site) — a
 terminal action having run after the operative close does not become less true because a later turn
 also failed to re-declare, and `stale-01` already pins that it must always fire.

@@ -404,7 +404,10 @@ def staleness_repos(command, cwd):
                  or "deploy" in kinds or "destructive" in kinds)
     if needs_cwd and cwd not in repos:
         repos.append(cwd)
-    return repos
+    # `-C "$VAR"` / `-C $(...)` / backticks: the repo the shell pushed from is not knowable here.
+    # None marks it unreadable, so the caller exempts nothing (adversary round 2: a literal
+    # `$OTHER` directory holding only memory exempted a push whose real repo held code).
+    return [None if r and ("$" in r or "`" in r) else r for r in repos]
 
 
 def diff_paths_for(kind, command, cwd):
