@@ -8,28 +8,38 @@ version bump are never delivered to already-installed users.
 
 ## [0.46.2] - 2026-09-29
 
-### La cita de un veredicto cuenta solo como texto visible, nunca en el razonamiento
+### La cita de un veredicto cuenta solo como texto visible, en un mensaje anterior al comando
 
 **Qué pasaba**: en tres sesiones de tres proyectos (2026-09-03, 09-09 y 09-29) el agente creyó
 haber citado el hold del adversario, el precheck negó el comando terminal y el agente concluyó que
 el registro de la sesión perdía su texto. No lo perdía: 0 de 723,755 enlaces entre bloques rotos en
 2,589 sesiones. La cita estaba solo en el thinking del agente (bloques con firma, resumidos, que
-ningún hook lee y que el usuario no ve) y nunca salió como texto. Cada negación llevó a reintentos,
-waivers apilados o intentos de esquivar el hook (p-87faebb038, causa A).
+ningún hook lee y que el usuario no ve) y nunca salió como texto (p-87faebb038, causa A). Hay una
+segunda causa medida con la misma queja: una cita visible en el MISMO mensaje que el comando llega
+al registro solo después de que el comando corre, así que el precheck todavía no la ve (causa B,
+p-f28edd97c1; 7 negaciones reales la reproducen).
 
-**Cambio**: solo texto; ninguna decisión cambia. La negación del precheck y los cinco textos que
-piden citar el veredicto dicen ahora que la cita tiene que ser un bloque de texto visible, y que
-una cita escrita o planeada en el thinking no cuenta. Son `skills/goalspec/SKILL.md`,
-`skills/adversary/SKILL.md`, las dos ramas de `hooks/remind-quote-verdict.sh` y el aviso por
-stderr de `hooks/external-adversary.sh`. Si el agente cree que ya citó, la negación le dice que
-busque la línea en un bloque de texto antes de culpar al registro.
+**Cambio**: solo texto; ninguna decisión de ningún hook cambia. Ocho textos de cara al agente
+dicen ahora que la cita tiene que ser un bloque de texto visible y que una cita escrita o planeada
+en el thinking no cuenta: `skills/goalspec/SKILL.md`, `skills/adversary/SKILL.md`, las dos ramas de
+`hooks/remind-quote-verdict.sh`, el aviso por stderr de `hooks/external-adversary.sh`, la negación
+de `hooks/precheck-terminal-push.sh` y dos mensajes del Stop gate (`hooks/gate-goal-close.sh`: sin
+cierre declarado, y `model=different` sin confirmar). La negación del precheck nombra las dos
+causas y dice cómo salir de la B: citar en un mensaje y correr el comando en uno posterior (basta
+el siguiente; no hace falta cerrar el turno). `SKILL.md` dice lo mismo.
 
-**Verificación**: el precheck viejo y el nuevo, corridos sobre los registros reales de las tres
-sesiones truncados antes del comando negado, niegan los tres; solo el nuevo nombra el thinking.
-Caso nuevo `44` en `test/terminal-precheck-branches.py`: falla contra 0.46.1 y pasa ahora; los
-otros 64 casos dan la misma decisión en los dos. `test/claim-surface-carriers.py` fija la regla
-como tercera regla escrita (seis checks `visible:*`, los seis fallan contra 0.46.1). Ninguna suite
-puede mostrar que un agente obedezca el texto: eso queda para observar en vivo.
+**Verificación**:
+- El precheck viejo y el nuevo, corridos sobre los registros reales de las tres sesiones de la
+  causa A truncados antes del comando negado, niegan los tres; solo el nuevo nombra el thinking.
+- Caso nuevo `44` en `test/terminal-precheck-branches.py`: falla contra 0.46.1 y pasa ahora; los
+  otros 64 casos dan la misma decisión en los dos.
+- `test/gate-branches.py --compare` contra 0.46.1: paridad en los 45 casos, en modo normal y con
+  `GOAL_GATE_ENFORCE=1`.
+- `test/claim-surface-carriers.py` fija la regla como tercera regla escrita con nueve checks
+  `visible:*`. Los seis de hooks corren cada hook y leen lo que emite, no su código. Los nueve fallan
+  contra 0.46.1. Una mutación por carrier, que quita la cláusula del mensaje y la deja solo en un
+  comentario, hace fallar exactamente el check de ese carrier: siete de siete.
+- Ninguna suite puede mostrar que un agente obedezca el texto: eso queda para observar en vivo.
 
 ## [0.46.1] - 2026-09-29
 

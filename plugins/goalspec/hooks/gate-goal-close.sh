@@ -636,7 +636,7 @@ case "$DETAIL" in
     # and the external-backend script). So the inner-grammar detail is repeated here, not pointed at,
     # because there is nowhere in the executor's own context that already carries it. See
     # memory/_pendientes.md p-a95b61154a for the finding this whole branch responds to.
-    MSG="model=different no se pudo confirmar por formato (${DETAIL}) — no es defecto grave. Si el adversario reportó UNKNOWN o el mismo modelo, usa model=same. Si no: vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual, en su propia línea, sin negritas ni texto después del \`]\`; el id después de la \`/\` debe ser un solo token sin espacios (nunca prosa), y cualquier aviso de independencia va en la línea SIGUIENTE, nunca dentro del corchete. Ver SKILL.md, «Completion-review declaration», para la gramática externa."
+    MSG="model=different no se pudo confirmar por formato (${DETAIL}) — no es defecto grave. Si el adversario reportó UNKNOWN o el mismo modelo, usa model=same. Si no: vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual, en su propia línea, sin negritas ni texto después del \`]\`, en un bloque de texto visible (una cita que solo escribes o planeas en tu razonamiento no cuenta: el razonamiento no se lee y el usuario nunca lo ve); el id después de la \`/\` debe ser un solo token sin espacios (nunca prosa), y cualquier aviso de independencia va en la línea SIGUIENTE, nunca dentro del corchete. Ver SKILL.md, «Completion-review declaration», para la gramática externa."
     AGENT_MSG="$MSG"
     ;;
   completion-review:stale-terminal-action-after-close)
@@ -655,7 +655,7 @@ case "$DETAIL" in
     ;;
   *)
     MSG="Sigue sin haber un cierre formal de este trabajo (${DETAIL}) — la decisión de cerrarlo o seguir es tuya."
-    AGENT_MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
+    AGENT_MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then declare \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) or route to the adversary and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present. Both marker lines must be in YOUR turn's text, not only in the subagent's output -- as a visible text block you emit: a quote you only write or plan in your thinking does not count, thinking is not read and the user never sees it. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
     ;;
 esac
 

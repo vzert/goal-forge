@@ -157,14 +157,18 @@ else:
                  "loop writes the spec. Write the ## Goal-spec, spawn goal-adversary against it on "
                  "the actual diff/outcome, get a hold, then retry this command.")
 
-# Cause A of the 2026-09-29 research (memory, p-87faebb038): executors that believed they had
-# quoted a hold had written it only in their thinking, then blamed the transcript for losing it.
-# The transcript was faithful; the quote was never emitted. Say where the quote has to live.
-seen_note = (" If you believe you already quoted a hold: this hook reads only visible text blocks "
-             "you emitted -- a quote you only write or plan in your thinking does not count: "
-             "thinking is not read and the user never sees it. Check that the "
-             "[ADVERSARY-VERDICT: hold ...] line is in a text block before blaming the transcript, "
-             "which records every block you emit.")
+# The 2026-09-29 research (memory, p-87faebb038) measured two ways an executor believes it quoted a
+# hold that this hook cannot see, and executors that hit either one blamed the transcript. Cause A:
+# the quote lived only in thinking and was never emitted. Cause B: the quote was a visible text block
+# in the SAME message as this command, and a message reaches the transcript only after its tool call
+# runs. Name both, so an executor that did emit visible text is not sent to hunt for cause A.
+seen_note = (" If you believe you already quoted a hold, two causes are measured. (1) The quote is "
+             "only in your thinking -- a quote you only write or plan in your thinking does not "
+             "count: thinking is not read and the user never sees it. (2) The quote is a visible "
+             "text block in the SAME message as this command -- a message reaches the transcript "
+             "only after its tool call runs, so this hook cannot see it yet. Quote the "
+             "[ADVERSARY-VERDICT: hold ...] line as visible text in one message and run the command "
+             "in a later message; the next message is enough, the turn does not need to end.")
 
 reason = (
     "goalspec terminal-action precheck: this looks like " + kind_label + " (`" +

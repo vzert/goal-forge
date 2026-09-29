@@ -44,8 +44,10 @@ emits; a quote written or planned in thinking is not read by any hook and is nev
 Measured 2026-09-29 in three sessions of three projects: the executor "quoted" the hold only in its
 reasoning, the precheck denied, and the executor blamed the transcript for losing text it had never
 emitted. Carriers: both SKILL.md files, both branches of `hooks/remind-quote-verdict.sh`, the stderr
-reminder in `hooks/external-adversary.sh`, and the deny text of `hooks/precheck-terminal-push.sh`.
-Presence only, like the other two.
+reminder in `hooks/external-adversary.sh`, the deny text of `hooks/precheck-terminal-push.sh`, and two
+Stop messages of `hooks/gate-goal-close.sh` (no completion-review; model=different unconfirmed). The
+hook carriers are checked on what each hook EMITS when driven, not on source text. Still presence
+only: obedience is not testable here.
 
 THIRD RULE PINNED HERE (0.44.10): READ-ONLY BEYOND THE REPOSITORY. The "you verify, you do not
 repair" rail named only the repository under review; a user reported an external adversary that ran
@@ -56,6 +58,7 @@ and the setup reference. The remote half is not measured by any hook, and this s
 change that.
 """
 
+import json
 import os
 import re
 import subprocess
@@ -331,19 +334,76 @@ def main():
 
     # --- VISIBLE TEXT (0.46.2): the third written rule this file pins. See the header. ---
     # A verdict quote counts only as a visible text block the executor emits; a quote written or
-    # planned in thinking is not read. Every text that tells the executor to quote a verdict carries
-    # the clause, so no carrier can send it back to quoting in its reasoning.
+    # planned in thinking is not read. The two SKILL.md files are read by the agent as they are on
+    # disk, so their source text IS what the agent sees. Every hook carrier is checked on what the
+    # hook EMITS when driven, never on its source: a clause left only in a comment must fail here
+    # (an adversary round on 0.46.2 showed a source-text check passing exactly that mutation).
     VIS = "thinking is not read and the user never sees it"
+    VIS_ES = "el razonamiento no se lee y el usuario nunca lo ve"
     adv_skill = " ".join(read(os.path.join(P, "skills", "adversary", "SKILL.md")).split())
-    nudge = read(os.path.join(P, "hooks", "remind-quote-verdict.sh")).replace('"\n        "', "")
-    precheck = read(os.path.join(P, "hooks", "precheck-terminal-push.sh")).replace('"\n             "', "")
     check("visible:skill-owner", "a visible text block you emit" in skill and VIS in skill)
+    check("visible:skill-names-both-causes",
+          "before blaming the log" in skill and "reaches the transcript only after its tool call runs" in skill)
     check("visible:adversary-skill", VIS in adv_skill)
-    check("visible:nudge-both-branches", nudge.count(VIS) == 2, "count=%d" % nudge.count(VIS))
-    check("visible:external-stderr-reminder",
-          VIS in external.split("a verdict-shaped block was just produced above", 1)[-1])
-    check("visible:precheck-deny", VIS in precheck)
-    check("visible:skill-names-the-misdiagnosis", "before blaming the log" in skill)
+
+    def emit(hook, payload, env=None, cwd=None):
+        r = subprocess.run(["bash", os.path.join(P, "hooks", hook)], input=json.dumps(payload),
+                           capture_output=True, text=True, cwd=cwd,
+                           env=dict(os.environ, CLAUDE_PLUGIN_ROOT=P, **(env or {})))
+        return r.stdout, r.stderr
+
+    vt = tempfile.mkdtemp(prefix="visible-")
+    def jsonl(name, texts):
+        path = os.path.join(vt, name + ".jsonl")
+        with open(path, "w", encoding="utf-8") as fh:
+            for t in texts:
+                fh.write(json.dumps({"type": "assistant",
+                                     "message": {"content": [{"type": "text", "text": t}]}}) + "\n")
+        return path
+
+    hold = ("[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 "
+            "autonomy-violations=0 unsafe=0]")
+    spec = "## Goal-spec\nObjective: whatever.\n"
+
+    # remind-quote-verdict.sh, both message branches, driven.
+    out, _ = emit("remind-quote-verdict.sh", {"tool_name": "Task",
+                  "tool_input": {"subagent_type": "goal-adversary"},
+                  "tool_response": {"content": [{"type": "text", "text":
+                      "[ADVERSARY-MODEL: X / x]\n- probe: evidence\n" + hold}]}})
+    check("visible:nudge-verdict-branch-emits", "just came back" in out and VIS in out)
+    out, _ = emit("remind-quote-verdict.sh", {"tool_name": "Task",
+                  "tool_input": {"subagent_type": "goal-adversary"}, "tool_response": {}})
+    check("visible:nudge-launched-branch-emits", "no adversary output" in out and VIS in out)
+
+    # external-adversary.sh stderr reminder, driven through a stub partner with a real verdict.
+    xrepo = os.path.join(vt, "xrepo"); os.makedirs(xrepo)
+    subprocess.call(["git", "init", "-q", xrepo])
+    subprocess.call(["git", "-C", xrepo, "-c", "user.name=t", "-c", "user.email=t@t",
+                     "commit", "-q", "--allow-empty", "-m", "x"])
+    fixture = os.path.join(vt, "partner.txt")
+    with open(fixture, "w") as fh:
+        fh.write("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- checked a thing: fine\n- checked another: fine\n"
+                 + hold + "\n")
+    r = subprocess.run(["bash", EXTERNAL], input="payload\n", capture_output=True, text=True,
+                       cwd=xrepo, env=dict(os.environ, GOAL_ADVERSARY_CMD="cat " + fixture))
+    check("visible:external-stderr-emits", "verdict-shaped block was just produced" in r.stderr
+          and VIS in r.stderr)
+
+    # precheck-terminal-push.sh deny, driven: spec on record, no verdict, non-diffable merge.
+    out, _ = emit("precheck-terminal-push.sh", {"tool_name": "Bash",
+                  "tool_input": {"command": "gh pr " + "mer" + "ge 1"}, "cwd": vt,
+                  "transcript_path": jsonl("pre", [spec])})
+    check("visible:precheck-deny-emits", '"deny"' in out and VIS in out
+          and "reaches the transcript only after its tool call runs" in out)
+
+    # gate-goal-close.sh, the two executor-facing quote instructions, driven.
+    out, _ = emit("gate-goal-close.sh", {"last_assistant_message": spec,
+                  "transcript_path": jsonl("gate-absent", [spec])})
+    check("visible:gate-absent-emits", "no valid [COMPLETION-REVIEW] declared" in out and VIS in out)
+    lam = spec + hold + "\n[COMPLETION-REVIEW: adversary model=different (x) backends=both]"
+    out, _ = emit("gate-goal-close.sh", {"last_assistant_message": lam,
+                  "transcript_path": jsonl("gate-model", [lam])})
+    check("visible:gate-model-requote-emits", "vuelve a citar" in out and VIS_ES in out)
 
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]
