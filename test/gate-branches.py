@@ -478,6 +478,17 @@ STALE_CASES = [
       {"timestamp": T2, "bash": "git -C " + os.path.join(STALE_TMP, "s07-other", "work")
                                 + " push origin main", "text": "checkpoint pushed."}],
      "still working, no fresh review this turn"),
+    # 08 (adversary round 1 on 0.46.1): the second push sits in a subshell, so its token is `push)`
+    # and git_calls does not rebuild it. Its repo is unknown, so cwd (code here) must still be read
+    # -> STALE. The first draft of 0.46.1 read only the parsed `-C` repo (memory) and went silent.
+    ("stale-08-unparsed-second-push-reads-cwd-STALE",
+     lambda: (stale_repo("s08-other", {"memory/session.md": "notes"}, T2),
+              stale_repo("s08", {"src/app.js": "code"}, T2))[1],
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git -C " + os.path.join(STALE_TMP, "s08-other", "work")
+                                + " push origin main && (git -C /nonexistent/y push)",
+       "text": "pushed."}],
+     "still working, no fresh review this turn"),
 ]
 
 

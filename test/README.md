@@ -116,7 +116,7 @@ checkpoint and staleness sections, which run against the edited module only, are
 module. When a change touches `terminal_actions.py`, a `parity OK` line is a necessary check, never
 a sufficient one.
 
-**Staleness backstop cases (`stale-01`..`07`; 01-04 from 0.32.0)** live in this same file but run separately
+**Staleness backstop cases (`stale-01`..`08`; 01-04 from 0.32.0)** live in this same file but run separately
 from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
 `commits_since()`), unlike every other case here, which is pure-transcript with no filesystem
 involved. Each builds its own synthetic repo with a commit stamped at a fixed `GIT_COMMITTER_DATE`
@@ -132,7 +132,10 @@ after the review means nothing to flag. **05** (0.45.0) is 01 with the field `/p
 global options before 0.45.0, so this backstop never saw that push. **06**/**07** (0.46.1) pin
 *which* repo the backstop reads: the `-C` repo's commits, not the hook cwd's. 06 puts code in the
 `-C` repo and only memory in cwd (must flag); 07 is the mirror (must not). Both fail against 0.46.0,
-in opposite directions, so neither "also read cwd" nor "always flag" passes both. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
+in opposite directions, so neither "also read cwd" nor "always flag" passes both. **08** (0.46.1,
+adversary round 1) is a second push the token parse cannot rebuild (`(git -C /y push)`, token
+`push)`): its repo is unknown, so cwd must still be read; the first draft of 0.46.1 read only the
+parsed `-C` repo and went silent where 0.46.0 flagged. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
 subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, which resolves from
 it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
 from a passing case, which is exactly the trap the first draft of this suite fell into.

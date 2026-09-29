@@ -383,7 +383,8 @@ def staleness_repos(command, cwd):
     """-> the repos whose recent commits the staleness backstop must read for one terminal command
     that already ran: the repo of every `git [-C dir] push|merge` in it (git_calls, the same parse
     the precheck uses), plus cwd when some terminal part of the command is not one of those calls
-    (`gh pr merge`, a deploy, a destructive command) or the token parse rebuilt no call at all.
+    (`gh pr merge`, a deploy, a destructive command) or the token parse rebuilt fewer push/merge
+    calls than the command contains.
     Before 0.46.1 the backstop always read cwd, so `git -C /other push origin main` was exempted or
     flagged on the SESSION repo's commits, not the ones it pushed (p-adbf311b73)."""
     pushes = git_calls(command, "push", cwd)
@@ -393,9 +394,13 @@ def staleness_repos(command, cwd):
         if d not in repos:
             repos.append(d)
     kinds = classify_all(command)
+    # A push/merge the regex sees but the token parse did not rebuild (`(git -C /y push)`,
+    # `bash -c 'git push'`: the subcommand token is `push)` / `push'`) has an unknown repo, so cwd
+    # is read too — never fewer repos than 0.46.0, which always read cwd.
     needs_cwd = (not repos
-                 or ("push" in kinds and not pushes)
-                 or ("merge" in kinds and (not merges or GH_MERGE_RE.search(command)))
+                 or len(list(PUSH_RE.finditer(command))) > len(pushes)
+                 or len(list(GIT_MERGE_RE.finditer(command))) > len(merges)
+                 or GH_MERGE_RE.search(command)
                  or "deploy" in kinds or "destructive" in kinds)
     if needs_cwd and cwd not in repos:
         repos.append(cwd)
