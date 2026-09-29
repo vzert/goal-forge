@@ -39,6 +39,14 @@ five files in the repo under review. Its carriers are `agents/goal-adversary.md`
 `hooks/report-adversary-writes.sh` (the audience line that makes the executor-facing message say so
 out loud). Same limit as above, doubly: presence is testable, obedience is not.
 
+THIRD RULE (0.46.2): VISIBLE TEXT -- a verdict quote counts only as a visible text block the executor
+emits; a quote written or planned in thinking is not read by any hook and is never seen by the user.
+Measured 2026-09-29 in three sessions of three projects: the executor "quoted" the hold only in its
+reasoning, the precheck denied, and the executor blamed the transcript for losing text it had never
+emitted. Carriers: both SKILL.md files, both branches of `hooks/remind-quote-verdict.sh`, the stderr
+reminder in `hooks/external-adversary.sh`, and the deny text of `hooks/precheck-terminal-push.sh`.
+Presence only, like the other two.
+
 THIRD RULE PINNED HERE (0.44.10): READ-ONLY BEYOND THE REPOSITORY. The "you verify, you do not
 repair" rail named only the repository under review; a user reported an external adversary that ran
 `git pull` on a production host over SSH while verifying a deploy. Carriers: the two prompts the
@@ -320,6 +328,22 @@ def main():
     rblk = rblk[1].split("the only rail there is.", 1)[0] if len(rblk) == 2 else ""
     check("remote:added-block-is-heredoc-safe",
           rblk and "'" not in rblk and "`" not in rblk and "$" not in rblk)
+
+    # --- VISIBLE TEXT (0.46.2): the third written rule this file pins. See the header. ---
+    # A verdict quote counts only as a visible text block the executor emits; a quote written or
+    # planned in thinking is not read. Every text that tells the executor to quote a verdict carries
+    # the clause, so no carrier can send it back to quoting in its reasoning.
+    VIS = "thinking is not read and the user never sees it"
+    adv_skill = " ".join(read(os.path.join(P, "skills", "adversary", "SKILL.md")).split())
+    nudge = read(os.path.join(P, "hooks", "remind-quote-verdict.sh")).replace('"\n        "', "")
+    precheck = read(os.path.join(P, "hooks", "precheck-terminal-push.sh")).replace('"\n             "', "")
+    check("visible:skill-owner", "a visible text block you emit" in skill and VIS in skill)
+    check("visible:adversary-skill", VIS in adv_skill)
+    check("visible:nudge-both-branches", nudge.count(VIS) == 2, "count=%d" % nudge.count(VIS))
+    check("visible:external-stderr-reminder",
+          VIS in external.split("a verdict-shaped block was just produced above", 1)[-1])
+    check("visible:precheck-deny", VIS in precheck)
+    check("visible:skill-names-the-misdiagnosis", "before blaming the log" in skill)
 
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]

@@ -157,12 +157,21 @@ else:
                  "loop writes the spec. Write the ## Goal-spec, spawn goal-adversary against it on "
                  "the actual diff/outcome, get a hold, then retry this command.")
 
+# Cause A of the 2026-09-29 research (memory, p-87faebb038): executors that believed they had
+# quoted a hold had written it only in their thinking, then blamed the transcript for losing it.
+# The transcript was faithful; the quote was never emitted. Say where the quote has to live.
+seen_note = (" If you believe you already quoted a hold: this hook reads only visible text blocks "
+             "you emitted -- a quote you only write or plan in your thinking does not count: "
+             "thinking is not read and the user never sees it. Check that the "
+             "[ADVERSARY-VERDICT: hold ...] line is in a text block before blaming the transcript, "
+             "which records every block you emit.")
+
 reason = (
     "goalspec terminal-action precheck: this looks like " + kind_label + " (`" +
     command.strip()[:200] + "`) in a goalspec-tracked session, and no operative "
     "[ADVERSARY-VERDICT: hold ...] is on record for it yet" + verdict_note + ". Per SKILL.md, a "
     "terminal/irreversible action must be reviewed by the goal-adversary BEFORE it runs, not after "
-    "the whole task closes. " + next_step + " The waiver is not the default way past this: use "
+    "the whole task closes. " + next_step + seen_note + " The waiver is not the default way past this: use "
     "[GOAL-CLOSE-WAIVED reason=<>=20 chars>] only when the user explicitly authorized skipping the "
     "adversary for this command, and it covers this one command in this turn, not the rest of the "
     "session."

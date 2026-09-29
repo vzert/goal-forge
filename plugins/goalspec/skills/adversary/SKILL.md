@@ -120,7 +120,9 @@ skill and the hooks use.
 
 - Quote the `[ADVERSARY-MODEL: …]` and `[ADVERSARY-VERDICT: …]` lines **verbatim** in your own
   next turn — each on its own line, in plain text, nothing before it and nothing after the
-  closing `]` on that line (no bold, no code-span, no trailing citation).
+  closing `]` on that line (no bold, no code-span, no trailing citation). "Your own turn" means a
+  visible text block you emit — a quote you only write or plan in your thinking does not count:
+  thinking is not read and the user never sees it.
 - A **bare `hold`** — no evidence bullets above it — is **UNVERIFIED, not a pass**: re-run it or
   route to the other backend, and never cite a bare hold as your verification. **Read it
   per-angle too**: if the payload listed hypotheses to try, one that appears in *zero* bullets

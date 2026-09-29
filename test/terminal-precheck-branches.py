@@ -513,6 +513,14 @@ case("43-deny-text-scopes-the-waiver-DENY", lambda: _deny_reason_has(
         transcript([{"text": SPEC_TEXT}], "43"))))
 
 
+# Cause A (2026-09-29): executors that "quoted" a hold only in their thinking read the deny as the
+# transcript losing their text. The deny must say the quote has to be a visible text block.
+case("44-deny-text-says-quote-must-be-visible-text-DENY", lambda: _deny_reason_has(
+    "v44", "thinking is not read", lambda: run_hook(
+        make_repo("v44", None, None), "gh pr merge",
+        transcript([{"text": SPEC_TEXT}], "v44"))))
+
+
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True,

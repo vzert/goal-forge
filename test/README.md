@@ -57,7 +57,7 @@ needs history.
 
 ```sh
 python3 test/gate-branches.py                                  # run against the repo's gate
-python3 test/claim-surface-carriers.py         # claim-surface rule present + consistent across its 4 carriers
+python3 test/claim-surface-carriers.py         # claim-surface, role-fixity and visible-text rules present + consistent across their carriers
 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh  # regression parity vs a pre-edit copy
 GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh
 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh --expected 16-hold,26-floor
@@ -522,7 +522,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-64 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+65 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -530,8 +530,10 @@ cases 07-10); branch scoping (a feature-branch push is out of scope unless `--fo
 `gh pr diff` fails deterministically, so the diff is undeterminable and NOT exempt by design,
 regardless of content, case 13); deploy/destructive commands (never content-exempt, branch-
 agnostic, cases 14-16); the two universal escape hatches (not our tool, not a terminal command,
-malformed JSON — all allow, cases 17-19); and a goal-spec written to disk instead of posted as
-chat text (cases 20-22, see below).
+malformed JSON — all allow, cases 17-19); a goal-spec written to disk instead of posted as
+chat text (cases 20-22, see below); and the deny text itself (cases 42-44: an interview-only
+session is told to write the spec, the waiver is scoped to one command, and — new in 0.46.2 — a
+verdict quote only counts as a visible text block, never one written in thinking).
 
 ```sh
 python3 test/terminal-precheck-branches.py

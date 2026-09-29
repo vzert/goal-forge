@@ -55,7 +55,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    tree), `python3 test/announce-checkpoint-branches.py` (SessionStart hook that announces the
    per-session checkpoint filename — hermetic, synthetic payloads; asserts what it emits, never
    that the agent then uses it), `python3 test/claim-surface-carriers.py` (**not a branch suite**: the claim-surface
-   rule AND the role-fixity rule are present and mutually consistent across their carriers — hermetic, pure text assertions; it cannot show
+   rule, the role-fixity rule AND the visible-text rule are present and mutually consistent across their carriers — hermetic, pure text assertions; it cannot show
    that an agent then applies the rule), `python3 test/checkpoint-overwrite-branches.py` (PreToolUse
    Write|Edit gate that denies overwriting a checkpoint this session did not write — real files in
    a temp dir plus a synthetic transcript, no git), and `python3 test/adversary-writes-branches.py`
