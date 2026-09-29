@@ -223,7 +223,7 @@ after any active one (`silence-resets-after-active-turn-SPEAKS`) both speak; the
 consecutive parked turns (`silence-second-parked-SILENT`, `silence-third-parked-SILENT`) do not. The
 first case is the regression control for a real bug found while building this: an earlier draft
 counted the goal-spec-announcement turn itself as "the prior parked turn", which silenced the very
-first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`04` above)
+first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`08` above)
 is deliberately EXEMPT from this silence (`skip_general_silence=True` at its own call site) — a
 terminal action having run after the operative close does not become less true because a later turn
 also failed to re-declare, and `stale-01` already pins that it must always fire.
