@@ -14,8 +14,11 @@ land, so you walk the decision tree round by round until nothing load-bearing is
 assumed.
 
 This command is purely additive: it writes no `## Goal-spec` (that stays the goalspec skill's
-job), adds **no new markers, no new gates, no new matchers**, and ends by handing off into the
-full goalspec loop. It is the front door for fuzzy intent, not a replacement for any step of
+job), adds **no new markers and no new gates**, and ends by handing off into the full goalspec
+loop. One thing does key on it (since 0.45.0): invoking it marks the session goalspec-tracked, so
+the terminal-push precheck denies a push to a protected branch, a merge, or a deploy until the
+spec it hands off to is written and the adversary holds. The handoff is not optional — field
+sessions that stopped after the interview went on to merge with every rail off. It is the front door for fuzzy intent, not a replacement for any step of
 the loop — the ratify gate still fires later, because settling *intent* here is not the same as
 approving *the spec that intent becomes*.
 
@@ -93,7 +96,8 @@ the skill file via slash command if it already loaded this session). Two rules f
   the ordinary clarify step handle it) or the answers were dropped on the floor.
 
 The interview itself stays **stateless** — it leaves no file behind; the goal-spec that follows
-is the durable record of what was settled, exactly as it is for the rest of the method.
+is the durable record of what was settled, exactly as it is for the rest of the method. (The
+harness still records that the interview ran; that record, not a file, is what the precheck reads.)
 
 ## Headless / non-interactive
 

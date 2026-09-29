@@ -41,7 +41,8 @@ response to a DIFFERENT pair of incidents than the one this document opens with 
 code push/merge/deploy landing before the adversary ran, not a shared-state write.** What makes
 that version tractable where the general one is not: it does not try to classify arbitrary
 executor prose or infer intent — it pattern-matches a *bounded, literal* set of Bash command
-shapes (`git push` to a protected branch, `gh pr merge`, a handful of named deploy/publish CLIs,
+shapes (`git push` to a protected branch — also with git's own global options between `git` and
+the subcommand, `git -C <dir> push`, since 0.45.0 — `gh pr merge`, a handful of named deploy/publish CLIs,
 a couple of destructive shell idioms) and, for push/merge, diffs the *actual file paths* the
 action would touch against a small path allowlist. That is closer in kind to the coverage-floor
 enumeration this method already trusts mechanically (glob for files, diff for paths) than to the

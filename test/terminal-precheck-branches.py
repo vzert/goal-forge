@@ -74,14 +74,24 @@ def make_feature_branch(work):
 
 
 def transcript(events, name):
-    """events: list of dicts, each with any of "text" / "bash" / "write" (a tuple of
-    (file_path, content)) — a turn can carry more than one, in that order."""
+    """events: list of dicts, each with any of "skill" / "text" / "bash" / "write" (a tuple of
+    (file_path, content)) — a turn can carry more than one, in that order. A dict with "user"
+    writes a user event instead (its value is the message content, str or list)."""
     p = os.path.join(TMP, name + ".jsonl")
     with open(p, "w", encoding="utf-8") as fh:
         for ev in events:
+            if "user" in ev:  # a user event: a typed slash command, or any other user content
+                fh.write(json.dumps({"type": "user", "message": {"role": "user", "content": ev["user"]}}) + "\n")
+                continue
+            if "raw" in ev:  # a literal event, for malformed shapes
+                fh.write(json.dumps(ev["raw"]) + "\n")
+                continue
             content = []
+            if "skill" in ev:
+                content.append({"type": "tool_use", "name": "Skill", "input": {"skill": ev["skill"]}})
             if "bash" in ev:
-                content.append({"type": "tool_use", "name": "Bash", "input": {"command": ev["bash"]}})
+                content.append({"type": "tool_use", "name": "Bash", "id": ev.get("bash_id"),
+                                "input": {"command": ev["bash"]}})
             if "write" in ev:
                 fp, body = ev["write"]
                 content.append({"type": "tool_use", "name": "Write", "input": {"file_path": fp, "content": body}})
@@ -91,8 +101,10 @@ def transcript(events, name):
     return p
 
 
-def run_hook(cwd, command, transcript_path=None):
+def run_hook(cwd, command, transcript_path=None, tool_use_id=None):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
+    if tool_use_id:
+        payload["tool_use_id"] = tool_use_id
     if transcript_path:
         payload["transcript_path"] = transcript_path
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
@@ -107,13 +119,15 @@ def run_hook(cwd, command, transcript_path=None):
         return "unparseable", raw[:80]
     hso = d.get("hookSpecificOutput") or {}
     if hso.get("permissionDecision") == "deny":
-        return "deny", (hso.get("permissionDecisionReason") or "")[:70]
+        LAST_REASON[0] = hso.get("permissionDecisionReason") or ""
+        return "deny", LAST_REASON[0][:70]
     if d.get("systemMessage"):
         return "allow-with-message", d["systemMessage"][:70]
     return "allow", ""
 
 
 CASES = []
+LAST_REASON = [""]  # full text of the most recent deny, for the cases that assert on wording
 
 
 def case(name, decision_fn):
@@ -247,6 +261,256 @@ case("24-goalspec-in-near-miss-checkpoint-path-ALLOW", lambda: run_hook(
     make_repo("24", None, {"src/app.js": "code"}), "git push origin main",
     transcript([{"write": ("docs/checkpoint-notes.md", SPEC_TEXT)},
                {"write": (".goalspec/checkpoint.md.bak", SPEC_TEXT)}], "24")))
+
+
+# --- 0.45.0, hueco 1: entering goalspec (interview or loop) with no spec written ---------------------
+# Field evidence (VPS, 4 devs, 2026-09-08..29): 7 of 10 sessions that merged/pushed with no
+# adversary began with /goalspec:interview and never wrote a ## Goal-spec, so the precheck, keyed
+# on the spec alone, allowed everything. Entry now counts. The typed form is the harness tag in a
+# user event, copied from a real transcript; the model form is a Skill tool_use.
+TYPED_INTERVIEW = ("<command-message>goalspec:interview</command-message>\n"
+                   "<command-name>/goalspec:interview</command-name>\n<command-args>audit x</command-args>")
+
+case("26-typed-interview-no-spec-gh-merge-DENY", lambda: run_hook(
+    make_repo("26", None, None), "SKILL_AUTHORIZED=1 gh pr merge 12 --merge",
+    transcript([{"user": TYPED_INTERVIEW}, {"text": "round 1 answers folded in"}], "26")))
+
+case("27-skill-tool-interview-no-spec-push-main-DENY", lambda: run_hook(
+    make_repo("27", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"skill": "goalspec:interview"}], "27")))
+
+case("28-skill-tool-goalspec-loop-no-spec-push-main-DENY", lambda: run_hook(
+    make_repo("28", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"skill": "goalspec:goalspec"}], "28")))
+
+# The standalone adversary promises no spec, so invoking it does not make the session tracked.
+case("29-skill-tool-adversary-only-push-main-ALLOW", lambda: run_hook(
+    make_repo("29", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"skill": "goalspec:adversary"}], "29")))
+
+case("30-typed-interview-with-hold-ALLOW", lambda: run_hook(
+    make_repo("30", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"user": TYPED_INTERVIEW}, {"text": HOLD_TEXT}], "30")))
+
+# Only the harness tag in a user message counts. The same tag inside a tool_result (a grep over
+# another transcript, as in the very session that reported this) is data, not an entry.
+case("31-interview-tag-inside-tool-result-ALLOW", lambda: run_hook(
+    make_repo("31", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"user": [{"type": "tool_result", "tool_use_id": "x", "content": TYPED_INTERVIEW}]}], "31")))
+
+# Same tag as a text block of a list-shaped user message: counts.
+case("32-typed-interview-list-content-DENY", lambda: run_hook(
+    make_repo("32", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"user": [{"type": "text", "text": TYPED_INTERVIEW}]}], "32")))
+
+# --- 0.45.0, hueco 2: git global options between `git` and the subcommand ---------------------------
+# The VPS /push and /release skills push only as `SKILL_AUTHORIZED=1 git -C <repo> push ...`;
+# classify() returned None for it. The hook cwd is a NON-repo dir in 33/35/36, so these also pin
+# that branch and diff checks run against the -C repo, not the hook cwd.
+def _nonrepo(name):
+    d = os.path.join(TMP, name, "elsewhere")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _dash_c(name, local, command_tail, events):
+    work = make_repo(name, None, local)
+    return run_hook(_nonrepo(name), "SKILL_AUTHORIZED=1 git -C " + work + " " + command_tail,
+                    transcript(events, name))
+
+
+case("33-dash-C-push-main-from-other-cwd-DENY", lambda: _dash_c(
+    "33", {"src/app.js": "code"}, "push origin main", [{"text": SPEC_TEXT}]))
+
+case("34-dash-c-config-push-main-DENY", lambda: run_hook(
+    make_repo("34", None, {"src/app.js": "code"}), "git -c user.name=x push origin main",
+    transcript([{"text": SPEC_TEXT}], "34")))
+
+# Bare push: the target is the -C repo's current branch (main), not the hook cwd's.
+case("35-dash-C-bare-push-resolves-branch-in-C-repo-DENY", lambda: _dash_c(
+    "35", {"src/app.js": "code"}, "push", [{"text": SPEC_TEXT}]))
+
+# Content exemption must diff the -C repo: a memory-only push stays exempt from any cwd.
+case("36-dash-C-memory-only-push-from-other-cwd-ALLOW", lambda: _dash_c(
+    "36", {"memory/x.md": "notes"}, "push origin main", [{"text": SPEC_TEXT}]))
+
+# Feature-branch push via -C: still out of scope, by design (the field /push form).
+case("37-dash-C-feature-push-ALLOW", lambda: run_hook(
+    make_feature_branch(make_repo("37", None, {"src/app.js": "code"})),
+    "SKILL_AUTHORIZED=1 git -C " + os.path.join(TMP, "37", "work") + " push -u origin feature/x",
+    transcript([{"text": SPEC_TEXT}], "37")))
+
+# A trailing shell command used to be read as the push target (`done` -> not protected -> allow).
+case("38-push-main-then-echo-DENY", lambda: run_hook(
+    make_repo("38", None, {"src/app.js": "code"}), "git push origin main && echo done",
+    transcript([{"text": SPEC_TEXT}], "38")))
+
+# --- 0.45.0, hueco 3: a waiver passes ONE terminal command, not the rest of the session ------------
+# Field session (0.41.1): merge denied, waiver in the same minute, three more merges in 4 hours.
+case("39-waiver-then-merge-ran-then-second-merge-DENY", lambda: run_hook(
+    make_repo("39", None, None), "gh pr merge 13",
+    transcript([{"text": SPEC_TEXT}, {"bash": "gh pr merge 12"}, {"text": WAIVER_TEXT},
+                {"bash": "gh pr merge 12"}, {"text": "merged, moving on"}], "39")))
+
+# The retry the waiver was written for, whether or not the harness already logged the call.
+case("40-denied-merge-waiver-retry-not-yet-logged-ALLOW", lambda: run_hook(
+    make_repo("40", None, None), "gh pr merge 12",
+    transcript([{"text": SPEC_TEXT}, {"bash": "gh pr merge 12"}, {"text": WAIVER_TEXT}], "40")))
+
+case("41-denied-merge-waiver-retry-already-logged-ALLOW", lambda: run_hook(
+    make_repo("41", None, None), "gh pr merge 12",
+    transcript([{"text": SPEC_TEXT}, {"bash": "gh pr merge 12", "bash_id": "t1"}, {"text": WAIVER_TEXT},
+                {"bash": "gh pr merge 12", "bash_id": "t2"}], "41"), tool_use_id="t2"))
+
+
+# The field session exactly: the first merge after the waiver came 3 hours and several user
+# prompts later. A user prompt between the waiver and the command voids it.
+case("44-waiver-then-user-prompt-then-merge-DENY", lambda: run_hook(
+    make_repo("44", None, None), "gh pr merge 13",
+    transcript([{"text": SPEC_TEXT}, {"bash": "gh pr merge 12"}, {"text": WAIVER_TEXT},
+                {"user": "ok, sigue con lo otro"}, {"text": "on it"}], "44")))
+
+# Control: a tool_result or harness meta message between them is not a user prompt.
+case("45-waiver-then-tool-result-then-merge-ALLOW", lambda: run_hook(
+    make_repo("45", None, None), "gh pr merge 12",
+    transcript([{"text": SPEC_TEXT}, {"text": WAIVER_TEXT},
+                {"user": [{"type": "tool_result", "tool_use_id": "x", "content": "ok"}]}], "45")))
+
+
+# --- 0.45.0, round-2 fixes (an external adversary broke round 1) ------------------------------------
+# One malformed event (an assistant message that is a bare string) used to empty the whole parse,
+# so the spec read earlier vanished and the precheck allowed the merge.
+case("46-malformed-event-does-not-wipe-spec-DENY", lambda: run_hook(
+    make_repo("46", None, None), "gh pr merge",
+    transcript([{"text": SPEC_TEXT}, {"raw": {"type": "assistant", "message": "not a dict"}}], "46")))
+
+# The entry tag must open the user message, as the harness writes it; pasted into prose it is data.
+case("47-entry-tag-pasted-mid-prose-ALLOW", lambda: run_hook(
+    make_repo("47", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"user": "mira esto del otro log: <command-name>/goalspec:interview</command-name> raro"}], "47")))
+
+# A background task finishing is a harness message, not the user replying: it keeps the turn.
+case("48-waiver-then-task-notification-then-retry-ALLOW", lambda: run_hook(
+    make_repo("48", None, None), "gh pr merge 12",
+    transcript([{"text": SPEC_TEXT}, {"text": WAIVER_TEXT},
+                {"user": "<task-notification>\n<task-id>x</task-id>\n</task-notification>"}], "48")))
+
+# With the payload's tool_use_id the drop is exact: the same command, already executed under the
+# waiver (id t1), does not look like the call being decided (id t2) — one waiver, one command.
+case("49-same-command-rerun-after-waived-run-DENY", lambda: run_hook(
+    make_repo("49", None, None), "gh pr merge 12",
+    transcript([{"text": SPEC_TEXT}, {"text": WAIVER_TEXT},
+                {"bash": "gh pr merge 12", "bash_id": "t1"}], "49"), tool_use_id="t2"))
+
+case("50-chained-feature-then-main-push-DENY", lambda: run_hook(
+    make_repo("50", None, {"src/app.js": "code"}), "git push origin feat && git push origin main",
+    transcript([{"text": SPEC_TEXT}], "50")))
+
+case("51-refspec-to-refs-heads-main-DENY", lambda: run_hook(
+    make_repo("51", None, {"src/app.js": "code"}), "git push origin HEAD:refs/heads/main",
+    transcript([{"text": SPEC_TEXT}], "51")))
+
+case("52-push-all-from-feature-branch-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("52", None, {"src/app.js": "code"})), "git push --all origin",
+    transcript([{"text": SPEC_TEXT}], "52")))
+
+case("53-plus-refspec-force-to-feature-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("53", None, {"src/app.js": "code"})), "git push origin +feature/x",
+    transcript([{"text": SPEC_TEXT}], "53")))
+
+case("54-attached-separator-push-main-DENY", lambda: run_hook(
+    make_repo("54", None, {"src/app.js": "code"}), "git push origin main;git status",
+    transcript([{"text": SPEC_TEXT}], "54")))
+
+
+def _space_repo(name):
+    work = make_repo(name, None, {"memory/x.md": "notes"})
+    spaced = os.path.join(TMP, name, "with space")
+    os.rename(work, spaced)
+    return spaced
+
+
+# Quoted -C with a space: resolves to that repo, so its memory-only diff stays exempt from any cwd.
+case("55-quoted-dash-C-with-space-memory-only-ALLOW", lambda: run_hook(
+    _nonrepo("55"), "git -C '" + _space_repo("55") + "' push origin main",
+    transcript([{"text": SPEC_TEXT}], "55")))
+
+
+# --- 0.45.0, round-3 fixes (the external adversary broke round 2) ----------------------------------
+# Bare --exec-path prints git's path and exits: nothing is pushed, so nothing to deny.
+case("56-bare-exec-path-is-not-a-push-ALLOW", lambda: run_hook(
+    make_repo("56", None, {"src/app.js": "code"}), "git --exec-path push origin main",
+    transcript([{"text": SPEC_TEXT}], "56")))
+
+case("57-shell-wrapped-push-main-from-feature-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("57", None, {"src/app.js": "code"})),
+    "bash -c \"git push origin main\"", transcript([{"text": SPEC_TEXT}], "57")))
+
+case("58-force-with-lease-equals-feature-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("58", None, {"src/app.js": "code"})),
+    "git push --force-with-lease=feature/x origin feature/x", transcript([{"text": SPEC_TEXT}], "58")))
+
+# A merge behind a feature push in the same command: classify() used to stop at "push".
+case("59-feature-push-then-gh-merge-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("59", None, {"src/app.js": "code"})),
+    "git push origin feature/x && gh pr merge 3", transcript([{"text": SPEC_TEXT}], "59")))
+
+# -C to a path that is not a directory here ($VAR unexpanded): branch unknowable -> terminal.
+case("60-dash-C-unexpanded-var-bare-push-DENY", lambda: run_hook(
+    make_repo("60", None, {"src/app.js": "code"}), "git -C \"$REPO\" push",
+    transcript([{"text": SPEC_TEXT}], "60")))
+
+
+# Round 3 (subagent) break: a quoted branch kept its opening quote and never matched `main`.
+case("61-quoted-protected-branch-from-feature-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("61", None, {"src/app.js": "code"})),
+    "git push origin \"main\"", transcript([{"text": SPEC_TEXT}], "61")))
+
+
+# Round 4 (external) break: a memory-only merge exempted the protected push chained after it, and
+# force spelled quoted or as a short cluster was missed on a feature branch.
+def _merge_then_push(name):
+    work = make_repo(name, None, None)
+    sh(["git", "checkout", "-qb", "incoming"], work)
+    with open(os.path.join(work, "memory", "n.md") if os.path.isdir(os.path.join(work, "memory"))
+              else os.path.join(work, "notes.md"), "w") as fh:
+        fh.write("notes")
+    sh(["git", "add", "-A"], work)
+    sh(["git", "commit", "-qm", "notes"], work)
+    sh(["git", "checkout", "-q", "main"], work)
+    return run_hook(work, "git merge incoming && git push origin main",
+                    transcript([{"text": SPEC_TEXT}], name))
+
+
+case("62-exempt-merge-chained-with-main-push-DENY", lambda: _merge_then_push("62"))
+
+case("63-short-cluster-force-on-feature-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("63", None, {"src/app.js": "code"})), "git push -fu origin feature/x",
+    transcript([{"text": SPEC_TEXT}], "63")))
+
+case("64-quoted-force-on-feature-DENY", lambda: run_hook(
+    make_feature_branch(make_repo("64", None, {"src/app.js": "code"})), "git push \"--force\" origin feature/x",
+    transcript([{"text": SPEC_TEXT}], "64")))
+
+
+def _deny_reason_has(name, needle, fn):
+    decision, _ = fn()
+    if decision != "deny":
+        return decision, "expected a deny"
+    return ("deny", needle) if needle in LAST_REASON[0] else ("wrong-text", LAST_REASON[0][:70])
+
+
+# The deny text must point an interview-only session at WRITING the spec (the adversary alone has
+# nothing to verify against) and must not offer the waiver as the retry recipe.
+case("42-interview-deny-text-says-write-the-spec-DENY", lambda: _deny_reason_has(
+    "42", "no ## Goal-spec was written", lambda: run_hook(
+        make_repo("42", None, None), "gh pr merge",
+        transcript([{"user": TYPED_INTERVIEW}], "42"))))
+
+case("43-deny-text-scopes-the-waiver-DENY", lambda: _deny_reason_has(
+    "43", "covers this one command", lambda: run_hook(
+        make_repo("43", None, None), "gh pr merge",
+        transcript([{"text": SPEC_TEXT}], "43"))))
 
 
 def run_hook_raw(payload):

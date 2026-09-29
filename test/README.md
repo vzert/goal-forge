@@ -127,7 +127,9 @@ backstop exists for (a `none` review declared honestly before a merge, then the 
 turn with no fresh review). **02** confirms the same content exemption the PreToolUse precheck
 uses (memory-only change, not flagged). **03** confirms a FRESH review declared in the current
 turn is never stale regardless of what ran earlier. **04** confirms no terminal command at all
-after the review means nothing to flag. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
+after the review means nothing to flag. **05** (0.45.0) is 01 with the field `/push` form,
+`SKILL_AUTHORIZED=1 git -C <repo> push -u origin <branch>`: `classify()` returned None for git's
+global options before 0.45.0, so this backstop never saw that push. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
 subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, which resolves from
 it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
 from a passing case, which is exactly the trap the first draft of this suite fell into.
@@ -482,7 +484,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-22 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+64 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -528,6 +530,35 @@ hook is blind to the spec on that platform and silently allows the push.
 **What it does not cover, stated so a green run does not imply more**: a real live push actually
 denied and then retried after a genuine `hold` — every case here is single-shot.
 
+
+**Cases 26-64 (0.45.0)** pin three gaps from a field report (VPS, 4 devs, 2026-09-08..29: of 12
+sessions with goalspec use that never ran the adversary, 10 pushed, merged or released).
+**26-32** — entering goalspec counts as tracked: a typed `/goalspec:interview` (the harness's
+`<command-name>` tag in a user event, string or list content, copied from a real transcript) or a
+`Skill` tool call to `goalspec:interview` / `goalspec:goalspec` now denies without a spec; the
+standalone `goalspec:adversary` does not (29); the same tag inside a `tool_result` is data, not an
+entry (31). **33-38** — git's global options: `git -C <repo> push` and `git -c k=v push` classify
+as push, the branch and diff checks run against the `-C` repo rather than the hook's cwd (33, 35,
+36 run the hook from a non-repo dir), a feature-branch push via `-C` stays out of scope (37), and a
+trailing `&& echo done` is no longer read as the push target (38). **39-41** — a waiver passes one
+terminal command: a second merge after a waived one is denied (39), while the retry the waiver was
+written for passes whether or not the harness already logged that call (40, 41); a user prompt
+between the waiver and the command voids it (44, the field session's shape), a `tool_result`
+does not (45). **42-43** assert
+the deny wording itself (write the spec; the waiver covers one command). **46-55** come from an
+external adversary round that broke the first version: one malformed event no longer wipes the
+spec (46); the entry tag counts only when it opens the user message (47); a `<task-notification>`
+does not end the waiver's turn (48); with the payload's `tool_use_id` the same command re-run after
+a waived run is denied (49); chained pushes, `HEAD:refs/heads/main`, `--all`, a `+` refspec and an
+attached `;` are all seen (50-54); a quoted `-C` path with a space resolves (55). **56-60** come
+from the second external round: a bare `--exec-path` is not a push (56); `bash -c "git push …"`,
+`--force-with-lease=<ref>`, a `gh pr merge` behind a feature push, and `-C "$VAR"` are all
+terminal (57-60). **61** comes from the third round (subagent): a quoted branch, `git push origin
+"main"`, is seen. **62-64** come from the fourth (external): a content-exempt merge no longer
+exempts a protected push chained to it (62), and force spelled `-fu` or quoted is seen (63-64).
+Of cases 26-64, 25 fail against 0.44.10; the 14 controls (29, 30, 31, 36, 37, 40, 41, 45, 47, 48,
+50, 55, 56, 62) must hold on both sides — 50 passes on 0.44.10 only because the old parser read
+the last token, and 62 guards a defect round 3 introduced (it fails with the fix reverted).
 ## Acid test (manual)
 
 See `CLAUDE.md` → "Verifying a change". Validate both manifests with the **real exit code** (never

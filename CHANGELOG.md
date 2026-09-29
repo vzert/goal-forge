@@ -6,6 +6,102 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.45.0] - 2026-09-29
+
+### Tres huecos por los que una sesión con goalspec hacía push o merge sin adversario
+
+**Reporte de campo** (sesión `claude-vzert`, VPS con 4 devs, sesiones del 2026-09-08 al 29,
+versiones 0.40.0 a 0.44.10 en sus caches). Según el reporte: de 50 sesiones de trabajo con algún
+uso de goalspec, 12 no pasaron por el adversario, y 10 de esas 12 hicieron push, merge o release.
+El `out3.json` del reporte tiene 54 sesiones con alguna invocación; el 50 sale de quedarse con
+las que tienen 3 o más prompts (re-derivado aquí: 54, 52 y 50 sesiones con 1, 2 y 3 prompts
+mínimos; en las tres, 10 sin adversario hicieron push, merge o release). Las cifras por hueco (7, 2 y 1 de 10) son las del
+reporte: sus archivos de evidencia guardan tiempos y tipos de evento, no los argumentos de los
+comandos, así que la forma `git -C … push` de las 2 sesiones del hueco 2 viene de la descripción
+del reporte y de las skills `/push` y `/release` del VPS, no de un log que se haya revisado aquí.
+
+**Hueco 1 — entrar por `/goalspec:interview` dejaba todos los rieles apagados (7 de 10).** La
+entrevista no escribe `## Goal-spec` (eso es del loop, al que entrega), y el precheck de push y el
+Stop gate solo se activan si hay spec. Sesiones que corrieron la entrevista y no siguieron al loop
+hicieron merges y pushes sin nada que las frenara, justo cuando el dev creía estar usando goalspec.
+**Cambio**: `hooks/lib/terminal_actions.py` reconoce la entrada al método — el tag
+`<command-name>/goalspec:interview</command-name>` (o `goalspec:goalspec`) en un evento de usuario,
+o una llamada al tool `Skill` con esas skills — y la expone como `goalspec_entered`, separado de
+`goal_spec`. El precheck (`hooks/precheck-terminal-push.sh`) trata cualquiera de los dos como
+sesión rastreada. Si hubo entrada pero no spec, el mensaje de denegación dice que se escriba el
+spec y luego el adversario, porque el adversario solo no tiene contra qué verificar.
+`goalspec:adversary` no cuenta: no promete spec. Un tag dentro de un `tool_result` tampoco. El
+Stop gate y el hook de presupuesto siguen leyendo solo `goal_spec`; no cambian.
+
+**Hueco 2 — el clasificador no veía `git -C <dir> push` (2 de 10).** `PUSH_RE` exigía `push` justo
+después de `git`. Las skills `/push` y `/release` del VPS empujan solo con
+`SKILL_AUTHORIZED=1 git -C <repo> push ...`. **Cambio**: `PUSH_RE` y `GIT_MERGE_RE` aceptan una
+lista CERRADA de las opciones globales que git define (`-C`, `-c`, `--git-dir`, `--work-tree`,
+`--no-pager`, ...), no un patrón abierto — `git log --grep push` sigue sin contar. Además, la rama y
+el diff del push se calculan en el repo del `-C`, no en el cwd del hook (antes, `git -C /otro/repo
+push origin main` se juzgaba contra el repo donde estaba la sesión), y el destino del push deja de
+leer lo que viene después de `&&` (antes `git push origin main && echo done` tomaba `done` como
+rama y dejaba pasar el push a main). **Límite honesto**: las dos sesiones del reporte empujaban a
+ramas de feature y release, que están fuera de alcance por diseño; para ellas el efecto es el
+backstop de revisión vieja del Stop gate (que usa el clasificador sin chequeo de rama), no un deny.
+
+**Hueco 3 — un waiver abría el precheck para el resto de la sesión (1 de 10).** `has_waiver()`
+busca en todo el transcript, y el texto del deny ofrecía el waiver como la forma de reintentar. Una
+sesión (0.41.1) tuvo un `gh pr merge` negado, escribió el waiver en el mismo minuto y corrió tres
+merges más en cuatro horas sin adversario. **Cambio**: el precheck usa
+`waiver_covers_command()`: el waiver vale solo si está escrito después del último comando terminal
+registrado Y después del último mensaje del usuario, así que deja pasar UN comando, en el mismo
+turno. El límite de turno importa en esa misma sesión: su primer merge después del waiver fue tres
+horas y varios mensajes después, así que "el siguiente comando" solo lo habría dejado pasar. Costo:
+si el usuario responde entre el waiver y el reintento, el waiver ya no vale. El deny ya no lo ofrece como receta: nombra al
+adversario como el camino y al waiver como excepción que autoriza el usuario, para este comando. El
+waiver del Stop gate (cerrar sobre un `break` residual) es otro contrato y no cambia.
+
+**Ronda 2 (el adversario externo rompió la primera)**. Arreglado: un evento malformado del
+transcript vaciaba todas las señales y el precheck dejaba pasar un merge en una sesión con spec
+(ahora se salta solo ese evento); el tag de entrada pegado a mitad de un mensaje contaba como
+entrada (ahora debe abrir el mensaje, como lo escribe el harness); una `<task-notification>` u otro
+mensaje del harness contaba como mensaje del usuario y anulaba el waiver (ahora no); el mismo
+comando re-corrido después de uno ya waiveado pasaba dos veces (ahora se usa el `tool_use_id` del
+payload para quitar exactamente la llamada que se decide); `gh pr diff` corría en el cwd antes de
+ver un `git -C … merge` (ahora un `git merge` se difiere en su repo); `--no-lazy-fetch` y
+`--no-advice` no estaban en la lista; separadores y redirecciones pegados (`main;git status`,
+`main&&echo`, `main>out`), refspecs (`HEAD:refs/heads/main`, `+rama`), `--all`/`--mirror` y un
+segundo push encadenado no se veían; un `-C '/ruta con espacio'` no se resolvía. La clave `waiver`
+de `transcript_signals()` se quitó: ya no tenía consumidor.
+
+**Ronda 3 (el adversario externo rompió la segunda)**. Arreglado: `git push origin feat && gh pr
+merge` se clasificaba solo como push (de feature, fuera de alcance) y el merge pasaba; ahora
+`classify_all()` ve todos los tipos y un merge, deploy o destructivo manda. `--force-with-lease=<ref>`
+y `--force-if-includes` cuentan como force. Un `git push` envuelto (`bash -c "git push …"`,
+`(git push …)`) se parsea. Un `-C` a un directorio que no existe aquí (`-C "$VAR"`) ya no se deja
+pasar: la rama no se puede leer, así que cuenta como terminal. Una rama entre comillas
+(`git push origin "main"`, `'+feat'`) se lee sin las comillas (hallazgo de la ronda 3, del subagente).
+
+**Ronda 4 (externo)**. Arreglado: el cambio de la ronda 3 dejaba que un merge exento por contenido
+(solo memoria o docs) eximiera también un push a main encadenado con él; ahora un comando con más
+de un tipo terminal nunca queda exento por contenido. Y `-fu`, o un `"--force"` entre comillas,
+cuentan como force. Un `--exec-path` sin `=` ya no es
+opción previa al subcomando, porque git imprime su ruta y sale sin hacer push. **Límites que
+quedan**: el separado previo de `;`, `&&`, `|`, `>` también parte texto entre comillas (un
+argumento con `;` dentro puede leerse mal); sin `tool_use_id` en el payload, el mismo comando
+re-corrido justo después sin texto entre medio pasa dos veces con un waiver (no se observó
+aquí un payload real para confirmar que el harness siempre manda el id); y cualquier forma de invocar git que no esté en la lista sigue sin verse, como en
+toda versión anterior: la lista es acotada a propósito.
+
+**Verificación**: `test/terminal-precheck-branches.py` pasa de 25 a 64 casos; 25 de los nuevos
+fallan contra 0.44.10 y 14 son controles (uno, el 62, fija un defecto que
+introdujo la ronda 3 y falla si se revierte su arreglo) que pasan en ambos lados. `test/gate-branches.py` suma
+`stale-05` (el push con `-C` después de una revisión), que falla contra 0.44.10. La salida completa
+de ese suite (incluidas las filas de revisión vieja, que `--compare` no cubre) se comparó con `diff`
+contra la de 0.44.10, en modo default y con `GOAL_GATE_ENFORCE=1`: la única diferencia es
+`stale-05`.
+
+**No incluido**: el precheck sigue clasificando el texto del comando, así que `git push` o
+`rm -rf` escritos como datos (dentro de un heredoc, de un grep) también se niegan. Ensanchar
+`PUSH_RE` amplía un poco esa superficie. Queda como pendiente; ya hay tres intentos documentados
+de ganarle a eso con un regex más listo.
+
 ## [0.44.10] - 2026-09-28
 
 ### The adversary's read-only rule now reaches past the repository — a verifier must not change a live system

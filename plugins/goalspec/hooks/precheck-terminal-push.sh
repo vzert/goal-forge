@@ -15,7 +15,7 @@
 # What this hook does: intercepts a Bash command about to run. If it looks like a push to a
 # protected branch, a merge, a deploy/publish, or a destructive op (hooks/lib/terminal_actions.py
 # is the single source of truth for that list, shared with the Stop-gate staleness check below) AND
-# this session has an open `## Goal-spec` AND no operative `[ADVERSARY-VERDICT: hold ...]` is on
+# this session is goalspec-tracked (see Precondition below) AND no operative `[ADVERSARY-VERDICT: hold ...]` is on
 # record for it yet — DENY. The agent sees why and what to do (spawn the adversary on the real
 # diff, get a hold, retry).
 #
@@ -29,16 +29,26 @@
 # exempt — "could not confirm this is safe" must fall through to the policy check, never to a
 # silent allow.
 #
-# Precondition, deliberately narrow (same one gate-goal-close.sh already uses): only enforces
-# inside a session that produced a `## Goal-spec`. This is NOT a universal git-push blocker — a
-# quick untracked fix in a session that never ran goalspec is untouched, matching this plugin's own
-# "not another rule in a wall for trivial work" design. Both real incidents this hook is a response
-# to DID have a goal-spec, so this precondition would not have missed either one.
+# Precondition, deliberately narrow: only enforces inside a goalspec-tracked session — one that
+# produced a `## Goal-spec` (the same signal gate-goal-close.sh uses) OR, since 0.45.0, one that
+# ENTERED the method: a typed `/goalspec:interview` / `/goalspec:goalspec`, or the model invoking
+# either skill (hooks/lib/terminal_actions.py, ENTRY_SKILLS). The widening is field evidence (VPS,
+# 4 devs, 2026-09-08..29): 7 of 10 sessions that pushed or merged with no adversary had started
+# with the interview and never written the spec, so every rail was off in exactly the session the
+# developer believed was using goalspec. This is still NOT a universal git-push blocker — a quick
+# untracked fix in a session that never touched goalspec is untouched, matching this plugin's own
+# "not another rule in a wall for trivial work" design.
 #
 # Escape hatch, reusing existing vocabulary rather than inventing a parallel one: an explicit
-# `[GOAL-CLOSE-WAIVED reason=<>=20 chars>]` anywhere in the transcript is honored here too — the
-# same greppable, honest override SKILL.md already defines for closing over a residual break. No
-# new marker, no new ceremony.
+# `[GOAL-CLOSE-WAIVED reason=<>=20 chars>]` — the same greppable, honest override SKILL.md already
+# defines for closing over a residual break. Since 0.45.0 it is scoped: honored only when written
+# after the last terminal command on record and after the last user prompt, so one waiver passes
+# ONE terminal command, in the same turn
+# (terminal_actions.waiver_covers_command). Before, a waiver anywhere in the transcript opened the
+# rail for the rest of the session, and the deny text offered it as the retry recipe; a field
+# session got one merge denied, wrote a waiver in the same minute, and ran three more merges over
+# four hours with no adversary. The deny text now names the adversary as the way through and the
+# waiver as a user-authorized exception for this one command.
 #
 # Fail-open, same contract as every other hook in this plugin: a missing/unparseable hook_input, a
 # missing python interpreter, an import error on the shared module, or ANY internal exception
@@ -115,12 +125,13 @@ if diffable:
 transcript_path = data.get("transcript_path")
 sig = ta.transcript_signals(transcript_path)
 
-if not sig["goal_spec"]:
-    allow()  # precondition: only enforce inside a goalspec-tracked session, same as the Stop gate
+if not sig["goal_spec"] and not sig.get("goalspec_entered"):
+    allow()  # precondition: only enforce inside a goalspec-tracked session (spec written, or the method entered)
 
-if sig["waiver"]:
-    allow("goalspec terminal-push precheck: proceeding on an existing "
-          "[GOAL-CLOSE-WAIVED ...] already on record for this session.")
+if ta.waiver_covers_command(sig.get("items") or [], command, data.get("tool_use_id")):
+    allow("goalspec terminal-push precheck: proceeding on a [GOAL-CLOSE-WAIVED ...] written "
+          "in this turn after the last terminal command. It covers this one command only; the next "
+          "terminal command needs an adversary hold or a new waiver.")
 
 verdict = sig["verdict"]
 if verdict == "hold":
@@ -135,15 +146,26 @@ KIND_LABEL = {
 kind_label = KIND_LABEL.get(kind, kind or "a terminal command")
 verdict_note = "" if verdict is None else " (the most recent adversary verdict on record is break)"
 
+if sig["goal_spec"]:
+    next_step = ("Spawn goal-adversary on the actual diff/outcome, get a hold, then retry this "
+                 "command.")
+else:
+    # Entered through /goalspec:interview or the goalspec skill, but no ## Goal-spec was ever
+    # written: the adversary has nothing to verify against, so pointing only at it is a dead end.
+    next_step = ("This session entered goalspec (the goalspec skill or /goalspec:interview) but no "
+                 "## Goal-spec was written: the interview hands off to the goalspec loop, and the "
+                 "loop writes the spec. Write the ## Goal-spec, spawn goal-adversary against it on "
+                 "the actual diff/outcome, get a hold, then retry this command.")
+
 reason = (
     "goalspec terminal-action precheck: this looks like " + kind_label + " (`" +
-    command.strip()[:200] + "`) in a session with an open ## Goal-spec, and no operative "
+    command.strip()[:200] + "`) in a goalspec-tracked session, and no operative "
     "[ADVERSARY-VERDICT: hold ...] is on record for it yet" + verdict_note + ". Per SKILL.md, a "
     "terminal/irreversible action must be reviewed by the goal-adversary BEFORE it runs, not after "
-    "the whole task closes. Spawn goal-adversary on the actual diff/outcome, get a hold, then "
-    "retry this command. If this is genuinely a false positive (e.g. content that should have "
-    "been exempt but was not detected as such), say so and add "
-    "[GOAL-CLOSE-WAIVED reason=<>=20 chars explaining why>] to this turn, then retry."
+    "the whole task closes. " + next_step + " The waiver is not the default way past this: use "
+    "[GOAL-CLOSE-WAIVED reason=<>=20 chars>] only when the user explicitly authorized skipping the "
+    "adversary for this command, and it covers this one command in this turn, not the rest of the "
+    "session."
 )
 deny(reason)
 ' 2>/dev/null)

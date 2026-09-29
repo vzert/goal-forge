@@ -449,6 +449,16 @@ STALE_CASES = [
      [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
       {"timestamp": T2, "text": "just thinking out loud, no tool call here"}],
      "still working, no fresh review this turn"),
+    # 0.45.0 — the field /push form: git global options between `git` and `push`. classify()
+    # returned None for it, so this backstop never saw the push (VPS session 59f9980d declared
+    # [COMPLETION-REVIEW: none] five times while pushing). Over-includes by design: a feature-branch
+    # push counts here too (see terminal_bash_after's docstring).
+    ("stale-05-dash-C-push-after-review-STALE",
+     lambda: stale_repo("s05", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "SKILL_AUTHORIZED=1 git -C /home/u/workspace/app push -u origin feat/x",
+       "text": "pushed."}],
+     "still working, no fresh review this turn"),
 ]
 
 
