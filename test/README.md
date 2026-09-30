@@ -351,8 +351,9 @@ came before the transcript, so a `| tail` kept the break and cut the note. Both 
 transcript past 20 lines and pipe the hook through `tail -20`, like 28. They require the break
 itself, not any filled verdict, plus the note (and for 31 the changed path). Against 0.46.5 they
 come back `tail20-lost:rcnote` and `tail20-lost:mutnote,path`. Moving the notes kept one constraint
-from 0.46.5: the hold degraded by a mutation exits without printing `$OUT`. Cases **16** and **19**
-now pin it: they fail as `mutation-leaked-out` if a partner line reaches stdout.
+from 0.46.5: the hold degraded by a mutation exits without printing `$OUT` to stdout (stderr still
+shows its first 40 lines, as since 0.44.0). Cases **16** and **19** now pin it: they fail as
+`mutation-leaked-out` if a partner line reaches stdout.
 
 ```sh
 python3 test/external-adversary-branches.py

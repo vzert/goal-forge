@@ -18,8 +18,8 @@ un repo que el partner modificó (hay que re-derivar cada hallazgo). Un `| tail`
 
 **Cambio**: el bloque del riel de solo lectura conserva solo la salida temprana del hold degradado.
 Después el hook imprime `$OUT`, luego el aviso de exit distinto de cero, luego el aviso de repo
-modificado, y luego los avisos de 0.46.5. El hold degradado por mutación sigue saliendo sin imprimir
-`$OUT`.
+modificado, y luego los avisos de 0.46.5. El hold degradado por mutación sigue sin imprimir `$OUT` en
+stdout. En stderr muestra sus primeras 40 líneas, como desde 0.44.0.
 
 **Prueba**: casos nuevos `30-rc-break-note-survives-tail` y `31-mutated-break-note-survives-tail`
 en `test/external-adversary-branches.py`, con relleno de 30 líneas y `2>&1 | tail -20`. Contra 0.46.5
