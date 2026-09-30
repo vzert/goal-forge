@@ -345,9 +345,18 @@ first `sandbox:` line while `printf` is still writing `$OUT`. The case feeds a t
 than a pipe buffer and fails on any `write error` on stderr. Case 28 is too small to fill the
 buffer, so it never saw this. Against 0.46.4 it comes back `pass+sandboxfwd+brokenpipe`.
 
+Cases **30** and **31** close the residual 0.46.5 left (0.46.6). The note for a `break` with a
+nonzero exit (case 20) and the note for a `break` over a repo the partner modified (case 17) still
+came before the transcript, so a `| tail` kept the break and cut the note. Both cases pad the
+transcript past 20 lines and pipe the hook through `tail -20`, like 28. They require the break
+itself, not any filled verdict, plus the note (and for 31 the changed path). Against 0.46.5 they
+come back `tail20-lost:rcnote` and `tail20-lost:mutnote,path`. Moving the notes kept one constraint
+from 0.46.5: the hold degraded by a mutation exits without printing `$OUT`. Cases **16** and **19**
+now pin it: they fail as `mutation-leaked-out` if a partner line reaches stdout.
+
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28,29
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28,29,30,31
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a

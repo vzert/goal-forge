@@ -583,19 +583,6 @@ if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; the
   exit 0
 fi
 
-# Reached only with a filled verdict. If RC is nonzero here, the verdict is a BREAK that was
-# deliberately preserved above — say so, loudly, because a partner that crashed may have stopped
-# short of attacks it had not run yet: the findings stand, the COVERAGE does not.
-if [ $RC -ne 0 ]; then
-  {
-    echo "external-adversary: '$EXT_CMD' exited $RC but returned a filled 'break' — the findings are"
-    echo "printed unchanged rather than discarded (a nonzero exit is a reason to distrust a pass, not"
-    echo "to drop violations). Treat its COVERAGE as incomplete: it may have died before running"
-    echo "attacks it had not reached. Re-run or route to the other backend once you have acted on"
-    echo "what it did find."
-  } >&2
-fi
-
 # A partner that MODIFIED the work verified a state it created. Two rules, and the asymmetry is the
 # point: never make this gate weaker than it was.
 #   * verdict 'hold'  -> degrade to the same synthetic UNVERIFIED hold the broken-instrument rail
@@ -636,6 +623,33 @@ if [ -n "$MUTATED" ]; then
     } >&2
     exit 0
   fi
+fi
+
+# The partner transcript goes out HERE, before every notice below, not after them (0.46.5). $OUT can
+# run to thousands of lines, and executors read this hook through `2>&1 | tail -N`: observed
+# 2026-09-30, a `| tail -60` kept the transcript end and cut the sandbox relay and the quote
+# reminder, which were printed first. Every notice from here down lands after the transcript, so a
+# tail keeps it (test cases 28, 30 and 31 pipe the hook through `tail -20`). Placed after the
+# mutated-hold exit on purpose: that path emits a synthetic hold and must never print $OUT to
+# stdout (cases 16 and 19 assert it does not). The two break notices below sat before this line
+# until 0.46.6.
+printf '%s\n' "$OUT"
+
+# Reached only with a filled verdict. If RC is nonzero here, the verdict is a BREAK that was
+# deliberately preserved above — say so, loudly, because a partner that crashed may have stopped
+# short of attacks it had not run yet: the findings stand, the COVERAGE does not. Case 30.
+if [ $RC -ne 0 ]; then
+  {
+    echo "external-adversary: '$EXT_CMD' exited $RC but returned a filled 'break' — the findings are"
+    echo "printed unchanged rather than discarded (a nonzero exit is a reason to distrust a pass, not"
+    echo "to drop violations). Treat its COVERAGE as incomplete: it may have died before running"
+    echo "attacks it had not reached. Re-run or route to the other backend once you have acted on"
+    echo "what it did find."
+  } >&2
+fi
+
+# MUTATED with a hold already exited above, so here the verdict is a break. Case 31.
+if [ -n "$MUTATED" ]; then
   {
     echo "external-adversary: the partner MODIFIED the repository during its own review. Its 'break'"
     echo "stands (findings are not suppressed), but every one of them was measured against a tree it"
@@ -644,16 +658,6 @@ if [ -n "$MUTATED" ]; then
     _adv_print_landed_commits
   } >&2
 fi
-
-# The partner transcript goes out HERE, before the notices below, not after them (0.46.5). $OUT can
-# run to thousands of lines, and executors read this hook through `2>&1 | tail -N`: observed
-# 2026-09-30, a `| tail -60` kept the transcript end and cut the sandbox relay and the quote
-# reminder, which were printed first. Every notice from here down lands after the transcript, so a
-# tail keeps it (test case 28 pipes the hook through `tail -20`). Placed after the MUTATED block on
-# purpose: the mutated-hold path above exits with a synthetic hold and must never print $OUT to
-# stdout. Known residual: the nonzero-RC break note and the MUTATED break note still come BEFORE
-# the transcript; moving them means restructuring around that exit, outside this change.
-printf '%s\n' "$OUT"
 
 # Verdict is valid either way (fail-open); but an absent self-report degrades the INDEPENDENCE
 # claim, and silence here is how a degraded pass gets read as an independent one.

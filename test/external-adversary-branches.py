@@ -40,7 +40,7 @@ The two 0.21.1 fixes are the point of this file:
   on stderr (grep -m1 closes the pipe early). Fails against 0.46.4 as `pass+sandboxfwd+brokenpipe`.
 
     python3 test/external-adversary-branches.py
-    python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29
+    python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
 """
 import argparse, os, re, subprocess, sys, tempfile
 
@@ -214,6 +214,13 @@ CASES = [
      "reasoning effort: none\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\n")
      + "".join("exec bash -lc cat file%05d.md padding padding padding\n" % i for i in range(5000))
      + MODEL + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+sandboxfwd"),
+    # --- the two break notices survive a tail too (0.46.6). Until then the nonzero-exit note (20)
+    # and the mutated-break note (17) were printed BEFORE the transcript, so a `| tail -N` cut them
+    # while keeping the break itself. Same shape as 28: padding longer than the tail, before MODEL.
+    ("30-rc-break-note-survives-tail", "STUB_BREAK_RC_PAD", {"_PIPE": "tail -20"}, None,
+     "tail20+verdict+rcnote"),
+    ("31-mutated-break-note-survives-tail", "STUB_MUTATE_BREAK_PAD", {"_PIPE": "tail -20"},
+     "MUTREPO", "tail20+verdict+mutnote+path"),
 ]
 
 
@@ -262,6 +269,24 @@ echo "- the coverage-floor row claims done for an entity that is not done"
 echo "%s"
 exit 3
 """ % (MODEL, BREAK)
+
+PAD = "".join('echo "exec bash -lc cat file%02d.md"\n' % i for i in range(30))
+
+STUB_BREAK_RC_PAD = """#!/bin/bash
+cat >/dev/null
+%secho "%s"
+echo "- the coverage-floor row claims done for an entity that is not done"
+echo "%s"
+exit 3
+""" % (PAD, MODEL, BREAK)
+
+STUB_MUTATE_BREAK_PAD = """#!/bin/bash
+cat >/dev/null
+echo "fixed it on the way" >> tracked.txt
+%secho "%s"
+echo "- the coverage-floor row claims done for an entity that is not done"
+echo "%s"
+""" % (PAD, MODEL, BREAK)
 
 STUB_HOLD_RC = """#!/bin/bash
 cat >/dev/null
@@ -331,14 +356,26 @@ STUB_WRAP = ("#!/usr/bin/env bash\ncat >/dev/null\ncat <<'WRAPEOF'\n"
 PAYLOAD = "goal-spec: /nonexistent/spec.md\noutcome: /nonexistent/outcome.md\n"
 
 
+# What each piped case must still see after `tail -20`. 30/31 need the BREAK itself, not any
+# filled verdict: a synthetic hold on stdout would also match FILLED_RE.
+TAIL_MARKERS = {
+    "28": [("verdict", lambda o: bool(FILLED_RE.search(o))),
+           ("sandbox", lambda o: "declared its own sandbox" in o),
+           ("quote", lambda o: "quote the [ADVERSARY-MODEL" in o)],
+    "30": [("verdict", lambda o: "break ungrounded=2" in o),
+           ("rcnote", lambda o: "returned a filled 'break'" in o)],
+    "31": [("verdict", lambda o: "break ungrounded=2" in o),
+           ("mutnote", lambda o: "MODIFIED the repository" in o),
+           ("path", lambda o: "tracked.txt" in o)],
+}
+
+
 def classify(res, case_name):
     err, out = res.stderr, res.stdout
-    if case_name.startswith("28"):
+    if case_name[:2] in TAIL_MARKERS:
         # Merged 2>&1 through the tail: everything is in `out`, stderr is empty. Short-circuit, or
         # the general path below reads the empty stderr and returns a plain "pass" that hides the loss.
-        seen = [("verdict", bool(FILLED_RE.search(out))),
-                ("sandbox", "declared its own sandbox" in out),
-                ("quote", "quote the [ADVERSARY-MODEL" in out)]
+        seen = [(label, pred(out)) for label, pred in TAIL_MARKERS[case_name[:2]]]
         lost = [n for n, ok in seen if not ok]
         return "tail20+" + "+".join(n for n, _ in seen) if not lost else "tail20-lost:" + ",".join(lost)
     if "refusing to re-enter" in err:
@@ -458,7 +495,11 @@ def classify(res, case_name):
                 branch = ("pass+mutation-warned" if "break ungrounded=2" in out
                           else "break-suppressed")
             else:
-                branch = ("mutation-unverified"
+                # The degraded hold must not print $OUT to stdout: the partner's own lines
+                # there would sit next to the synthetic hold and read as its evidence.
+                leaked = "probe: one real evidence line" in out
+                branch = ("mutation-leaked-out" if leaked
+                          else "mutation-unverified"
                           if "Degraded to UNVERIFIED" in err and FILLED_RE.search(out)
                           else "mutation-not-degraded")
         else:
@@ -490,6 +531,8 @@ def suite(hook, workdir):
                  "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,
                  "STUB_CLEAN": STUB_CLEAN, "STUB_MUTATE_RUNSTATE": STUB_MUTATE_RUNSTATE,
                  "STUB_BREAK_RC": STUB_BREAK_RC, "STUB_HOLD_RC": STUB_HOLD_RC,
+                 "STUB_BREAK_RC_PAD": STUB_BREAK_RC_PAD,
+                 "STUB_MUTATE_BREAK_PAD": STUB_MUTATE_BREAK_PAD,
                  "STUB_CONCURRENT_COMMIT": STUB_CONCURRENT_COMMIT}
         if transcript in stubs:
             stub = os.path.join(workdir, "stub-" + name + ".sh")

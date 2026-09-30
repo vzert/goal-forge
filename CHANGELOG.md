@@ -6,6 +6,27 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.6] - 2026-09-30
+
+### Los dos avisos de `break` del hook externo también salen después de la transcripción
+
+**Qué pasaba**: 0.46.5 movió casi todos los avisos de `hooks/external-adversary.sh` detrás de la
+transcripción del partner, para que un `2>&1 | tail -N` no los corte. Quedaron dos antes: el de un
+`break` con exit distinto de cero (la cobertura del partner está incompleta) y el de un `break` sobre
+un repo que el partner modificó (hay que re-derivar cada hallazgo). Un `| tail` conservaba el
+`break` y cortaba el aviso que dice cómo leerlo.
+
+**Cambio**: el bloque del riel de solo lectura conserva solo la salida temprana del hold degradado.
+Después el hook imprime `$OUT`, luego el aviso de exit distinto de cero, luego el aviso de repo
+modificado, y luego los avisos de 0.46.5. El hold degradado por mutación sigue saliendo sin imprimir
+`$OUT`.
+
+**Prueba**: casos nuevos `30-rc-break-note-survives-tail` y `31-mutated-break-note-survives-tail`
+en `test/external-adversary-branches.py`, con relleno de 30 líneas y `2>&1 | tail -20`. Contra 0.46.5
+dan `tail20-lost:rcnote` y `tail20-lost:mutnote,path`. Los casos 16 y 19 ahora también fallan si una
+línea del partner llega a stdout en el hold degradado (verificado con una mutación que la imprime:
+ambos dan `mutation-leaked-out`). `--compare` contra 0.46.5: 31 ramas, solo cambian la 30 y la 31.
+
 ## [0.46.5] - 2026-09-30
 
 ### Los avisos del hook externo salen después de la transcripción del partner
