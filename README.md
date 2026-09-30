@@ -302,7 +302,7 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history. Latest: **v0.43.0** gives the convergence
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history and the latest release. One notable change: **v0.43.0** gives the convergence
 floor back a line the **agent** can read, and turns its counter into a real streak. Since v0.36.0 the
 floor emitted one line to the human and nothing to the model, and the opt-in teeth are suspended at
 the floor — so the floor emitted nothing agent-facing and nothing blocking, in *either* mode: a check

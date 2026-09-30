@@ -39,7 +39,8 @@ puede tener miles de líneas. Observado 2026-09-30: un ejecutor corrió el hook 
 **Cambio**: el hook imprime la transcripción (`$OUT`) justo después del bloque del riel de solo
 lectura, y luego los avisos: sin autorreporte de modelo, id sin resolver, sandbox declarado, piso de
 veredicto desnudo y recordatorio de cita. Un `| tail` de 20 líneas los conserva todos. La rama de
-hold degradado por mutación sigue saliendo sin imprimir `$OUT`.
+hold degradado por mutación sigue saliendo sin imprimir `$OUT` en stdout (en stderr, sus primeras 40
+líneas).
 
 **Prueba**: caso nuevo `28-notices-survive-tail` en `test/external-adversary-branches.py`. Corre el
 hook como `2>&1 | tail -20` sobre una transcripción de más de 20 líneas. Exige que sobrevivan el
