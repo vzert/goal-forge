@@ -542,8 +542,8 @@ case("68-python-heredoc-string-only-merge-DENY", lambda: run_hook(
     transcript([{"text": SPEC_TEXT}], "68")))
 
 case("69-deny-text-names-file-way-out-and-its-hole-DENY", lambda: _deny_reason_has(
-    "69", "write the text to a file with the Write tool and pass the file -- this hook does not read "
-          "files, so a file that itself runs the push, merge, deploy or delete needs the same "
+    "69", "write the text to a file with the Write tool and pass the file -- this hook reads the command "
+          "text, never the contents of a file the command runs, so a file that itself runs the push, merge, deploy or delete needs the same "
           "adversary hold", lambda: run_hook(
         make_repo("69", None, None), "python3 -c \"print('gh pr merge 12')\"",
         transcript([{"text": SPEC_TEXT}], "69"))))

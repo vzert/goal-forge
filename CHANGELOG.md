@@ -14,12 +14,18 @@ version bump are never delivered to already-installed users.
 heredoc con un payload o un string de Python (p-473ba7b48b). **Decisión**: no recortar esos cuerpos
 antes de clasificar. El mismo texto es dato en un comando y código en otro (`python3 <<EOF` con un
 string frente a `os.system`), y `ssh`/`bash` con heredoc son una forma real de hacer deploy o push.
+Una excepción más estrecha (leer el cuerpo de Python y dejarlo pasar si no llama a nada) se
+consideró y no se construyó: cubre solo los falsos positivos de Python, no el primero observado
+(un heredoc que entra a un script de bash por stdin); el módulo pide una forma canónica, no un
+matcher más listo; y la salida por archivo cuesta un `Write`.
 
 **Cambio**: ninguna decisión de ningún hook cambia. La negación de `hooks/precheck-terminal-push.sh`
 y `skills/goalspec/SKILL.md` dicen que, si el texto es solo dato, se escriba a un archivo con
-`Write` y se pase el archivo, y en la misma oración que el hook no lee archivos, así que un archivo
-que hace la acción necesita el mismo hold. `test/terminal-precheck-branches.py` casos 65-69: 65-67
-fallan si alguien recorta los cuerpos, 68 fija el falso positivo aceptado, 69 lee el texto emitido.
+`Write` y se pase el archivo, y en la misma oración que el hook lee el texto del comando y nunca el
+contenido de un archivo que el comando corre, así que un archivo que hace la acción necesita el
+mismo hold. `test/terminal-precheck-branches.py` casos 65-69: 65-67 fallan si alguien recorta los
+cuerpos, 68 fija el falso positivo aceptado, 69 lee el texto emitido. `test/README.md` corrige el
+conteo de los casos 26-64: dos casos llevan el número 44 desde 0.46.2.
 
 ## [0.46.2] - 2026-09-29
 

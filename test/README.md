@@ -531,11 +531,12 @@ cases 07-10); branch scoping (a feature-branch push is out of scope unless `--fo
 regardless of content, case 13); deploy/destructive commands (never content-exempt, branch-
 agnostic, cases 14-16); the two universal escape hatches (not our tool, not a terminal command,
 malformed JSON — all allow, cases 17-19); a goal-spec written to disk instead of posted as
-chat text (cases 20-22, see below); and the deny text itself (cases 42-44: an interview-only
+chat text (cases 20-22, see below); and the deny text itself (cases 42, 43 and the deny-text case numbered 44: an interview-only
 session is told to write the spec, the waiver is scoped to one command, and — new in 0.46.2 — a
 verdict quote only counts as a visible text block, never one written in thinking); and text inside a heredoc body or a `-c` string (cases 65-69, new in 0.46.3: those
 bodies are classified, a string that only mentions a merge included, and the deny text names
-the file route out together with the fact that the hook does not read files).
+the file route out together with the fact that the hook never reads the contents of a file the
+command runs).
 
 ```sh
 python3 test/terminal-precheck-branches.py
@@ -598,7 +599,9 @@ from the second external round: a bare `--exec-path` is not a push (56); `bash -
 terminal (57-60). **61** comes from the third round (subagent): a quoted branch, `git push origin
 "main"`, is seen. **62-64** come from the fourth (external): a content-exempt merge no longer
 exempts a protected push chained to it (62), and force spelled `-fu` or quoted is seen (63-64).
-Of cases 26-64, 25 fail against 0.44.10; the 14 controls (29, 30, 31, 36, 37, 40, 41, 45, 47, 48,
+Cases 26-64 are 40 rows, because two cases carry the number 44: the 0.45.0 waiver case above and
+the 0.46.2 deny-text case (`44-deny-text-says-quote-must-be-visible-text`, described with 42-43).
+Of the 39 rows from 0.45.0, 25 fail against 0.44.10; the 14 controls (29, 30, 31, 36, 37, 40, 41, 45, 47, 48,
 50, 55, 56, 62) must hold on both sides — 50 passes on 0.44.10 only because the old parser read
 the last token, and 62 guards a defect round 3 introduced (it fails with the fix reverted).
 ## Acid test (manual)

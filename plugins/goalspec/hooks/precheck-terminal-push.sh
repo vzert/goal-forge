@@ -174,9 +174,14 @@ seen_note = (" If you believe you already quoted a hold, two causes are measured
 # The body is not stripped on purpose: the same text is data in one command and code in the next
 # (python3 <<EOF with a string vs with os.system), and ssh/bash heredocs are a common deploy shape.
 # test/terminal-precheck-branches.py cases 65-69 pin that. The way out names its own hole.
+# A narrower exception (parse a Python body and pass it when it calls nothing) was considered and not
+# built: it would cover the Python false positives only, not the first one observed (a heredoc fed
+# to a bash script, whose stdin no parser can classify); the rule of terminal_actions.py is a canonical form,
+# not a smarter matcher; and the file route costs one Write.
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
              "If those words are only data (a string, a payload), write the text to a file with the "
-             "Write tool and pass the file -- this hook does not read files, so a file that itself "
+             "Write tool and pass the file -- this hook reads the command text, never the contents of a "
+             "file the command runs, so a file that itself "
              "runs the push, merge, deploy or delete needs the same adversary hold.")
 
 reason = (
