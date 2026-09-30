@@ -355,6 +355,13 @@ from 0.46.5: the hold degraded by a mutation exits without printing `$OUT` to st
 shows its first 40 lines, as since 0.44.0). Cases **16** and **19** now pin it: they fail as
 `mutation-leaked-out` if a partner line reaches stdout.
 
+When a case comes back `EXPECT FAILED`, the suite prints what the hook emitted under that row: the
+exit code, then stderr and stdout (past 80 lines, the first 40 and the last 40, so neither the
+hook's leading notices nor the verdict at the end get cut). Case 05 went `unfilled` once on macOS CI
+(run 36776930854, attempt 1) and passed on the rerun. At that time the suite discarded the hook's
+output, so that red left nothing to diagnose. Green rows print nothing extra, so the `--compare`
+table is unchanged.
+
 ```sh
 python3 test/external-adversary-branches.py
 python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28,29,30,31

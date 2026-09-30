@@ -555,8 +555,24 @@ def suite(hook, workdir):
         argv = ["bash", "-c", 'bash "$1" 2>&1 | ' + pipe, "_", hook] if pipe else ["bash", hook]
         res = subprocess.run(argv, input=PAYLOAD, capture_output=True,
                              text=True, env=env, cwd=run_cwd, timeout=30)
-        rows.append((name, classify(res, name), expect))
+        rows.append((name, classify(res, name), expect, res))
     return rows
+
+
+def dump_output(res):
+    # A red that does not reproduce (05 went `unfilled` once on macOS CI, run 36776930854, then
+    # passed on rerun) leaves nothing to diagnose unless the failing run prints what the hook
+    # emitted. Only on EXPECT FAILED, so a green run and the --compare table stay unchanged.
+    # Head AND tail past 80 lines: the hook's notices come before up to 40 echoed transcript lines
+    # on some paths, so a tail alone could drop the one notice that explains the branch.
+    print("    exit=%s" % res.returncode)
+    for label, text in (("stderr", res.stderr), ("stdout", res.stdout)):
+        lines = text.splitlines()
+        print("    --- %s (%d lines) ---" % (label, len(lines)))
+        if len(lines) > 80:
+            lines = lines[:40] + ["... %d lines omitted ..." % (len(lines) - 80)] + lines[-40:]
+        for line in lines:
+            print("    | " + line)
 
 
 def main():
@@ -572,7 +588,7 @@ def main():
         other = suite(a.compare, workdir) if a.compare else None
 
     failures = 0
-    for i, (name, branch, expect) in enumerate(rows):
+    for i, (name, branch, expect, res) in enumerate(rows):
         flag = ""
         if branch != expect:
             flag = "   <-- EXPECT FAILED: wanted %s" % expect
@@ -581,6 +597,8 @@ def main():
             tag = "EXPECTED-DIFF" if any(name.startswith(p) for p in expected) else "DIFFERS"
             flag += "   <-- %s: %s" % (tag, other[i][1])
         print("%-28s %-28s%s" % (name, branch, flag))
+        if branch != expect:
+            dump_output(res)
 
     rc = 0
     if failures:
