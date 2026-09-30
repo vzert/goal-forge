@@ -1,8 +1,7 @@
 # test/
 
 **Eleven** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
-you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite: it reads the files an agent
-reads, and where a carrier is a hook it runs the hook and reads what it emits),
+you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
 `.github/workflows/tests.yml` runs everything here on every push and PR, on Ubuntu **and** macOS.
