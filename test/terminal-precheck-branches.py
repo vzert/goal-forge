@@ -521,6 +521,34 @@ case("44-deny-text-says-quote-must-be-visible-text-DENY", lambda: _deny_reason_h
         transcript([{"text": SPEC_TEXT}], "v44"))))
 
 
+# p-473ba7b48b (2026-09-30): the classifier reads heredoc bodies and -c strings, and that is the
+# decision, not an oversight. The same text is data in one command and code in the next (67 vs 68),
+# and ssh/bash heredocs are a real deploy/push shape (65, 66). A change that strips bodies before
+# classifying must break 65-67 on purpose. 68 is the accepted false positive; 69 is its way out.
+case("65-ssh-heredoc-deploy-DENY", lambda: run_hook(
+    make_repo("65", None, None), "ssh vps <<EOF\ncd app && git pull && wrangler deploy\nEOF",
+    transcript([{"text": SPEC_TEXT}], "65")))
+
+case("66-bash-heredoc-push-main-DENY", lambda: run_hook(
+    make_repo("66", None, {"src/app.js": "code"}), "bash <<EOF\ngit push origin main\nEOF",
+    transcript([{"text": SPEC_TEXT}], "66")))
+
+case("67-python-heredoc-runs-merge-DENY", lambda: run_hook(
+    make_repo("67", None, None), "python3 <<'EOF'\nimport os\nos.system('gh pr merge 12')\nEOF",
+    transcript([{"text": SPEC_TEXT}], "67")))
+
+case("68-python-heredoc-string-only-merge-DENY", lambda: run_hook(
+    make_repo("68", None, None), "python3 <<'EOF'\nnote = 'then gh pr merge 12'\nprint(note)\nEOF",
+    transcript([{"text": SPEC_TEXT}], "68")))
+
+case("69-deny-text-names-file-way-out-and-its-hole-DENY", lambda: _deny_reason_has(
+    "69", "write the text to a file with the Write tool and pass the file -- this hook does not read "
+          "files, so a file that itself runs the push, merge, deploy or delete needs the same "
+          "adversary hold", lambda: run_hook(
+        make_repo("69", None, None), "python3 -c \"print('gh pr merge 12')\"",
+        transcript([{"text": SPEC_TEXT}], "69"))))
+
+
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True,

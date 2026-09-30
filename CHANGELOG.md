@@ -6,6 +6,21 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.3] - 2026-09-30
+
+### El precheck sigue leyendo heredocs y `-c`; la negación dice cómo salir y qué hueco tiene esa salida
+
+**Qué pasaba**: el precheck niega un comando que solo menciona un push o un merge como dato: un
+heredoc con un payload o un string de Python (p-473ba7b48b). **Decisión**: no recortar esos cuerpos
+antes de clasificar. El mismo texto es dato en un comando y código en otro (`python3 <<EOF` con un
+string frente a `os.system`), y `ssh`/`bash` con heredoc son una forma real de hacer deploy o push.
+
+**Cambio**: ninguna decisión de ningún hook cambia. La negación de `hooks/precheck-terminal-push.sh`
+y `skills/goalspec/SKILL.md` dicen que, si el texto es solo dato, se escriba a un archivo con
+`Write` y se pase el archivo, y en la misma oración que el hook no lee archivos, así que un archivo
+que hace la acción necesita el mismo hold. `test/terminal-precheck-branches.py` casos 65-69: 65-67
+fallan si alguien recorta los cuerpos, 68 fija el falso positivo aceptado, 69 lee el texto emitido.
+
 ## [0.46.2] - 2026-09-29
 
 ### La cita de un veredicto cuenta solo como texto visible, en un mensaje anterior al comando

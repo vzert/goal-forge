@@ -170,12 +170,21 @@ seen_note = (" If you believe you already quoted a hold, two causes are measured
              "[ADVERSARY-VERDICT: hold ...] line as visible text in one message and run the command "
              "in a later message; the next message is enough, the turn does not need to end.")
 
+# p-473ba7b48b (2026-09-30): a heredoc or -c string that only MENTIONS a push/merge is denied too.
+# The body is not stripped on purpose: the same text is data in one command and code in the next
+# (python3 <<EOF with a string vs with os.system), and ssh/bash heredocs are a common deploy shape.
+# test/terminal-precheck-branches.py cases 65-69 pin that. The way out names its own hole.
+text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
+             "If those words are only data (a string, a payload), write the text to a file with the "
+             "Write tool and pass the file -- this hook does not read files, so a file that itself "
+             "runs the push, merge, deploy or delete needs the same adversary hold.")
+
 reason = (
     "goalspec terminal-action precheck: this looks like " + kind_label + " (`" +
     command.strip()[:200] + "`) in a goalspec-tracked session, and no operative "
     "[ADVERSARY-VERDICT: hold ...] is on record for it yet" + verdict_note + ". Per SKILL.md, a "
     "terminal/irreversible action must be reviewed by the goal-adversary BEFORE it runs, not after "
-    "the whole task closes. " + next_step + seen_note + " The waiver is not the default way past this: use "
+    "the whole task closes. " + next_step + seen_note + text_note + " The waiver is not the default way past this: use "
     "[GOAL-CLOSE-WAIVED reason=<>=20 chars>] only when the user explicitly authorized skipping the "
     "adversary for this command, and it covers this one command in this turn, not the rest of the "
     "session."
