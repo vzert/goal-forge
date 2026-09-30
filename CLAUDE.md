@@ -39,8 +39,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **the eleven branch suites plus the carrier suite** (twelve commands; one of them drives no
-   hook branches — it asserts text): `python3 test/gate-branches.py` (Stop gate — includes the
+3. Run **the eleven branch suites plus the carrier suite** (twelve commands; one of them is not a
+   branch suite — it asserts written rules across their carriers, driving some hooks only to read their emitted text): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`09`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
    `python3 test/verdict-nudge-branches.py` (PostToolUse verdict nudge),
@@ -55,7 +55,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    tree), `python3 test/announce-checkpoint-branches.py` (SessionStart hook that announces the
    per-session checkpoint filename — hermetic, synthetic payloads; asserts what it emits, never
    that the agent then uses it), `python3 test/claim-surface-carriers.py` (**not a branch suite**: the claim-surface
-   rule, the role-fixity rule AND the visible-text rule are present and mutually consistent across their carriers — hermetic, pure text assertions; it cannot show
+   rule, the role-fixity rule AND the visible-text rule are present and mutually consistent across their carriers — hermetic; text assertions on the files an agent reads, plus, for the visible-text rule, the output each hook carrier emits when driven (no decision branch is asserted); it cannot show
    that an agent then applies the rule), `python3 test/checkpoint-overwrite-branches.py` (PreToolUse
    Write|Edit gate that denies overwriting a checkpoint this session did not write — real files in
    a temp dir plus a synthetic transcript, no git), and `python3 test/adversary-writes-branches.py`

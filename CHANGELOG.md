@@ -26,7 +26,7 @@ en el thinking no cuenta: `skills/goalspec/SKILL.md`, `skills/adversary/SKILL.md
 de `hooks/precheck-terminal-push.sh` y dos mensajes del Stop gate (`hooks/gate-goal-close.sh`: sin
 cierre declarado, y `model=different` sin confirmar). La negación del precheck nombra las dos
 causas y dice cómo salir de la B: citar en un mensaje y correr el comando en uno posterior (basta
-el siguiente; no hace falta cerrar el turno). `SKILL.md` dice lo mismo.
+el siguiente, sin cerrar el turno; esto se midió una sola vez). `SKILL.md` dice lo mismo.
 
 **Verificación**:
 - El precheck viejo y el nuevo, corridos sobre los registros reales de las tres sesiones de la
