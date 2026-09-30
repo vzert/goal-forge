@@ -36,9 +36,11 @@ The two 0.21.1 fixes are the point of this file:
 * Notices after the transcript (0.46.5) — case 28 runs the hook as `2>&1 | tail -20`, the way
   executors read it, over a transcript longer than the tail, and requires the verdict, the sandbox
   relay and the quote reminder to survive. Fails against 0.46.4, which printed both notices first.
+  Case 29 feeds a transcript larger than a pipe buffer and requires no "write error: Broken pipe"
+  on stderr (grep -m1 closes the pipe early). Fails against 0.46.4 as `pass+sandboxfwd+brokenpipe`.
 
     python3 test/external-adversary-branches.py
-    python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28
+    python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29
 """
 import argparse, os, re, subprocess, sys, tempfile
 
@@ -205,6 +207,13 @@ CASES = [
      "reasoning effort: none\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\n")
      + "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL + "\n"
      + BULLETS + HOLD + "\n", {"_PIPE": "tail -20"}, None, "tail20+verdict+sandbox+quote"),
+    # A transcript far larger than a pipe buffer, sandbox line first: grep -m1 closes the pipe early
+    # and an unsilenced printf reports "write error: Broken pipe" on stderr (observed live 0.46.5
+    # pre-release, 7431-line run). Case 28 is too small to fill the buffer, so it never saw this.
+    ("29-large-out-no-broken-pipe", NOISE.replace("reasoning effort: none\n",
+     "reasoning effort: none\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\n")
+     + "".join("exec bash -lc cat file%05d.md padding padding padding\n" % i for i in range(5000))
+     + MODEL + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+sandboxfwd"),
 ]
 
 
@@ -357,6 +366,8 @@ def classify(res, case_name):
         ok = (fwd.startswith(want) and "SKILL.md step 6" in err
               and "If that mode restricts writes" in err)
         branch += "+sandboxfwd" if ok else "+sandboxfwd-wrong"
+    if "write error" in err:
+        branch += "+brokenpipe"
     if case_name.startswith("08"):
         branch += "+tmpdir-rw" if "STUB-TMPDIR-WRITABLE=yes" in out else "+tmpdir-ro"
     if case_name.startswith("09"):

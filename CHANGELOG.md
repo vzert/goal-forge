@@ -25,6 +25,13 @@ hook como `2>&1 | tail -20` sobre una transcripción de más de 20 líneas. Exig
 veredicto, el aviso de sandbox y el recordatorio. Contra 0.46.4 da `tail20-lost:sandbox,quote`.
 `--compare` contra 0.46.4: 28 ramas, solo cambia la 28.
 
+**Segundo arreglo, visto al correr 0.46.5 en vivo antes de publicarla**: con una corrida de 7431
+líneas, el hook imprimió `printf: write error: Broken pipe` entre los avisos. `grep -m1` cierra el
+pipe en la primera línea `sandbox:` mientras `printf` sigue escribiendo `$OUT`. El error ya existía
+en 0.46.4, pero ahora caía dentro de la ventana del `tail`. El `printf` de esa lectura y de las dos
+lecturas con `| head` ahora descarta su stderr. Caso nuevo `29-large-out-no-broken-pipe`: 5000
+líneas de relleno, falla con cualquier `write error`. Contra 0.46.4 da `pass+sandboxfwd+brokenpipe`.
+
 **Residuo conocido**: los avisos de exit distinto de cero con `break` y de `break` sobre un repo
 modificado siguen saliendo antes de la transcripción. Moverlos exige reordenar la salida temprana del
 hold degradado; queda fuera de este cambio.

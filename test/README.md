@@ -339,9 +339,15 @@ transcript longer than 20 lines, and requires the verdict, the sandbox relay and
 to survive. Against 0.46.4 it comes back `tail20-lost:sandbox,quote`. It is the one case in this
 file whose stdout and stderr are merged, so its classifier reads only stdout.
 
+Case **29** came from running 0.46.5 live before release: a 7431-line partner run printed
+`printf: write error: Broken pipe` among the notices, because `grep -m1` closes the pipe at the
+first `sandbox:` line while `printf` is still writing `$OUT`. The case feeds a transcript larger
+than a pipe buffer and fails on any `write error` on stderr. Case 28 is too small to fill the
+buffer, so it never saw this. Against 0.46.4 it comes back `pass+sandboxfwd+brokenpipe`.
+
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28,29
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a

@@ -574,7 +574,7 @@ if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; the
   {
     echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
     echo "no independent check ran. Treat this 'hold' as UNVERIFIED, not as a pass. Partner output:"
-    printf '%s\n' "$OUT" | head -20
+    printf '%s\n' "$OUT" 2>/dev/null | head -20
     if [ -n "$MUTATED" ]; then
       echo "AND it left the repository modified — these paths changed during its run:"
       printf '%s\n' "$MUTATED" | sed 's/^/  /'
@@ -632,7 +632,7 @@ if [ -n "$MUTATED" ]; then
       _adv_print_landed_commits
       echo "Decide yourself whether to keep or revert them — this hook does not touch files it does"
       echo "not own. Then re-run the review over a tree nobody edited mid-flight. Partner output:"
-      printf '%s\n' "$OUT" | head -40
+      printf '%s\n' "$OUT" 2>/dev/null | head -40
     } >&2
     exit 0
   fi
@@ -707,7 +707,10 @@ fi
 # first wording asserting HOME writes fail for any declared mode.
 # Deliberately NOT an errno grep of $OUT: the observed failure surfaced as "No such file or
 # directory", not "Operation not permitted" (the denied mkdir was silenced upstream).
-SANDBOX_LINE=$(printf '%s\n' "$OUT" | grep -m1 -E '^sandbox: [^[:space:]]' || true)
+# printf's stderr is silenced because grep -m1 closes the pipe at the first match: with a large $OUT
+# (observed live 2026-09-30, 7431 lines) printf then fails with "write error: Broken pipe", and that
+# noise lands among the notices a tail keeps. Same for the two `| head` reads above. Case 29.
+SANDBOX_LINE=$(printf '%s\n' "$OUT" 2>/dev/null | grep -m1 -E '^sandbox: [^[:space:]]' || true)
 if [ -n "$SANDBOX_LINE" ]; then
   echo "external-adversary: the partner declared its own sandbox -- \"$SANDBOX_LINE\". If that mode restricts writes, a write outside the roots that line lists fails inside its run (HOME included, unless the line lists it), and a red it reports in a suite that writes there may be its environment, not the work. Cross every red it ran and did not count against your host run before a hold closes (SKILL.md step 6)." >&2
 fi
