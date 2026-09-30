@@ -126,6 +126,31 @@ and it degrades a `hold` to the same synthetic `UNVERIFIED` hold a broken partne
 printed unchanged: findings are never suppressed, the warning goes to stderr — and that holds for a
 nonzero exit too, since a crash is a reason to distrust a pass, never a reason to discard violations.
 
+**The writable `TMPDIR` does not cover `HOME`, and the hook does not redirect `HOME`.** Measured
+2026-09-30: under codex's `workspace-write` (built-in profile `:workspace`), writes to the repo and
+to `TMPDIR` pass and `mkdir -p ~/.claude/projects/x` fails with `Operation not permitted`. A suite
+that keeps state under `HOME` then goes red inside the partner, and in three consecutive field
+rounds the partner filed that red as "unrelated" without a cause. The hook does not export
+`HOME=<scratch>`, for two reasons: it cannot know where an operator-owned CLI keeps its auth and
+config (codex keeps it under `~/.codex`), and a redirected `HOME` changes the world the repo's own
+suite measures and hides the real `~/.claude/projects` from the dead-handoff check. Instead the
+prompt makes the partner classify every red it runs: sandbox/environment (path + errno, reported
+`UNVERIFIABLE-BY-THIS-BACKEND`, never counted as passing) or real. Check your own partner's reach
+without a model call:
+`codex sandbox -P :workspace -C <repo> -- bash -c 'mkdir -p ~/.claude/projects/probe && echo ok'`.
+The narrower operator-side option exists and is yours, not the hook's: `codex exec --add-dir <dir>`
+(or `-c sandbox_workspace_write.writable_roots=[...]`) makes one more directory writable to the
+partner. Weigh what it grants before pointing it at `~/.claude/projects`: that directory holds the
+session transcripts, including the one the dead-handoff check reads, and the read-only rail
+fingerprints the repository only, so a partner write there would go unmeasured. `CODEX_HOME` would
+let a redirected `HOME` keep codex's config, but it is one vendor's variable — the hook runs any CLI
+the operator names. If your suites need `HOME`, give them a hermetic one inside the test itself — that fixes the
+partner run and the suite at once. When the partner prints its own sandbox line (codex does, as
+`sandbox: workspace-write [workdir, /tmp, $TMPDIR]`), the hook relays that line to you on stderr.
+The partner's classification is prose it may ignore; the rule that does not depend on it is the
+executor's (SKILL.md step 6): every red the adversary ran and did not count is crossed against your
+host run before a `hold` closes.
+
 **Reviewed-state isolation (0.44.9).** A fingerprint of the LIVE, shared repo cannot tell "the
 partner wrote this" from "anything else sharing this working tree wrote this during the same
 window" — another local session's routine commit landed on a shared repo mid-round and was reported

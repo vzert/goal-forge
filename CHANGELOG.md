@@ -6,6 +6,39 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.4] - 2026-09-30
+
+### Un rojo que el adversario corrió y no contó lo decide el ejecutor, no el adversario
+
+**Qué pasaba**: en una sesión de 3-tier-memory, el partner externo (`codex exec`, sin flag de
+sandbox, `workspace-write` por confianza) corrió la suite del proyecto en tres rondas seguidas. Una
+suite que guarda estado bajo `~/.claude/projects` falló 12 de 23 casos cada vez, y el partner la
+llamó "one unrelated failure". El ejecutor tenía esa misma suite en verde en el host, en su propia
+línea base, y nunca juntó los dos datos: cerró sin mirarlo. Lo vio solo cuando el humano preguntó
+después. **Causa, medida**: con `codex sandbox -P :workspace`, escribir en el repo y en `TMPDIR`
+pasa, y `mkdir` bajo `HOME` da `Operation not permitted`. **El hueco del plugin**: nada le decía al
+ejecutor que un rojo que el adversario descarta es suyo de juzgar.
+
+**Cambio, en tres capas**:
+- **Ejecutor** (`skills/goalspec/SKILL.md` paso 6, bullet nuevo): todo rojo que el adversario corrió
+  y no contó, se llame como se llame, se cruza con la línea base del host antes de cerrar con un
+  `hold`. Verde en el host y rojo en el adversario: es el entorno; se nombra el conjunto de
+  escritura del adversario y esa suite queda sin verificar por ese backend. Rojo también en el host:
+  es un hallazgo real. Es prosa: ninguna suite puede ver que el ejecutor la obedece.
+- **Hook** (`hooks/external-adversary.sh`): si el partner declara su sandbox (codex imprime
+  `sandbox: workspace-write [workdir, /tmp, $TMPDIR]`), el hook reenvía esa primera línea al
+  ejecutor por stderr. Solo reenvía, no interpreta. No busca errnos: el error visible fue
+  `No such file or directory`, no `Operation not permitted`. Casos 25 a 27 de
+  `test/external-adversary-branches.py`.
+- **Adversario** (prompt del hook y `agents/goal-adversary.md`): cada rojo que corre lleva nombre,
+  primera línea de error (ruta + errno) y una clase: sandbox/entorno (`UNVERIFIABLE-BY-THIS-BACKEND`,
+  nunca cuenta como pasada) o real. Tampoco se mide.
+
+**No se redirige `HOME`**: el hook no sabe dónde guarda su config una CLI del operador (codex:
+`~/.codex`), y un `HOME` falso cambia lo que mide la suite y esconde `~/.claude/projects` al chequeo
+de dead-handoff. `references/external-adversary-setup.md` lo documenta, con el comando de prueba sin
+costo de modelo.
+
 ## [0.46.3] - 2026-09-30
 
 ### El precheck sigue leyendo heredocs y `-c`; la negación dice cómo salir y qué hueco tiene esa salida

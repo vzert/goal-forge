@@ -19,6 +19,8 @@
 # property of the CLI, NOT of "being external": a file-capable partner on the same host (e.g.
 # "claude -p --model ...", or codex/gemini with fs access) can read it and must; one without file
 # access reports UNVERIFIABLE-BY-THIS-BACKEND. The prompt tells it to CHECK rather than assume.
+# The same token also marks a suite the partner own sandbox could not run (0.46.4): see the
+# A RED YOU RUN paragraph of the prompt and SKILL.md step 6 for what the executor does with it.
 # (0.4.0 drafted the assumption "external cannot read the log" as fact; a Sonnet partner falsified it
 # by reading the log, before release. Do not re-introduce it.) See references/external-adversary-setup.md.
 #
@@ -168,6 +170,18 @@ fingerprints the repository content before and after your run, names every path 
 and degrades a clean verdict to UNVERIFIED when it finds one — a repair does not quietly become a
 pass, it voids your own verdict.
 
+A RED YOU RUN IS NEVER "UNRELATED" WITHOUT A CAUSE. Your sandbox very likely denies writes outside
+the repository and TMPDIR — including under the home directory, where many suites keep state
+(observed in the field: a suite that creates a state file under ~/.claude/projects failed 12 of 23
+cases in three consecutive rounds, and the partner filed it each time as "one unrelated failure").
+For EVERY failing test or suite you run, whatever it covers: name it, quote its first error line
+with the path and errno, and classify it. SANDBOX/ENVIRONMENT (the path is outside the repo and
+TMPDIR, or the errno is a permission denial your sandbox produces) means that suite is
+UNVERIFIABLE-BY-THIS-BACKEND: say so and do not count it as passing. REAL means a genuine failure:
+report it, and say whether the work under review caused it or it predates the work. Never write "unrelated",
+"environmental" or "not counted" for a red without the path and the class; an unexplained red is an
+instrument you did not read. This half is NOT measured by the hook that invoked you.
+
 THE SAME RULE HOLDS BEYOND THE REPOSITORY, AND THERE IT IS NOT MEASURED. Every system you can reach
 is under it: a remote host over SSH, a server, a database, a cloud account, an API, a deploy, a
 queue. Observe with commands that only read (status, log, show, diff, fetch into scratch, a
@@ -295,6 +309,14 @@ EOF
 # write: errno=Operation not permitted) was the partner OWN sandbox refusing writes this process
 # could make — a mode this fix does not and cannot remove. Weigh both limits when reading a
 # partner ungrounded count.
+# A third class, 2026-09-30 (3 of 3 rounds, codex exec with no sandbox flag, workspace-write by
+# trust): the partner sandbox denies writes under HOME too (probe: codex sandbox -P :workspace --
+# mkdir -p ~/.claude/projects/x gives "Operation not permitted"; repo and TMPDIR writes pass). A
+# suite that keeps state there went red and the partner called it "unrelated" every round.
+# Deliberately NOT fixed by exporting HOME=<scratch>: external_cmd is the operator, so this script
+# cannot know where the CLI keeps its auth and config (codex: ~/.codex), and a redirected HOME
+# changes the world the repo suite measures, and hides the real ~/.claude/projects from the
+# dead-handoff check. The prompt instead makes the partner classify every red it runs.
 # Deliberately NOT paired with any /tmp cleanup: this script writes nothing to /tmp, and deleting
 # files it does not own is a remove-verb on artifacts that are not its own.
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
@@ -661,6 +683,23 @@ elif printf '%s\n' "$OUT" | grep -E '\[ADVERSARY-MODEL:' | tail -1 \
     echo "  'env'/'bash' as the leading word can front any model. If the difference is real and you"
     echo "  want it on the record, say so in PROSE next to the marker — never by upgrading the field."
   } >&2
+fi
+
+# Forward the partner declared sandbox to the executor (0.46.4). Codex prints it as a header line,
+# e.g. "sandbox: workspace-write [workdir, /tmp, $TMPDIR]". Observed 2026-09-30: that line sat in
+# 7000 lines of $OUT for three rounds while a suite that writes under HOME went red inside the
+# partner, the partner called it unrelated, and the executor (green on the host) never joined the
+# two. Relayed, not interpreted — same class as the [ADVERSARY-MODEL:] self-report. Its consumer is
+# SKILL.md step 6 (every red the adversary ran and did not count is the executor to adjudicate).
+# First match only: the header precedes every tool output, so a later file read that happens to
+# contain such a line does not win. A CLI that prints no such line gets no message. The message is
+# conditional on purpose: danger-full-access restricts nothing, and an adversary round caught the
+# first wording asserting HOME writes fail for any declared mode.
+# Deliberately NOT an errno grep of $OUT: the observed failure surfaced as "No such file or
+# directory", not "Operation not permitted" (the denied mkdir was silenced upstream).
+SANDBOX_LINE=$(printf '%s\n' "$OUT" | grep -m1 -E '^sandbox: [^[:space:]]' || true)
+if [ -n "$SANDBOX_LINE" ]; then
+  echo "external-adversary: the partner declared its own sandbox -- \"$SANDBOX_LINE\". If that mode restricts writes, a write outside the roots that line lists fails inside its run (HOME included, unless the line lists it), and a red it reports in a suite that writes there may be its environment, not the work. Cross every red it ran and did not count against your host run before a hold closes (SKILL.md step 6)." >&2
 fi
 
 # Bare-verdict floor: a verdict with NO evidence of work above it (no bullets, no ground-truth —

@@ -28,6 +28,11 @@ The two 0.21.1 fixes are the point of this file:
   the live incident of 2026-09-17/18, a concurrent `/checkpoint-3t` commit misattributed to the
   external adversary) and the isolated review must come back CLEAN — proof the false-positive class
   is eliminated, not merely better-diagnosed, for a writer that never touches the isolated copy.
+* Declared-sandbox forward (0.46.4) — cases 25/26/27: a partner that prints its writable roots (codex:
+  `sandbox: workspace-write [workdir, /tmp, $TMPDIR]`) gets that FIRST line relayed to the executor,
+  because a suite that writes under HOME went red inside the partner for three rounds while the
+  executor had it green on the host. Relay only; what the executor does with it is SKILL.md step 6,
+  prose no case here can observe.
 
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11
@@ -172,6 +177,23 @@ CASES = [
     # back a clean pass, with NO "MODIFIED the repository" warning at all — proof the false
     # positive is eliminated for this class, not just better-diagnosed.
     ("24-concurrent-commit-immune", "STUB_CONCURRENT_COMMIT", {}, "MUTREPO", "pass+isolated-immune"),
+    # --- declared-sandbox forward (0.46.4). Codex prints its writable roots as a header line; the
+    # hook relays the FIRST such line to the executor on stderr (SKILL.md step 6 consumes it). 01 is
+    # the silent control: NOISE carries no sandbox line, so any forward there would add +sandboxfwd
+    # and fail it. 26 pins first-match: a later line of the same shape (a file the partner read)
+    # must not replace the header.
+    ("25-sandbox-declared", NOISE.replace("reasoning effort: none\n",
+     "reasoning effort: none\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\n") + MODEL + "\n"
+     + BULLETS + HOLD + "\n", {}, None, "pass+sandboxfwd"),
+    ("26-sandbox-first-match", NOISE.replace("reasoning effort: none\n",
+     "reasoning effort: none\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\n")
+     + "exec bash -lc cat notes.md\nsandbox: danger-full-access\n" + MODEL + "\n"
+     + BULLETS + HOLD + "\n", {}, None, "pass+sandboxfwd"),
+    # 27: a full-access mode is relayed too, but the message must not assert that writes fail
+    # (an adversary round caught the first wording doing exactly that for danger-full-access).
+    ("27-sandbox-full-access", NOISE.replace("reasoning effort: none\n",
+     "reasoning effort: none\nsandbox: danger-full-access\n") + MODEL + "\n"
+     + BULLETS + HOLD + "\n", {}, None, "pass+sandboxfwd"),
 ]
 
 
@@ -307,6 +329,15 @@ def classify(res, case_name):
         # drops either half re-creates the over/under-claim it exists to prevent.
         ok = "write model=same" in err and "NOT proof of vendor" in err
         branch += "+idunresolved" if ok else "+idunresolved-badguidance"
+    if "declared its own sandbox" in err:
+        m = re.search(r'declared its own sandbox -- "([^"]*)"', err)
+        fwd = m.group(1) if m else ""
+        # The forward must carry the HEADER line verbatim (26: not a later line of the same shape),
+        # name its consumer, and state write failure only as conditional on the mode (27).
+        want = "sandbox: danger-full-access" if case_name.startswith("27") else "sandbox: workspace-write"
+        ok = (fwd.startswith(want) and "SKILL.md step 6" in err
+              and "If that mode restricts writes" in err)
+        branch += "+sandboxfwd" if ok else "+sandboxfwd-wrong"
     if case_name.startswith("08"):
         branch += "+tmpdir-rw" if "STUB-TMPDIR-WRITABLE=yes" in out else "+tmpdir-ro"
     if case_name.startswith("09"):

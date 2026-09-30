@@ -322,9 +322,19 @@ stdout, nonzero exit called out on stderr as a **coverage** limit, since a partn
 never have reached attacks it had not run). **21** is the control that keeps the fix from widening
 into "preserve anything": a `hold` that exits nonzero still degrades.
 
+Cases **25/26/27** pin the declared-sandbox forward (0.46.4). When the partner prints its own writable
+roots (codex: `sandbox: workspace-write [workdir, /tmp, $TMPDIR]`), the hook relays the **first**
+such line to the executor on stderr and names SKILL.md step 6 as its consumer. 26 adds a later line
+of the same shape (a file the partner read) and requires the header to win. 27 relays a
+`danger-full-access` line and requires the message to state write failure only as conditional on
+the mode (an adversary round caught the first wording asserting it for any mode). **01** is the silent
+control: its transcript has no such line, so any forward there fails it. Against the pre-0.46.4
+hook, 25/26/27 come back `pass`. What the executor then does with the line is prose no case here can
+observe.
+
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
