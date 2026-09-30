@@ -146,7 +146,8 @@ fingerprints the repository only, so a partner write there would go unmeasured. 
 let a redirected `HOME` keep codex's config, but it is one vendor's variable — the hook runs any CLI
 the operator names. If your suites need `HOME`, give them a hermetic one inside the test itself — that fixes the
 partner run and the suite at once. When the partner prints its own sandbox line (codex does, as
-`sandbox: workspace-write [workdir, /tmp, $TMPDIR]`), the hook relays that line to you on stderr.
+`sandbox: workspace-write [workdir, /tmp, $TMPDIR]`), the hook relays that line to you on stderr,
+after the partner transcript, so a `| tail` of the hook output keeps it.
 The partner's classification is prose it may ignore; the rule that does not depend on it is the
 executor's (SKILL.md step 6): every red the adversary ran and did not count is crossed against your
 host run before a `hold` closes.

@@ -645,6 +645,16 @@ if [ -n "$MUTATED" ]; then
   } >&2
 fi
 
+# The partner transcript goes out HERE, before the notices below, not after them (0.46.5). $OUT can
+# run to thousands of lines, and executors read this hook through `2>&1 | tail -N`: observed
+# 2026-09-30, a `| tail -60` kept the transcript end and cut the sandbox relay and the quote
+# reminder, which were printed first. Every notice from here down lands after the transcript, so a
+# tail keeps it (test case 28 pipes the hook through `tail -20`). Placed after the MUTATED block on
+# purpose: the mutated-hold path above exits with a synthetic hold and must never print $OUT to
+# stdout. Known residual: the nonzero-RC break note and the MUTATED break note still come BEFORE
+# the transcript; moving them means restructuring around that exit, outside this change.
+printf '%s\n' "$OUT"
+
 # Verdict is valid either way (fail-open); but an absent self-report degrades the INDEPENDENCE
 # claim, and silence here is how a degraded pass gets read as an independent one.
 if [ -z "$MODEL_LINE" ]; then
@@ -749,4 +759,3 @@ fi
 # verdict." Judging genuineness stays the executor's job, same as for every other self-report.
 echo "external-adversary: a verdict-shaped block was just produced above -- whether it reflects genuine adversarial work is still yours to judge (see the bare-verdict-floor note above). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM in your very next assistant turn -- each on its OWN line, in plain text, nothing before it and nothing after the closing bracket on that same line: no bold or code-span wrapping, no trailing citation. It must be a visible text block you emit -- a quote you only write or plan in your thinking does not count: thinking is not read and the user never sees it. The gate matches the marker only when its line ends at that bracket, so decorating it while quoting degrades a genuine model=different to model=same, silently. The Stop gate cannot see this script's stdout directly, only text you personally author — this is far easier to forget once you move on to other work than it is right now." >&2
 
-printf '%s\n' "$OUT"

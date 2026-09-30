@@ -332,9 +332,16 @@ control: its transcript has no such line, so any forward there fails it. Against
 hook, 25/26/27 come back `pass`. What the executor then does with the line is prose no case here can
 observe.
 
+Case **28** pins where the notices land (0.46.5). Executors read this hook as `2>&1 | tail -N`, and
+on 2026-09-30 a `| tail -60` cut the sandbox relay and the quote reminder, because the hook printed
+both before the partner transcript. The case runs the hook the same way, through `tail -20`, over a
+transcript longer than 20 lines, and requires the verdict, the sandbox relay and the quote reminder
+to survive. Against 0.46.4 it comes back `tail20-lost:sandbox,quote`. It is the one case in this
+file whose stdout and stderr are merged, so its classifier reads only stdout.
+
 ```sh
 python3 test/external-adversary-branches.py
-python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27
+python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28
 ```
 
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a

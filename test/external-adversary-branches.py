@@ -33,9 +33,12 @@ The two 0.21.1 fixes are the point of this file:
   because a suite that writes under HOME went red inside the partner for three rounds while the
   executor had it green on the host. Relay only; what the executor does with it is SKILL.md step 6,
   prose no case here can observe.
+* Notices after the transcript (0.46.5) — case 28 runs the hook as `2>&1 | tail -20`, the way
+  executors read it, over a transcript longer than the tail, and requires the verdict, the sandbox
+  relay and the quote reminder to survive. Fails against 0.46.4, which printed both notices first.
 
     python3 test/external-adversary-branches.py
-    python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11
+    python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28
 """
 import argparse, os, re, subprocess, sys, tempfile
 
@@ -194,6 +197,14 @@ CASES = [
     ("27-sandbox-full-access", NOISE.replace("reasoning effort: none\n",
      "reasoning effort: none\nsandbox: danger-full-access\n") + MODEL + "\n"
      + BULLETS + HOLD + "\n", {}, None, "pass+sandboxfwd"),
+    # --- notices survive a tail (0.46.5). Executors read this hook as `2>&1 | tail -N`; observed
+    # 2026-09-30, a `| tail -60` cut the sandbox relay and the quote reminder because both were
+    # printed BEFORE the partner transcript. The padding makes $OUT alone longer than the tail, so
+    # the case only passes when both notices come AFTER the transcript. _PIPE is read by suite().
+    ("28-notices-survive-tail", NOISE.replace("reasoning effort: none\n",
+     "reasoning effort: none\nsandbox: workspace-write [workdir, /tmp, $TMPDIR]\n")
+     + "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL + "\n"
+     + BULLETS + HOLD + "\n", {"_PIPE": "tail -20"}, None, "tail20+verdict+sandbox+quote"),
 ]
 
 
@@ -313,6 +324,14 @@ PAYLOAD = "goal-spec: /nonexistent/spec.md\noutcome: /nonexistent/outcome.md\n"
 
 def classify(res, case_name):
     err, out = res.stderr, res.stdout
+    if case_name.startswith("28"):
+        # Merged 2>&1 through the tail: everything is in `out`, stderr is empty. Short-circuit, or
+        # the general path below reads the empty stderr and returns a plain "pass" that hides the loss.
+        seen = [("verdict", bool(FILLED_RE.search(out))),
+                ("sandbox", "declared its own sandbox" in out),
+                ("quote", "quote the [ADVERSARY-MODEL" in out)]
+        lost = [n for n, ok in seen if not ok]
+        return "tail20+" + "+".join(n for n, _ in seen) if not lost else "tail20-lost:" + ",".join(lost)
     if "refusing to re-enter" in err:
         return "recursion"
     if "not found on PATH" in err:
@@ -472,13 +491,15 @@ def suite(hook, workdir):
                 f.write(transcript)
             env["GOAL_ADVERSARY_CMD"] = "cat " + fixture
         env.update(env_extra)
+        pipe = env.pop("_PIPE", None)
         if cwd == "WORKDIR":
             run_cwd = workdir
         elif cwd == "MUTREPO":
             run_cwd = make_mutrepo(workdir, name)
         else:
             run_cwd = cwd or REPO
-        res = subprocess.run(["bash", hook], input=PAYLOAD, capture_output=True,
+        argv = ["bash", "-c", 'bash "$1" 2>&1 | ' + pipe, "_", hook] if pipe else ["bash", hook]
+        res = subprocess.run(argv, input=PAYLOAD, capture_output=True,
                              text=True, env=env, cwd=run_cwd, timeout=30)
         rows.append((name, classify(res, name), expect))
     return rows

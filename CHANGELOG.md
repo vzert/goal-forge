@@ -6,6 +6,29 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.5] - 2026-09-30
+
+### Los avisos del hook externo salen después de la transcripción del partner
+
+**Qué pasaba**: `hooks/external-adversary.sh` imprimía el aviso de sandbox (0.46.4) y el
+recordatorio de citar el veredicto **antes** de la transcripción del partner. Esa transcripción
+puede tener miles de líneas. Observado 2026-09-30: un ejecutor corrió el hook con
+`2>&1 | tail -60`, y el `tail` se quedó con el final de la transcripción y borró los dos avisos.
+
+**Cambio**: el hook imprime la transcripción (`$OUT`) justo después del bloque del riel de solo
+lectura, y luego los avisos: sin autorreporte de modelo, id sin resolver, sandbox declarado, piso de
+veredicto desnudo y recordatorio de cita. Un `| tail` de 20 líneas los conserva todos. La rama de
+hold degradado por mutación sigue saliendo sin imprimir `$OUT`.
+
+**Prueba**: caso nuevo `28-notices-survive-tail` en `test/external-adversary-branches.py`. Corre el
+hook como `2>&1 | tail -20` sobre una transcripción de más de 20 líneas. Exige que sobrevivan el
+veredicto, el aviso de sandbox y el recordatorio. Contra 0.46.4 da `tail20-lost:sandbox,quote`.
+`--compare` contra 0.46.4: 28 ramas, solo cambia la 28.
+
+**Residuo conocido**: los avisos de exit distinto de cero con `break` y de `break` sobre un repo
+modificado siguen saliendo antes de la transcripción. Moverlos exige reordenar la salida temprana del
+hold degradado; queda fuera de este cambio.
+
 ## [0.46.4] - 2026-09-30
 
 ### Un rojo que el adversario corrió y no contó lo decide el ejecutor, no el adversario
