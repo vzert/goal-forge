@@ -6,6 +6,49 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.7] - 2026-10-05
+
+### El precheck dice cuando el hold llegó como resultado de un subagente y nadie lo citó
+
+**Qué pasaba**: en una sesión de agente-coordinador (`b30f155f`, 2026-10-05), dos holds de
+`goal-adversary` llegaron como resultado de subagentes en segundo plano mientras un
+`AskUserQuestion` estaba abierto. El ejecutor solo los citó en su thinking. El precheck negó 4 push,
+y las 4 negaciones fueron correctas: en el texto visible, el último veredicto era un `break`. La
+negación ya nombraba la causa "cita solo en el thinking". El ejecutor la ignoró tres veces, le dijo
+al usuario que el transcript perdía sus citas, y el usuario hizo el push a mano. El jsonl estaba
+completo.
+
+**Cambio**: `hooks/lib/terminal_actions.py` lee el veredicto del informe de un `goal-adversary`. Lo
+busca en una entrega en segundo plano (`attachment` de tipo `queued_command`) y en el `tool_result`
+de un lanzamiento en primer plano. Solo cuenta un informe de `goal-adversary`. Una entrega cuenta
+solo si el harness la marcó como hand-back (`origin.kind` `peer` y `origin.handback`; lo que el
+humano teclea trae `origin.kind` `human`) y viene de un `goal-adversary`: lo dice `origin.name`, o
+su `from` es el `agentId` de un lanzamiento con ese `subagent_type` (un `SendMessage` que reanuda al
+adversario conserva el id). No lee un mensaje de usuario que empieza con `<agent-message`: el
+usuario puede teclear o pegar esa etiqueta. Tampoco lee el veredicto del recibo de un lanzamiento en
+segundo plano, que puede repetir el prompt de una ronda delta con el veredicto anterior. Otro subagente, como un
+`Explore` que busca el formato del veredicto, devuelve líneas de ejemplo de SKILL.md, y la negación
+no debe pedir citar un hold que nadie dio. No lee los eventos `queue-operation`, que repiten el
+mismo texto, ni el resultado de otras herramientas. Ese hold **no** cuenta como hold: la decisión del
+precheck no cambia. Solo cambia el texto. Si el último veredicto del adversario es `hold` y no hay un
+veredicto en texto visible después, la negación dice que el hold llegó como resultado de un
+subagente, copia la línea exacta y pide escribirla como texto visible en un mensaje y correr el
+comando en el siguiente. Ese texto reemplaza "lanza el adversario" y la lista de causas posibles.
+
+**Prueba**: casos nuevos 70–85 en `test/terminal-precheck-branches.py`. Contra 0.46.6, los casos 70,
+73, 82 y 85 dan `wrong-text`. Los demás cuidan el otro lado: un `break` posterior en texto gana; no se lee
+un hold en el resultado de Bash, en el de un `Explore`, en una entrega de un agente que ningún
+`goal-adversary` lanzó, en un mensaje de usuario con la etiqueta (76), en un `queued_command`
+tecleado por el humano (80) ni en el recibo de un lanzamiento en segundo plano (81); los
+`queue-operation` no se leen; y un hold citado después sigue permitiendo. Los casos 76, 80 y 81
+vienen de una ronda del adversario externo que dio `break` sobre la primera versión; cada uno falla
+si se quita el chequeo que lo cubre. La ronda delta dio otro `break`: el tipo de agente se comparaba
+por texto parcial, y `not-goal-adversary-example` contaba como adversario. Ahora se compara exacto
+(`goal-adversary` o `<plugin>:goal-adversary`); los casos 83 y 84 lo fijan y el 85 acepta el nombre
+sin prefijo. Los 70 casos anteriores dan la misma decisión. Sobre el transcript
+real, cortado justo antes del primer push negado, la señal da `verdict: break` y encuentra la línea
+del hold. Nadie ha visto todavía a un agente obedecer el texto nuevo.
+
 ## [0.46.6] - 2026-09-30
 
 ### Los dos avisos de `break` del hook externo también salen después de la transcripción

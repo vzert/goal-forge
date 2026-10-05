@@ -576,7 +576,13 @@ session is told to write the spec, the waiver is scoped to one command, and — 
 verdict quote only counts as a visible text block, never one written in thinking); and text inside a heredoc body or a `-c` string (cases 65-69, new in 0.46.3: those
 bodies are classified, a string that only mentions a merge included, and the deny text names
 the file route out together with the fact that the hook never reads the contents of a file the
-command runs).
+command runs); and a hold that reached the session as a goal-adversary's report but was never quoted
+(cases 70-85, new in 0.46.7: the decision stays deny, the deny text gives the exact line to quote; a
+later text verdict wins; a hold in a Bash result, an Explore result, a hand-back from an agent no
+goal-adversary spawn launched, a user message carrying the hand-back tag, a queued_command the human
+typed, a background launch's receipt, or an agent type that only contains `goal-adversary` is not
+read as relayed; the `queue-operation` copies are not
+read).
 
 ```sh
 python3 test/terminal-precheck-branches.py

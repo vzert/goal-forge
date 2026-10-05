@@ -178,6 +178,15 @@ seen_note = (" If you believe you already quoted a hold, two causes are measured
 # built: it would cover the Python false positives only, not the first one observed (a heredoc fed
 # to a bash script, whose stdin no parser can classify); the rule of terminal_actions.py is a canonical form,
 # not a smarter matcher; and the file route costs one Write.
+# p-64783f8057 (0.46.7): a hold that arrived as a subagent result and was never quoted. That is the
+# cause, so it replaces both the spawn-the-adversary step and the list of possible causes, and gives
+# the exact line to quote. The break note goes too: the break in your text is older than this hold.
+relayed = sig.get("relayed_hold")
+if relayed:
+    verdict_note = ""
+    next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed)
+    seen_note = ""
+
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
              "If those words are only data (a string, a payload), write the text to a file with the "
              "Write tool and pass the file -- this hook reads the command text, never the contents of a "

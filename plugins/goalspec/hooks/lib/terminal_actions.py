@@ -468,6 +468,69 @@ HARNESS_TEXT_PREFIXES = ("<task-notification", "<local-command-stdout", "<local-
                          "<bash-stdout", "<bash-stderr", "<bash-input")
 
 
+# 0.46.7 (p-64783f8057) — where a goal-adversary's final report reaches this session: a background
+# hand-back, delivered as an `attachment` of type `queued_command` (observed 2026-10-05,
+# agente-coordinador b30f155f lines 1283/1287), or, for a foreground spawn, the spawn's own
+# tool_result. A user event that merely starts with `<agent-message` is NOT read: the user can type
+# or paste that tag (external adversary round on 0.46.7). The
+# `queue-operation` enqueue/remove events carry the same text twice more; they are not read, so one
+# hand-back is one item. An item keeps the timestamp of the event it came from, which for a
+# queued_command is the enqueue time, not the delivery; nothing orders by it (position does).
+#
+# Only a goal-adversary counts. Any other subagent (an Explore asked where the verdict format is
+# defined) can return SKILL.md's example verdict lines, and the deny text would then tell the
+# executor to quote a hold no adversary gave. A spawn is an adversary when its subagent_type names
+# goal-adversary exactly (is_adversary_type); its agent id comes from the spawn's tool_result (toolUseResult.agentId, or the
+# "agentId: <id>" line of the text). A queued_command counts only when the harness marked it a
+# hand-back (`origin.kind == "peer"`, `origin.handback`; a typed message has `origin.kind ==
+# "human"`) and it comes from a goal-adversary: `origin.name` names it, or `origin.from` / the
+# `from=` of the tag is one of those agent ids (a SendMessage that resumes the adversary keeps its
+# id). The tool_result of a BACKGROUND launch is only the launch receipt (it may echo the prompt,
+# and a delta round's prompt quotes the prior verdict), so its text is read for the agent id only.
+RELAY_PREFIXES = ("<agent-message", "<task-notification")
+SPAWN_TOOLS = ("Agent", "Task")
+RELAY_FROM_RE = re.compile(r'^\s*<agent-message\s+from="([^"]+)"|^\s*<task-notification>\s*<task-id>([^<]+)</task-id>')
+AGENT_ID_RE = re.compile(r"agentId:\s*([A-Za-z0-9_-]+)")
+
+
+def is_adversary_type(name):
+    """Exact agent-type match: `goal-adversary`, or it namespaced by a plugin (`goalspec:goal-adversary`).
+    A substring test let `not-goal-adversary-example` count (external adversary round on 0.46.7)."""
+    return isinstance(name, str) and (name.strip() == "goal-adversary"
+                                      or name.strip().endswith(":goal-adversary"))
+
+
+def _relayed_verdict_item(text, ts):
+    """-> a "relayed_verdict" item for the LAST verdict line in an adversary's report, or None."""
+    last = None
+    for m in re.finditer(VERDICT_RE, text, re.I):
+        last = m
+    if last is None:
+        return None
+    return {"kind": "relayed_verdict", "timestamp": ts, "text": "",
+            "verdict": last.group(1).lower(), "line": last.group(0)}
+
+
+def _relay_from_adversary(att, prompt, state):
+    origin = att.get("origin")
+    if not isinstance(origin, dict) or origin.get("kind") != "peer" or origin.get("handback") is not True:
+        return False
+    if is_adversary_type(origin.get("name")):
+        return True
+    m = RELAY_FROM_RE.match(prompt)
+    ids = {origin.get("from"), (m.group(1) or m.group(2) or "").strip() if m else None}
+    return any(isinstance(i, str) and i in state["adversary_agents"] for i in ids)
+
+
+def _tool_result_text(content):
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text") for b in content
+                         if isinstance(b, dict) and isinstance(b.get("text"), str))
+    return ""
+
+
 def read_transcript_text(transcript_path):
     """-> the transcript's assistant text, all of it, joined — the text-only view of
     read_transcript_items() for callers that only need to grep prose (goal-spec / waiver / verdict
@@ -477,9 +540,41 @@ def read_transcript_text(transcript_path):
     return "\n".join(it["text"] for it in read_transcript_items(transcript_path) if it["kind"] == "text")
 
 
-def _collect_event(ev, items):
-    """Append the items one transcript event contributes (see read_transcript_items)."""
+def _collect_event(ev, items, state=None):
+    """Append the items one transcript event contributes (see read_transcript_items). `state`
+    carries, across events, the tool_use ids of goal-adversary spawns and their agent ids, so a
+    report is read for a relayed verdict only when it comes from a goal-adversary (see
+    RELAY_PREFIXES): a Bash tool_result or another subagent can carry any text."""
+    if state is None:
+        state = {"adversary_spawns": set(), "adversary_agents": set(), "background_spawns": set()}
+    if ev.get("type") == "attachment":
+        att = ev.get("attachment") or {}
+        prompt = att.get("prompt") if isinstance(att, dict) else None
+        if att.get("type") == "queued_command" and isinstance(prompt, str) \
+                and prompt.lstrip().startswith(RELAY_PREFIXES) \
+                and _relay_from_adversary(att, prompt, state):
+            rv = _relayed_verdict_item(prompt, ev.get("timestamp"))
+            if rv:
+                items.append(rv)
+        return
     if ev.get("type") == "user":
+        ucontent0 = (ev.get("message") or {}).get("content")
+        for blk in (ucontent0 if isinstance(ucontent0, list) else []):
+            if isinstance(blk, dict) and blk.get("type") == "tool_result" \
+                    and blk.get("tool_use_id") in state["adversary_spawns"]:
+                rtext = _tool_result_text(blk.get("content"))
+                tur = ev.get("toolUseResult")
+                aid = tur.get("agentId") if isinstance(tur, dict) else None
+                if not isinstance(aid, str):
+                    am = AGENT_ID_RE.search(rtext)
+                    aid = am.group(1) if am else None
+                if aid:
+                    state["adversary_agents"].add(aid)
+                is_async = (isinstance(tur, dict) and tur.get("isAsync") is True) \
+                    or blk.get("tool_use_id") in state["background_spawns"]
+                rv = None if is_async else _relayed_verdict_item(rtext, ev.get("timestamp"))
+                if rv:
+                    items.append(rv)
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
         # user event, as the harness's own `<command-name>` tag. Only that exact tag
         # counts — never prose, and never a tool_result (which can carry any text,
@@ -515,6 +610,12 @@ def _collect_event(ev, items):
             continue
         if blk.get("type") == "text" and blk.get("text"):
             items.append({"kind": "text", "timestamp": ts, "text": blk["text"]})
+        elif blk.get("type") == "tool_use" and blk.get("name") in SPAWN_TOOLS:
+            st = (blk.get("input") or {}).get("subagent_type")
+            if blk.get("id") and is_adversary_type(st):
+                state["adversary_spawns"].add(blk["id"])
+                if (blk.get("input") or {}).get("run_in_background") is True:
+                    state["background_spawns"].add(blk["id"])
         elif blk.get("type") == "tool_use" and blk.get("name") == "Skill":
             # 0.45.0: the same entry, invoked by the model through the Skill tool.
             sk = (blk.get("input") or {}).get("skill")
@@ -585,6 +686,7 @@ def read_transcript_items(transcript_path):
     unreadable transcript: fail open, do not flag.
     """
     items = []
+    state = {"adversary_spawns": set(), "adversary_agents": set(), "background_spawns": set()}
     try:
         if not transcript_path or not os.path.isfile(transcript_path):
             return items
@@ -601,7 +703,7 @@ def read_transcript_items(transcript_path):
                 # an external adversary round showed a single odd event emptied the list, and the precheck
                 # then allowed a merge in a session that had a spec).
                 try:
-                    _collect_event(ev, items)
+                    _collect_event(ev, items, state)
                 except Exception:
                     continue
     except Exception:
@@ -747,4 +849,39 @@ def transcript_signals(transcript_path):
     # command through waiver_covers_command(items, ...); a transcript-wide flag here would invite
     # the next caller to reintroduce the session-wide waiver. The Stop gate has its own scan.
     return {"goal_spec": goal_spec, "goalspec_entered": entered,
-            "verdict": operative_verdict(text), "text": text, "items": items}
+            "verdict": operative_verdict(text), "text": text, "items": items,
+            "relayed_hold": relayed_hold_line(items)}
+
+
+def relayed_hold_line(items):
+    """0.46.7 (p-64783f8057) — the verdict line of a hold that reached this session as a
+    subagent's report and was never quoted as the executor's own text after it; None otherwise.
+    It never makes `verdict` a hold: per SKILL.md the executor quotes the verdict in its own text,
+    where the user sees it. Its one use is the deny text, which then gives the exact line to quote.
+    Field case (agente-coordinador b30f155f, 2026-10-05): two holds arrived as background hand-backs
+    while an AskUserQuestion was open, the executor quoted them only in its thinking, four pushes
+    were denied, and it told the user the transcript was dropping its quotes."""
+    last_relay = last_text = None
+    for i, it in enumerate(items):
+        if it["kind"] == "relayed_verdict":
+            last_relay = i
+        elif it["kind"] == "text" and re.search(VERDICT_RE, it["text"], re.I):
+            last_text = i
+    if last_relay is None or items[last_relay]["verdict"] != "hold":
+        return None
+    if last_text is not None and last_text > last_relay:
+        return None
+    return items[last_relay]["line"]
+
+
+# Agent-facing deny text for that case. Kept here, not in the hook, for the same apostrophe reason
+# as INTERVIEW_HANDOFF_NUDGE. It replaces the "spawn the adversary" step: the hold is already here.
+RELAYED_HOLD_NOTE = (
+    "A goal-adversary hold DID reach this session, but as a subagent result, not as your own "
+    "text: {line} -- a subagent result is not a quote. Thinking does not count either: thinking is "
+    "not read and the user never sees it. Your own visible text has no hold after it. Do this: "
+    "write that exact line as visible text in one message, then run this command in a later "
+    "message; the next message is enough, the turn does not need to end. You do not need a new "
+    "adversary round, unless the change moved after that hold. The transcript is not losing your "
+    "text."
+)
