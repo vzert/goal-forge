@@ -470,8 +470,10 @@ HARNESS_TEXT_PREFIXES = ("<task-notification", "<local-command-stdout", "<local-
 
 # 0.46.7 (p-64783f8057) — where a goal-adversary's final report reaches this session: a background
 # hand-back, delivered as an `attachment` of type `queued_command` (observed 2026-10-05,
-# agente-coordinador b30f155f lines 1283/1287), or, for a foreground spawn, the spawn's own
-# tool_result. A user event that merely starts with `<agent-message` is NOT read: the user can type
+# agente-coordinador b30f155f lines 1283/1287) when it lands while the session is busy, or as a
+# `user` event carrying the same `origin` (report in `origin.body`) when the session is idle (0.46.8;
+# measured in this repo's own session 218eff94, and the shape of 72 of 75 adversary hand-backs on
+# record), or, for a foreground spawn, the spawn's own tool_result. A user event that merely starts with `<agent-message` is NOT read: the user can type
 # or paste that tag (external adversary round on 0.46.7). The
 # `queue-operation` enqueue/remove events carry the same text twice more; they are not read, so one
 # hand-back is one item. An item keeps the timestamp of the event it came from, which for a
@@ -558,6 +560,18 @@ def _collect_event(ev, items, state=None):
                 items.append(rv)
         return
     if ev.get("type") == "user":
+        # 0.46.8 (p-1f14f32fb1): the same hand-back, delivered while the session is idle, is a user
+        # event with the harness `origin` on the event itself, and the report in `origin.body` (its
+        # message.content starts "Another Claude session sent a message:"). 72 of the 75 goal-adversary
+        # hand-backs in the maintainer's transcripts have this shape; 0.46.7 read only the other one.
+        # Same checks as the queued_command: origin.kind/handback set by the harness, exact type or a
+        # known adversary agent id. The message text is never read.
+        uorigin = ev.get("origin")
+        ubody = uorigin.get("body") if isinstance(uorigin, dict) else None
+        if isinstance(ubody, str) and _relay_from_adversary(ev, ubody, state):
+            rv = _relayed_verdict_item(ubody, ev.get("timestamp"))
+            if rv:
+                items.append(rv)
         ucontent0 = (ev.get("message") or {}).get("content")
         for blk in (ucontent0 if isinstance(ucontent0, list) else []):
             if isinstance(blk, dict) and blk.get("type") == "tool_result" \

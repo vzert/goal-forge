@@ -94,6 +94,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/watch-adversary-writes.sh stop",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/remind-handback-verdict.sh record",
+            "timeout": 10
           }
         ]
       }
@@ -126,6 +131,11 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/nudge-interview-handoff.sh",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/remind-handback-verdict.sh remind",
             "timeout": 10
           }
         ]

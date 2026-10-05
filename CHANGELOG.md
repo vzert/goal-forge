@@ -6,6 +6,48 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.8] - 2026-10-05
+
+### Un recordatorio de citar el veredicto cuando el adversario responde en segundo plano
+
+**Qué pasaba**: `remind-quote-verdict.sh` corre en el `PostToolUse` de `Agent`/`Task`. Con un
+adversario en segundo plano ese momento es el lanzamiento, y el veredicto todavía no existe. Cuando
+el informe llegaba después como hand-back, nada recordaba citarlo. Es el origen del caso `b30f155f`
+de 0.46.7. En los transcripts del mantenedor, 4 de 75 veredictos hold o break de un hand-back nunca
+se citaron como texto visible; los 3 que llegaron con la sesión ocupada están entre ellos.
+
+**Cambio**: hook nuevo `hooks/remind-handback-verdict.sh`, con dos mitades.
+- `record` corre en `SubagentStop` y solo para el tipo exacto `goal-adversary`. Lee el informe del
+  transcript del propio adversario: el `message` de su última llamada `SubagentHandback`, o su último
+  texto. Guarda las líneas `[ADVERSARY-MODEL]` y `[ADVERSARY-VERDICT]` en un archivo de la sesión. No
+  imprime nada, porque la salida de `SubagentStop` llega al subagente, no al ejecutor.
+- `remind` corre en `UserPromptSubmit`. Si hay líneas guardadas, las borra y le da al ejecutor las
+  líneas exactas para citar como texto visible. Calla si un texto suyo, escrito después, ya las cita.
+  Nunca lee `prompt`.
+
+**Por qué dos eventos**: `UserPromptSubmit` sí dispara con cada hand-back, pero solo ve `prompt`, que
+el humano puede teclear. Una sonda medida en una sesión real mostró que, cuando corre ese hook, el
+evento con el `origin` del harness todavía no está en el transcript. `SubagentStop` recibe
+`agent_type`, `agent_id` y `agent_transcript_path` del harness, y termina antes: 7 ms antes con la
+sesión libre, unos 33 s antes con la sesión ocupada.
+
+### El precheck lee también el hand-back que llega con la sesión libre
+
+**Qué pasaba**: 0.46.7 solo leía el hand-back con forma `queued_command`, que es como llega con la
+sesión ocupada. Con la sesión libre llega como evento `user` con el `origin` en el propio evento y el
+informe en `origin.body`. Esa es la forma de 72 de los 75 hand-backs de adversario registrados, y
+0.46.7 no leía ninguno: sobre esos transcripts, la negación nombraba el hold en 1 de 52 casos.
+
+**Cambio**: `hooks/lib/terminal_actions.py` lee `origin.body` de ese evento con los mismos chequeos
+(`origin.kind` `peer`, `origin.handback`, tipo exacto o `agentId` de un adversario). Nunca lee el
+texto del mensaje. Sobre los mismos transcripts, ahora nombra el hold en 52 de 52 casos y en ningún
+break.
+
+**Pruebas**: `test/terminal-precheck-branches.py` casos 86-95 (86 y 89 fallan contra 0.46.7; los
+casos 00-85 no cambian). Suite nueva `test/handback-verdict-branches.py`, 20 casos, con
+`--selftest` de 15 mutaciones. `claim-surface-carriers.py` comprueba que el recordatorio lleva la
+regla de texto visible y la línea de audiencia. Ninguna suite muestra que el agente cite después.
+
 ## [0.46.7] - 2026-10-05
 
 ### El precheck dice cuando el hold llegó como resultado de un subagente y nadie lo citó

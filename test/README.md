@@ -1,6 +1,6 @@
 # test/
 
-**Eleven** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Twelve** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -551,6 +551,37 @@ requires at least one case to fail under each. Run
 over this machine's 70 real interview transcripts, the detector marks exactly the 8 that went on
 with no spec and no loop call. What no suite can show: that the agent then obeys the reminder.
 
+## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)
+
+For `hooks/remind-handback-verdict.sh`. A goal-adversary launched in the background reports later,
+as a subagent hand-back; `remind-quote-verdict.sh` fires at the launch, before any verdict exists,
+so nothing reminded the executor to quote it (agente-coordinador b30f155f: two holds quoted only in
+thinking, four pushes denied). The hook has two halves: `record` on SubagentStop (exact
+goal-adversary type) stores the report's `[ADVERSARY-MODEL]`/`[ADVERSARY-VERDICT]` lines per session
+and prints nothing — SubagentStop output goes to the subagent, not the executor; `remind` on
+UserPromptSubmit consumes them and names the exact lines, unless a text block written after the
+record already quotes them. It never reads `prompt`, which the human can type. 20 cases, hermetic
+(synthetic transcripts, a per-case `TMPDIR`): the reminding ones (hand-back call, last-text fallback,
+bare type, break with its note, a resumed adversary's latest report, two adversaries, a missing
+model line, an identical line quoted only BEFORE the record), the silent ones (other or look-alike
+type, no verdict, no record, already quoted, other session, a forged prompt, malformed payload,
+other events), and `hooks.json` registering both halves.
+
+```sh
+python3 test/handback-verdict-branches.py
+python3 test/handback-verdict-branches.py --selftest
+```
+
+New in 0.46.8, so `--selftest` copies the plugin and applies 15 mutations (type check dropped or
+made a substring, `record` printing, the record not consumed, the quoted check or its time bound
+dropped, text preferred over the hand-back call, the session left out of the key, no per-agent
+dedupe, the model line, break note or visible-text clause dropped, either half firing on any
+event, a verdict read from the prompt) and requires a case to fail under each. Measured end to end
+on real data: a SubagentStop payload captured in a live session plus the real goal-adversary
+transcript of b30f155f give the exact model and hold lines once, then silence. The event order it
+rests on (SubagentStop finishes before the hand-back's UserPromptSubmit) was measured with probe
+hooks, idle and busy. What no suite can show: that the agent then quotes the lines.
+
 ## `terminal-precheck-branches.py` — PreToolUse terminal-push precheck suite
 
 For `hooks/precheck-terminal-push.sh` (0.32.0), the hard-blocking companion to the staleness
@@ -582,7 +613,12 @@ later text verdict wins; a hold in a Bash result, an Explore result, a hand-back
 goal-adversary spawn launched, a user message carrying the hand-back tag, a queued_command the human
 typed, a background launch's receipt, or an agent type that only contains `goal-adversary` is not
 read as relayed; the `queue-operation` copies are not
-read).
+read); and the same relay delivered while the session is idle, as a `user` event carrying the
+harness `origin` with the report in `origin.body` (cases 86-95, new in 0.46.8: 72 of the 75
+goal-adversary hand-backs on record have this shape and 0.46.7 read none of them — 86 and 89 come
+back `wrong-text` against it, every case below 86 is unchanged; the same origin checks as the
+queued form, plus: an origin of kind `human`, one without the `handback` flag, and a hold present
+only in the message text and not in `origin.body` are not read as relayed).
 
 ```sh
 python3 test/terminal-precheck-branches.py

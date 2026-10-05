@@ -39,7 +39,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
    action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **the eleven branch suites plus the carrier suite** (twelve commands; one of them is not a
+3. Run **the twelve branch suites plus the carrier suite** (thirteen commands; one of them is not a
    branch suite — it checks written rules across their carriers): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`09`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
@@ -66,7 +66,10 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    requires the case written for it to notice), and `python3 test/interview-handoff-branches.py`
    (the UserPromptSubmit + PostToolUse(AskUserQuestion) reminder to write the spec after
    `/goalspec:interview` — hermetic, synthetic transcripts; new in 0.46.0 with no predecessor, so
-   run `--selftest` too, which mutates the component and requires a case to notice).
+   run `--selftest` too, which mutates the component and requires a case to notice), and
+   `python3 test/handback-verdict-branches.py` (SubagentStop + UserPromptSubmit reminder to quote a
+   goal-adversary verdict that came back as a background hand-back — hermetic, per-case `TMPDIR`; new
+   in 0.46.8, so run `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and

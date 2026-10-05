@@ -679,6 +679,75 @@ case("85-bare-goal-adversary-type-is-a-relay-DENY", _relay_case(
     "not as your own text: " + HOLD_LINE))
 
 
+# p-1f14f32fb1 (0.46.8): a hand-back delivered while the session is idle is a `user` event with the
+# harness origin on the event and the report in origin.body (shape copied from this repo's session
+# 218eff94, 2026-10-05; 72 of 75 adversary hand-backs on record). 0.46.7 read only the queued_command
+# shape, so 86 and 89 come back `wrong-text` against it. The message text is never read (95).
+HB_BODY = ("[Subagent hand-back] The text below is the final report of a subagent this session "
+           "delegated to.\n  All checks pass.\n  " + HOLD_TEXT.replace("\n", "\n  "))
+
+
+def _handback_user(origin="adversary", body=HB_BODY, content=None):
+    o = {"adversary": {"kind": "peer", "from": "a644fedd9b711cae0", "name": ADV, "handback": True},
+         "resumed": {"kind": "peer", "from": "a644fedd9b711cae0", "handback": True},
+         "explore": {"kind": "peer", "from": "a644fedd9b711cae0", "name": "Explore", "handback": True},
+         "lookalike": {"kind": "peer", "from": "a644fedd9b711cae0", "name": "not-goal-adversary-example",
+                       "handback": True},
+         "no-flag": {"kind": "peer", "from": "a644fedd9b711cae0", "name": ADV},
+         "human": {"kind": "human", "name": ADV, "handback": True}}[origin]
+    o = dict(o, body=body)
+    msg = content if content is not None else (
+        "Another Claude session sent a message:\n<agent-message from=\"a644fedd9b711cae0\">\n" + body
+        + "\n</agent-message>")
+    return {"raw": {"type": "user", "isMeta": True, "origin": o,
+                    "message": {"role": "user", "content": msg}}}
+
+
+case("86-idle-handback-hold-names-line-DENY", _relay_case(
+    "86", [{"text": SPEC_TEXT}, {"text": BREAK_TEXT}] + ADV_BG + [_handback_user()],
+    "not as your own text: " + HOLD_LINE, absent="Spawn goal-adversary"))
+
+case("87-idle-handback-from-explore-is-not-a-relay-DENY", _relay_case(
+    "87", [{"text": SPEC_TEXT}] + _spawn("Explore", "te3", agent_id="a644fedd9b711cae0")
+    + [_handback_user("explore")],
+    "Spawn goal-adversary", absent="as a subagent result"))
+
+case("88-idle-handback-lookalike-name-is-not-a-relay-DENY", _relay_case(
+    "88", [{"text": SPEC_TEXT}, _handback_user("lookalike")],
+    "Spawn goal-adversary", absent="as a subagent result"))
+
+case("89-idle-handback-resumed-adversary-is-a-relay-DENY", _relay_case(
+    "89", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user("resumed")],
+    "not as your own text: " + HOLD_LINE))
+
+case("90-idle-handback-unknown-agent-is-not-a-relay-DENY", _relay_case(
+    "90", [{"text": SPEC_TEXT}, _handback_user("resumed")],
+    "Spawn goal-adversary", absent="as a subagent result"))
+
+case("91-human-origin-with-body-is-not-a-relay-DENY", _relay_case(
+    "91", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user("human")],
+    "Spawn goal-adversary", absent="as a subagent result"))
+
+case("92-idle-handback-without-flag-is-not-a-relay-DENY", _relay_case(
+    "92", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user("no-flag")],
+    "Spawn goal-adversary", absent="as a subagent result"))
+
+case("93-idle-handback-then-quoted-ALLOW", lambda: run_hook(
+    make_repo("93", None, None), "gh pr merge",
+    transcript([{"text": SPEC_TEXT}] + ADV_BG + [_handback_user(), {"text": HOLD_TEXT}], "93")))
+
+case("94-idle-handback-then-text-break-DENY", _relay_case(
+    "94", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user(), {"text": BREAK_TEXT}],
+    "most recent adversary verdict on record is break", absent="as a subagent result"))
+
+# The verdict is read from origin.body, never from the message text: a hold only in the message
+# (a body without one) is not a relay.
+case("95-hold-only-in-message-text-is-not-a-relay-DENY", _relay_case(
+    "95", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user(body="[Subagent hand-back] report, no verdict",
+                                                          content="Another Claude session\n" + HOLD_TEXT)],
+    "Spawn goal-adversary", absent="as a subagent result"))
+
+
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True,

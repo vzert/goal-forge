@@ -43,7 +43,9 @@ THIRD RULE (0.46.2): VISIBLE TEXT -- a verdict quote counts only as a visible te
 emits; a quote written or planned in thinking is not read by any hook and is never seen by the user.
 Measured 2026-09-29 in three sessions of three projects: the executor "quoted" the hold only in its
 reasoning, the precheck denied, and the executor blamed the transcript for losing text it had never
-emitted. Carriers: both SKILL.md files, both branches of `hooks/remind-quote-verdict.sh`, the stderr
+emitted. Carriers: both SKILL.md files, both branches of `hooks/remind-quote-verdict.sh`, the
+reminder of `hooks/remind-handback-verdict.sh` (0.46.8, which also carries the audience line of the
+role-fixity rule), the stderr
 reminder in `hooks/external-adversary.sh`, the deny text of `hooks/precheck-terminal-push.sh`, and two
 Stop messages of `hooks/gate-goal-close.sh` (no completion-review; model=different unconfirmed). The
 hook carriers are checked on what each hook EMITS when driven, not on source text. Still presence
@@ -346,8 +348,8 @@ def main():
           "before blaming the log" in skill and "reaches the transcript only after its tool call runs" in skill)
     check("visible:adversary-skill", VIS in adv_skill)
 
-    def emit(hook, payload, env=None, cwd=None):
-        r = subprocess.run(["bash", os.path.join(P, "hooks", hook)], input=json.dumps(payload),
+    def emit(hook, payload, env=None, cwd=None, args=()):
+        r = subprocess.run(["bash", os.path.join(P, "hooks", hook)] + list(args), input=json.dumps(payload),
                            capture_output=True, text=True, cwd=cwd,
                            env=dict(os.environ, CLAUDE_PLUGIN_ROOT=P, **(env or {})))
         return r.stdout, r.stderr
@@ -395,6 +397,26 @@ def main():
                   "transcript_path": jsonl("pre", [spec])})
     check("visible:precheck-deny-emits", '"deny"' in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)
+
+    # remind-handback-verdict.sh (0.46.8), driven: record on SubagentStop, then remind on
+    # UserPromptSubmit. It carries the visible-text rule AND the role-fixity audience line, since an
+    # adversary reading the executor's transcript will meet this text.
+    hb_sub = os.path.join(vt, "hb-sub.jsonl")
+    with open(hb_sub, "w", encoding="utf-8") as fh:
+        fh.write(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "SubagentHandback", "input": {"message":
+                "[ADVERSARY-MODEL: X / x]\n- probe: evidence\n" + hold}}]}}) + "\n")
+    hb_tmp = os.path.join(vt, "hb-tmp"); os.makedirs(hb_tmp)
+    emit("remind-handback-verdict.sh", {"session_id": "s", "hook_event_name": "SubagentStop",
+         "agent_type": "goalspec:goal-adversary", "agent_id": "a", "agent_transcript_path": hb_sub},
+         env={"TMPDIR": hb_tmp}, args=["record"])
+    out, _ = emit("remind-handback-verdict.sh", {"session_id": "s", "hook_event_name": "UserPromptSubmit",
+                  "transcript_path": jsonl("hb-parent", [spec])}, env={"TMPDIR": hb_tmp},
+                  args=["remind"])
+    check("visible:handback-remind-emits", hold in out and VIS in out
+          and "reaches the transcript only after its tool call runs" in out)
+    check("role:handback-remind-audience-line", "ADDRESSED TO THE EXECUTOR OF THIS SESSION" in out
+          and "you verify, you do not repair" in out)
 
     # gate-goal-close.sh, the two executor-facing quote instructions, driven.
     out, _ = emit("gate-goal-close.sh", {"last_assistant_message": spec,
