@@ -893,7 +893,7 @@ def relayed_hold_line(items):
 RELAYED_HOLD_NOTE = (
     "A goal-adversary hold DID reach this session, but as a subagent result, not as your own "
     "text: {line} -- a subagent result is not a quote. Thinking does not count either: thinking is "
-    "not read and the user never sees it. Your own visible text has no hold after it. Do this: "
+    "not read, even when your screen shows it like a message. Your own visible text has no hold after it. Do this: "
     "write that exact line as visible text in one message, then run this command in a later "
     "message; the next message is enough, the turn does not need to end. You do not need a new "
     "adversary round, unless the change moved after that hold. The transcript is not losing your "

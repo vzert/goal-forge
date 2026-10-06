@@ -514,7 +514,7 @@ goal-forge/
     hooks/external-adversary.sh           # optional: route the adversary to a different model/CLI
     hooks/route-external-adversary.sh     # PreToolUse nudge toward a configured external backend (fail-open, silent on error)
     hooks/remind-quote-verdict.sh         # PostToolUse nudge: quote the verdict before you forget it
-    hooks/remind-handback-verdict.sh      # SubagentStop records a background adversary's verdict lines; the next UserPromptSubmit reminds the executor to quote them
+    hooks/remind-handback-verdict.sh      # SubagentStop records a background adversary's verdict lines (and UserPromptSubmit also reads a just-written adversary report itself, for when it runs first); UserPromptSubmit reminds the executor to quote them
     hooks/watch-adversary-writes.sh       # SubagentStart/Stop: fingerprints repo content around an adversary run and records anything it changed
     hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor)
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)

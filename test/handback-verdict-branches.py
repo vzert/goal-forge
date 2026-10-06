@@ -32,7 +32,7 @@ REPORT_HOLD = MODEL + "\n- re-ran the suite: green\n" + HOLD
 REPORT_BREAK = MODEL + "\n- figure does not re-derive\n" + BREAK
 ADV = "goalspec:goal-adversary"
 SID = "sess-1"
-VIS = "thinking is not read and the user never sees it"
+VIS = "thinking is not read, even when your screen shows it like a message"
 AUDIENCE = "ADDRESSED TO THE EXECUTOR OF THIS SESSION"
 
 
@@ -129,6 +129,44 @@ def two_adversaries(plugin):
     return r1
 
 
+def race(plugin, agent_type=ADV, age=0, meta=True, parent=(), record_after=False, sub_events=None):
+    """The idle-form order measured live (p-3cbde60989): UserPromptSubmit runs BEFORE SubagentStop,
+    so no record exists yet; the report is already in the adversary's own transcript under
+    <parent stem>/subagents/agent-<id>.jsonl, beside the harness .meta.json. `record_after` then runs
+    the late SubagentStop before the second remind, as the harness does."""
+    d = tempfile.mkdtemp(prefix="hbv-")
+    pp = jsonl(d, "parent", list(parent))
+    sd = os.path.join(d, "parent", "subagents")
+    os.makedirs(sd)
+    sp = jsonl(sd, "agent-a1", sub_events if sub_events is not None else sub(handback=REPORT_HOLD))
+    if meta:
+        json.dump({"agentType": agent_type, "requestShape": "background"},
+                  open(os.path.join(sd, "agent-a1.meta.json"), "w"))
+    if age:
+        old = os.path.getmtime(sp) - age
+        os.utime(sp, (old, old))
+    rp = {"session_id": SID, "hook_event_name": "UserPromptSubmit", "transcript_path": pp, "prompt": "x"}
+    r1 = summarize(call(plugin, "remind", rp, d))
+    if record_after:
+        call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop", "agent_type": ADV,
+                                "agent_id": "a1", "agent_transcript_path": sp}, d)
+    r2 = summarize(call(plugin, "remind", rp, d))
+    shutil.rmtree(d, ignore_errors=True)
+    return "%s|%s" % (r1, r2)
+
+
+def marker_consumed(plugin):
+    d = tempfile.mkdtemp(prefix="hbv-")
+    sp = jsonl(d, "sub", sub(handback=REPORT_HOLD))
+    call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop", "agent_type": ADV,
+                            "agent_id": "a1", "agent_transcript_path": sp}, d)
+    call(plugin, "remind", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                            "transcript_path": jsonl(d, "p", [])}, d)
+    left = os.path.exists(os.path.join(d, "goalspec-adversary-snap", SID + ".handback-verdicts"))
+    shutil.rmtree(d, ignore_errors=True)
+    return "left" if left else "consumed"
+
+
 FUTURE = "2999-01-01T00:00:00.000Z"
 PAST = "2000-01-01T00:00:00.000Z"
 
@@ -171,6 +209,19 @@ CASES = [
      lambda p: scenario(p, rec_payload=lambda sp: {"session_id": SID, "hook_event_name": "PostToolUse",
                                                    "agent_type": ADV, "agent_id": "a1",
                                                    "agent_transcript_path": sp}), "silent|-|-"),
+    ("21-race-ups-before-subagentstop-reminds-once", race, "hold+model|-"),
+    ("22-race-then-late-record-is-not-a-second-reminder",
+     lambda p: race(p, record_after=True), "hold+model|-"),
+    ("23-race-transcript-older-than-window-is-silent", lambda p: race(p, age=600), "-|-"),
+    ("24-race-other-agent-type-is-silent", lambda p: race(p, agent_type="general-purpose"), "-|-"),
+    ("25-race-lookalike-agent-type-is-silent",
+     lambda p: race(p, agent_type="not-goal-adversary-example"), "-|-"),
+    ("26-race-without-meta-is-silent", lambda p: race(p, meta=False), "-|-"),
+    ("27-race-already-quoted-is-silent",
+     lambda p: race(p, parent=[said(MODEL + "\n" + HOLD, FUTURE)]), "-|-"),
+    ("28-race-break-names-break-and-note",
+     lambda p: race(p, sub_events=sub(handback=REPORT_BREAK)), "break+model+breaknote|-"),
+    ("29-marker-consumed-after-remind", marker_consumed, "consumed"),
 ]
 
 HOOK = HOOK_REL
@@ -185,25 +236,30 @@ MUTATIONS = [
     ("already-quoted check dropped", HOOK, "    if not quoted:\n        pending.append(rec)",
      "    pending.append(rec)"),
     ("quote time ignored", HOOK, 'and it["timestamp"] >= rec.get("ts", "") ', ""),
-    ("text preferred over handback", HOOK, "return handback if handback is not None else text",
-     "return text if text is not None else handback"),
+    ("text preferred over handback", HOOK, "rep = handback if handback is not None else text",
+     "rep = text if text is not None else handback"),
     ("session not in the key", HOOK, 're.sub(r"[^A-Za-z0-9_.-]", "_", sid)[:120] + ".handback-verdicts"',
      '"all.handback-verdicts"'),
     ("no per-agent dedupe", HOOK, 'latest[rec.get("agent") or ""] = rec', 'latest[len(latest)] = rec'),
     ("model line dropped", HOOK, '(r["model"] + "\\n") if r.get("model") else ""', '""'),
     ("break note dropped", HOOK, "if breaks:", "if False:"),
-    ("visible-text clause dropped", HOOK, "thinking is not read and the user never sees it. ", ""),
+    ("visible-text clause dropped", HOOK, "thinking is not read, even when your screen shows it like a message. ", ""),
     ("remind fires on any event", HOOK,
-     'if data.get("hook_event_name") not in (None, "UserPromptSubmit") or not os.path.isfile(path):',
-     "if not os.path.isfile(path):"),
+     'if data.get("hook_event_name") not in (None, "UserPromptSubmit"):\n    sys.exit(0)\nlatest = {}',
+     "latest = {}"),
     ("record fires on any event", HOOK,
      '    if data.get("hook_event_name") not in (None, "SubagentStop"):\n        sys.exit(0)', "    pass"),
+    ("subagent scan dropped", HOOK, "    for n in names:\n", "    for n in []:\n"),
+    ("scan ignores the agent type", HOOK,
+     'if not ta.is_adversary_type(meta.get("agentType")) or agent in latest:', 'if agent in latest:'),
+    ("scan window ignored", HOOK, "now.timestamp() - os.path.getmtime(jp) > SCAN_WINDOW", "False"),
+    ("reminded set not kept", HOOK, "    if key(rec) in done:\n        continue\n", ""),
     ("verdict read from the prompt", HOOK,
-     'if data.get("hook_event_name") not in (None, "UserPromptSubmit") or not os.path.isfile(path):\n    sys.exit(0)',
+     'if data.get("hook_event_name") not in (None, "UserPromptSubmit"):\n    sys.exit(0)\nlatest = {}',
      'if "ADVERSARY-VERDICT" in str(data.get("prompt")) and not os.path.isfile(path):\n'
      '    print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": '
      'ADDRESSED + str(data.get("prompt"))}})); sys.exit(0)\n'
-     'if data.get("hook_event_name") not in (None, "UserPromptSubmit") or not os.path.isfile(path):\n    sys.exit(0)'),
+     'if data.get("hook_event_name") not in (None, "UserPromptSubmit"):\n    sys.exit(0)\nlatest = {}'),
 ]
 
 
@@ -221,7 +277,7 @@ def hooks_json_ok(plugin):
 
 def suite(plugin):
     rows = [(name, want, fn(plugin)) for name, fn, want in CASES]
-    rows.append(("20-hooks-json-registers-both-halves", True, hooks_json_ok(plugin)))
+    rows.append(("30-hooks-json-registers-both-halves", True, hooks_json_ok(plugin)))
     return rows
 
 

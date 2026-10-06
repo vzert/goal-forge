@@ -340,8 +340,8 @@ def main():
     # disk, so their source text IS what the agent sees. Every hook carrier is checked on what the
     # hook EMITS when driven, never on its source: a clause left only in a comment must fail here
     # (an adversary round on 0.46.2 showed a source-text check passing exactly that mutation).
-    VIS = "thinking is not read and the user never sees it"
-    VIS_ES = "el razonamiento no se lee y el usuario nunca lo ve"
+    VIS = "thinking is not read, even when your screen shows it like a message"
+    VIS_ES = "el razonamiento no se lee, aunque la pantalla lo muestre como un mensaje"
     adv_skill = " ".join(read(os.path.join(P, "skills", "adversary", "SKILL.md")).split())
     check("visible:skill-owner", "a visible text block you emit" in skill and VIS in skill)
     check("visible:skill-names-both-causes",
@@ -397,6 +397,14 @@ def main():
                   "transcript_path": jsonl("pre", [spec])})
     check("visible:precheck-deny-emits", '"deny"' in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)
+    # The 0.46.7 branch: a hold that arrived as a subagent result. Its text lives in the shared lib,
+    # split across string literals, which a grep of the phrase never saw (0.46.9).
+    import importlib.util
+    spec_ta = importlib.util.spec_from_file_location(
+        "ta_carrier", os.path.join(P, "hooks", "lib", "terminal_actions.py"))
+    ta_mod = importlib.util.module_from_spec(spec_ta)
+    spec_ta.loader.exec_module(ta_mod)
+    check("visible:precheck-relayed-hold-note", VIS in ta_mod.RELAYED_HOLD_NOTE)
 
     # remind-handback-verdict.sh (0.46.8), driven: record on SubagentStop, then remind on
     # UserPromptSubmit. It carries the visible-text rule AND the role-fixity audience line, since an

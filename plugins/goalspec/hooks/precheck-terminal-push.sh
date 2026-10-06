@@ -164,7 +164,7 @@ else:
 # runs. Name both, so an executor that did emit visible text is not sent to hunt for cause A.
 seen_note = (" If you believe you already quoted a hold, two causes are measured. (1) The quote is "
              "only in your thinking -- a quote you only write or plan in your thinking does not "
-             "count: thinking is not read and the user never sees it. (2) The quote is a visible "
+             "count: thinking is not read, even when your screen shows it like a message. (2) The quote is a visible "
              "text block in the SAME message as this command -- a message reaches the transcript "
              "only after its tool call runs, so this hook cannot see it yet. Quote the "
              "[ADVERSARY-VERDICT: hold ...] line as visible text in one message and run the command "

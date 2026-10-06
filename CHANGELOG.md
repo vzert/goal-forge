@@ -6,6 +6,39 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.46.9] - 2026-10-06
+
+### El recordatorio del hand-back llega también con la sesión libre
+
+**Qué pasaba**: 0.46.8 guardaba el veredicto en `SubagentStop` y lo recordaba en el
+`UserPromptSubmit` siguiente, sobre la base de que `SubagentStop` termina primero. Con el harness
+2.1.291 y la sesión libre, ese orden no se cumple. En cinco corridas en vivo, el `UserPromptSubmit` del
+hand-back corrió 43 ms y 94 ms antes de que se escribiera la marca. El recordatorio no salía en la
+forma que traen 72 de 75 hand-backs. Con la sesión ocupada sí salía.
+
+**Cambio**: `remind` también lee el informe por su cuenta. Busca en
+`<transcript>/subagents/agent-<id>.jsonl` los transcripts escritos en el último minuto cuyo
+`.meta.json` nombra un `goal-adversary` exacto. En las cinco corridas, el informe estaba en disco unos
+600 ms antes del hook. Las dos fuentes las escribe el harness y ninguna viene de `prompt`. Un informe
+se recuerda una sola vez por sesión, venga de la fuente que venga.
+
+### La frase sobre el thinking ya no dice algo falso
+
+**Qué pasaba**: el recordatorio, la negación del precheck, el gate, los avisos y las dos skills decían
+"thinking is not read and the user never sees it". En el TUI 2.1.291, un bloque thinking con texto se
+ve en pantalla como un mensaje del agente (sesión a616ec4b, líneas 89, 97 y 115). El agente creía
+haber citado, y el precheck lo negó cuatro veces.
+
+**Cambio**: la frase ahora dice "thinking is not read, even when your screen shows it like a
+message" (en español: "el razonamiento no se lee, aunque la pantalla lo muestre como un mensaje").
+`claim-surface-carriers.py` tiene un check nuevo para el texto de la negación de 0.46.7. Ese texto
+vive en `terminal_actions.py`, partido entre dos literales, y un grep de la frase no lo veía.
+
+**Verificación**: `handback-verdict-branches.py` pasa de 20 a 29 casos y su `--selftest` de 15 a 19
+mutaciones. `claim-surface-carriers.py` tiene 92 checks. Las 13 suites están en verde. Reproducción
+con datos reales: el transcript de la corrida en sesión libre, cortado antes del hand-back, da
+silencio con 0.46.8 y las dos líneas exactas con 0.46.9.
+
 ## [0.46.8] - 2026-10-05
 
 ### Un recordatorio de citar el veredicto cuando el adversario responde en segundo plano
