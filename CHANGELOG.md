@@ -19,8 +19,10 @@ forma que traen 72 de 75 hand-backs. Con la sesión ocupada sí salía.
 **Cambio**: `remind` también lee el informe por su cuenta. Busca en
 `<transcript>/subagents/agent-<id>.jsonl` los transcripts escritos en el último minuto cuyo
 `.meta.json` nombra un `goal-adversary` exacto. En las cinco corridas, el informe estaba en disco unos
-600 ms antes del hook. Las dos fuentes las escribe el harness y ninguna viene de `prompt`. Un informe
-se recuerda una sola vez por sesión, venga de la fuente que venga.
+600 ms antes del hook. Las dos fuentes las escribe el harness y ninguna viene de `prompt`. La ventana
+de un minuto se mide sobre la hora de la línea del informe, no sobre la del archivo. Un informe sin
+hora propia queda para la marca. Si un adversario reanudado tiene un informe más nuevo que su marca,
+gana el más nuevo. Un informe se recuerda una sola vez por sesión, venga de la fuente que venga.
 
 ### La frase sobre el thinking ya no dice algo falso
 
@@ -34,7 +36,7 @@ message" (en español: "el razonamiento no se lee, aunque la pantalla lo muestre
 `claim-surface-carriers.py` tiene un check nuevo para el texto de la negación de 0.46.7. Ese texto
 vive en `terminal_actions.py`, partido entre dos literales, y un grep de la frase no lo veía.
 
-**Verificación**: `handback-verdict-branches.py` pasa de 20 a 29 casos y su `--selftest` de 15 a 19
+**Verificación**: `handback-verdict-branches.py` pasa de 20 a 32 casos y su `--selftest` de 15 a 22
 mutaciones. `claim-surface-carriers.py` tiene 92 checks. Las 13 suites están en verde. Reproducción
 con datos reales: el transcript de la corrida en sesión libre, cortado antes del hand-back, da
 silencio con 0.46.8 y las dos líneas exactas con 0.46.9.

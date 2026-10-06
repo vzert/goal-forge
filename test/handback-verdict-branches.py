@@ -44,13 +44,23 @@ def jsonl(d, name, events):
     return p
 
 
-def sub(handback=None, texts=()):
-    """A subagent transcript: text blocks, then (optionally) a SubagentHandback call."""
+def sub(handback=None, texts=(), ts=None):
+    """A subagent transcript: text blocks, then (optionally) a SubagentHandback call. `ts` stamps the
+    hand-back line (the race cases need a real report time, as the harness writes one)."""
     evs = [{"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}} for t in texts]
     if handback is not None:
-        evs.append({"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "name": "SubagentHandback", "id": "th1", "input": {"message": handback}}]}})
+        ev = {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "SubagentHandback", "id": "th1", "input": {"message": handback}}]}}
+        if ts:
+            ev["timestamp"] = ts
+        evs.append(ev)
     return evs
+
+
+def now_iso(delta=0):
+    import datetime
+    t = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=delta)
+    return t.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (t.microsecond // 1000)
 
 
 def said(text, ts):
@@ -138,7 +148,7 @@ def race(plugin, agent_type=ADV, age=0, meta=True, parent=(), record_after=False
     pp = jsonl(d, "parent", list(parent))
     sd = os.path.join(d, "parent", "subagents")
     os.makedirs(sd)
-    sp = jsonl(sd, "agent-a1", sub_events if sub_events is not None else sub(handback=REPORT_HOLD))
+    sp = jsonl(sd, "agent-a1", sub_events if sub_events is not None else sub(handback=REPORT_HOLD, ts=now_iso()))
     if meta:
         json.dump({"agentType": agent_type, "requestShape": "background"},
                   open(os.path.join(sd, "agent-a1.meta.json"), "w"))
@@ -153,6 +163,24 @@ def race(plugin, agent_type=ADV, age=0, meta=True, parent=(), record_after=False
     r2 = summarize(call(plugin, "remind", rp, d))
     shutil.rmtree(d, ignore_errors=True)
     return "%s|%s" % (r1, r2)
+
+
+def resumed_race(plugin):
+    """A record of the adversary's first report (hold) is waiting; it is resumed and its newer
+    report (break) is on disk when the idle-form remind runs: the newer one is named."""
+    d = tempfile.mkdtemp(prefix="hbv-")
+    pp = jsonl(d, "parent", [])
+    sd = os.path.join(d, "parent", "subagents")
+    os.makedirs(sd)
+    first = jsonl(d, "first", sub(handback=REPORT_HOLD, ts=now_iso(-30)))
+    call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop", "agent_type": ADV,
+                            "agent_id": "a1", "agent_transcript_path": first}, d)
+    jsonl(sd, "agent-a1", sub(handback=REPORT_HOLD, ts=now_iso(-30)) + sub(handback=REPORT_BREAK, ts=now_iso()))
+    json.dump({"agentType": ADV}, open(os.path.join(sd, "agent-a1.meta.json"), "w"))
+    out = summarize(call(plugin, "remind", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                            "transcript_path": pp}, d))
+    shutil.rmtree(d, ignore_errors=True)
+    return out
 
 
 def marker_consumed(plugin):
@@ -220,7 +248,13 @@ CASES = [
     ("27-race-already-quoted-is-silent",
      lambda p: race(p, parent=[said(MODEL + "\n" + HOLD, FUTURE)]), "-|-"),
     ("28-race-break-names-break-and-note",
-     lambda p: race(p, sub_events=sub(handback=REPORT_BREAK)), "break+model+breaknote|-"),
+     lambda p: race(p, sub_events=sub(handback=REPORT_BREAK, ts=now_iso())), "break+model+breaknote|-"),
+    ("31-race-old-report-in-fresh-file-is-silent",
+     lambda p: race(p, sub_events=sub(handback=REPORT_HOLD, ts=now_iso(-600)) + sub(texts=["resumed, working"])),
+     "-|-"),
+    ("32-race-report-without-timestamp-left-to-record",
+     lambda p: race(p, sub_events=sub(handback=REPORT_HOLD), record_after=True), "-|hold+model"),
+    ("33-resumed-newer-report-beats-older-record", resumed_race, "break+model+breaknote"),
     ("29-marker-consumed-after-remind", marker_consumed, "consumed"),
 ]
 
@@ -251,8 +285,13 @@ MUTATIONS = [
      '    if data.get("hook_event_name") not in (None, "SubagentStop"):\n        sys.exit(0)', "    pass"),
     ("subagent scan dropped", HOOK, "    for n in names:\n", "    for n in []:\n"),
     ("scan ignores the agent type", HOOK,
-     'if not ta.is_adversary_type(meta.get("agentType")) or agent in latest:', 'if agent in latest:'),
-    ("scan window ignored", HOOK, "now.timestamp() - os.path.getmtime(jp) > SCAN_WINDOW", "False"),
+     'if not ta.is_adversary_type(meta.get("agentType")):', 'if False:'),
+    ("scan window on mtime only", HOOK, "if abs((now - rt).total_seconds()) > SCAN_WINDOW:", "if False:"),
+    ("scan prefilter ignored", HOOK, "now.timestamp() - os.path.getmtime(jp) > SCAN_WINDOW", "False"),
+    ("record wins over a newer scanned report", HOOK,
+     'if rec is not None and (agent not in latest or rec["rts"] > (latest[agent].get("rts") or "")):',
+     "if rec is not None and agent not in latest:"),
+    ("scan falls back to mtime", HOOK, "report_text(jp, strict=True)", "report_text(jp)"),
     ("reminded set not kept", HOOK, "    if key(rec) in done:\n        continue\n", ""),
     ("verdict read from the prompt", HOOK,
      'if data.get("hook_event_name") not in (None, "UserPromptSubmit"):\n    sys.exit(0)\nlatest = {}',

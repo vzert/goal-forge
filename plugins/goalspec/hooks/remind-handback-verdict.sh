@@ -88,7 +88,7 @@ def iso_mtime(p):
     return t.strftime("%Y-%m-%dT%H:%M:%S.") + "%03dZ" % (t.microsecond // 1000)
 
 
-def report_text(transcript):
+def report_text(transcript, strict=False):
     """-> (report, when): the adversary report -- its last SubagentHandback message, else its last
     text block -- and the timestamp of the transcript line that carries it (file mtime if absent)."""
     handback = text = None
@@ -113,7 +113,7 @@ def report_text(transcript):
     rep = handback if handback is not None else text
     if rep is None:
         return None, None
-    return rep[0], rep[1] or iso_mtime(transcript)
+    return rep[0], rep[1] or (None if strict else iso_mtime(transcript))
 
 
 def verdict_record(report, when, agent, now_ts):
@@ -197,13 +197,26 @@ if isinstance(tp, str) and tp.endswith(".jsonl"):
             if now.timestamp() - os.path.getmtime(jp) > SCAN_WINDOW:
                 continue
             meta = json.load(open(os.path.join(sdir, n), encoding="utf-8"))
-            if not ta.is_adversary_type(meta.get("agentType")) or agent in latest:
+            if not ta.is_adversary_type(meta.get("agentType")):
                 continue
-            report, when = report_text(jp)
+            report, when = report_text(jp, strict=True)
         except Exception:
             continue
-        rec = verdict_record(report, when, agent, when or stamp(now))
-        if rec is not None:
+        # The window is on the timestamp of the REPORT itself, not the file mtime (a resumed adversary
+        # appends after an old report and refreshes the mtime); a report with no timestamp of its
+        # own is left to the record, so the two sources never key one report two ways.
+        if not when:
+            continue
+        try:
+            rt = datetime.datetime.strptime(when[:19], "%Y-%m-%dT%H:%M:%S").replace(
+                tzinfo=datetime.timezone.utc)
+        except Exception:
+            continue
+        if abs((now - rt).total_seconds()) > SCAN_WINDOW:
+            continue
+        rec = verdict_record(report, when, agent, when)
+        # A resumed adversary: its newer report wins over an older record of the same agent.
+        if rec is not None and (agent not in latest or rec["rts"] > (latest[agent].get("rts") or "")):
             latest[agent] = rec
 
 # Two sources can name the same report (the scan now, the record on a later prompt), so a report

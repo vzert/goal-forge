@@ -560,7 +560,7 @@ thinking, four pushes denied). The hook has two halves: `record` on SubagentStop
 goal-adversary type) stores the report's `[ADVERSARY-MODEL]`/`[ADVERSARY-VERDICT]` lines per session
 and prints nothing — SubagentStop output goes to the subagent, not the executor; `remind` on
 UserPromptSubmit consumes them and names the exact lines, unless a text block written after the
-record already quotes them. It never reads `prompt`, which the human can type. 29 cases, hermetic
+record already quotes them. It never reads `prompt`, which the human can type. 32 cases, hermetic
 (synthetic transcripts, a per-case `TMPDIR`): the reminding ones (hand-back call, last-text fallback,
 bare type, break with its note, a resumed adversary's latest report, two adversaries, a missing
 model line, an identical line quoted only BEFORE the record), the silent ones (other or look-alike
@@ -585,11 +585,14 @@ hooks, idle and busy. What no suite can show: that the agent then quotes the lin
 0.46.9 (p-3cbde60989): that order does not hold. With harness 2.1.291, session idle, the
 UserPromptSubmit ran 43 and 94 ms BEFORE the record (five live runs), so `remind` now also reads the
 report from `<transcript stem>/subagents/agent-<id>.jsonl` when its `.meta.json` names an exact
-goal-adversary and it was written in the last minute. Cases 21-29 reproduce that order (no record,
-report already on disk): it reminds once, a late record is not a second reminder, and an old
-transcript, another or look-alike type, a missing `.meta.json` or an existing quote stay silent; case
-29 checks the record file is still consumed. Four more mutations (scan dropped, type or window
-ignored, the reminded set not kept) bring `--selftest` to 19. Replayed on the real idle-form run
+goal-adversary and the report line itself is stamped within the last minute. Cases 21-33 reproduce
+that order (no record, report already on disk): it reminds once, a late record is not a second
+reminder, a resumed adversary's newer report beats an older record of the same agent, and an old
+transcript, an old report in a freshly appended file, a report with no timestamp of its own (left to
+the record), another or look-alike type, a missing `.meta.json` or an existing quote stay silent;
+case 29 checks the record file is still consumed. Seven more mutations (scan dropped, type ignored,
+window on mtime only, prefilter ignored, record winning over a newer report, mtime fallback, the
+reminded set not kept) bring `--selftest` to 22. Replayed on the real idle-form run
 (session 3bc4592b, cut before the hand-back): 0.46.8 silent, 0.46.9 names both lines.
 
 ## `terminal-precheck-branches.py` — PreToolUse terminal-push precheck suite
