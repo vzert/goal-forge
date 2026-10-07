@@ -806,6 +806,17 @@ INTERVIEW_HANDOFF_NUDGE = (
     "plainly and do no work; this reminder only returns once work starts without a spec."
 )
 
+# 0.48.0 — emitted by hooks/nudge-spec-on-entry.sh right after the goalspec loop is loaded through
+# the Skill tool in a session with no spec yet. Measured: 25 of 275 real sessions loaded the loop
+# and never posted a visible spec; one wrote it only in its thinking, another went straight to tools.
+SPEC_ON_ENTRY_NUDGE = (
+    "goalspec: the loop is loaded and this session has no ## Goal-spec yet. Before your next tool "
+    "call, post the ## Goal-spec as a visible text block (Asked line, then the six answers). A spec "
+    "you only plan in your thinking does not count: thinking is not read, even when your screen "
+    "shows it like a message. A brief or ticket that already lists criteria is input to the spec, "
+    "not the spec. If you ask clarifying questions first, write the spec right after the answers."
+)
+
 
 def waiver_covers_command(items, command, tool_use_id=None):
     """0.45.0 — the PreToolUse precheck's waiver: honored only if a `[GOAL-CLOSE-WAIVED ...]` was

@@ -420,7 +420,10 @@ completion gate" below.) The exit-set defect itself stays open.
 
 ## The completion gate
 
-The Stop hook enforces only when a session produced a `## Goal-spec`. If one exists but no valid
+The Stop hook enforces only when a session produced a `## Goal-spec`. Since v0.48.0 a session that
+loaded the goalspec loop and never wrote one also gets a reminder — advisory in both modes, never a
+block — to post the spec as visible text (measured: 25 of 275 real sessions loaded the loop and never
+posted a visible spec, and in 13 the gate never saw one anywhere). If a spec exists but no valid
 `[COMPLETION-REVIEW: …]` was declared — or the declared one closes over your operative
 `[ADVERSARY-VERDICT: break …]` instead of a `hold` — it posts an **advisory reminder** and lets the
 turn end (fail-open). Stuck on a residual break you've judged non-actionable?
@@ -520,6 +523,7 @@ goal-forge/
     hooks/watch-adversary-writes.sh       # SubagentStart/Stop: fingerprints repo content around an adversary run and records anything it changed
     hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor)
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
+    hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to post it as visible text (PostToolUse Skill)
     hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale

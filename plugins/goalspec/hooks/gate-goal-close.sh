@@ -8,7 +8,9 @@
 # assistant's actual emitted text, not a command string the agent could route around.
 #
 # Behavior:
-#   * Only enforces when this session produced a `## Goal-spec` (the gate is not universal).
+#   * Only enforces when this session produced a `## Goal-spec` (the gate is not universal). Since
+#     0.48.0 one more case speaks: the session loaded the goalspec LOOP and wrote no spec anywhere
+#     -> an ADVISORY reminder to post it, in BOTH modes (never a block; step 2b).
 #   * If a goal-spec exists but no valid [COMPLETION-REVIEW: ...] was declared -> ADVISORY reminder,
 #     the stop is allowed (fail-open). This is deliberate: you cannot gate your way out of
 #     specification gaming; a fail-closed marker just relocates the gaming. See
@@ -224,7 +226,8 @@ text = lam_text + "\n" + tx_text
 if not text.strip():
     fail_open()
 
-# 2. Nothing to enforce unless this session produced a goal-spec — checked two ways, not one.
+# 2. Nothing to enforce unless this session produced a goal-spec — checked two ways, not one —
+#    except the advisory-only step 2b below (entered the loop, no spec anywhere).
 # The plain-text regex is the original check. It is BLIND to a spec written to disk instead of
 # posted as chat text — confirmed live (goal-adversary round 2, 2026-08-01) against THIS diff own
 # session: the goal-spec here was written via `Write` to `.goalspec/checkpoint.md` (the checkpoint
@@ -245,6 +248,29 @@ if ta is not None and not _goal_spec_present:
     except Exception:
         pass
 if not _goal_spec_present:
+    # 2b. (0.48.0) Entered the goalspec loop but never wrote a spec. Until now this fell through to
+    #     fail_open() above, so the whole gate went silent for exactly the run that most needed it.
+    #     Measured 2026-10-06 over 275 real sessions (Mac + team VPS): 25 loaded the goalspec skill
+    #     and never posted a visible `## Goal-spec`; in 13 the gate never saw one anywhere (no text,
+    #     no checkpoint), so no close was ever asked of them. Two shapes were observed: a spec
+    #     written only in the agent thinking and believed visible, and a spec never written at all.
+    #     Only the LOOP entry counts (skill == "goalspec"): an interview-only session has its own
+    #     handoff nudge (nudge-interview-handoff.sh) and does not owe a spec on its first turns, and
+    #     goalspec:adversary never promised one. A waiver still silences, as it does below. This
+    #     branch is ADVISORY IN BOTH MODES: GOAL_GATE_ENFORCE=1 does not block it (the bash side
+    #     never reaches the teeth for NOSPEC), because a turn can legitimately end before the spec
+    #     exists (the clarify modal) and a block there costs a turn for nothing. Step 0 only
+    #     RECORDS `reentrant` (the silence is applied later, at the payload), so this branch applies
+    #     it itself: silent on a re-entrant Stop, i.e. at most one re-ask per user prompt.
+    _entered = False
+    if ta is not None:
+        try:
+            _entered = any(it.get("kind") == "goalspec_entry" and it.get("skill") == "goalspec"
+                           for it in ta.read_transcript_items(tpath))
+        except Exception:
+            _entered = False
+    if _entered and not reentrant and not re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I):
+        print("NOSPEC"); sys.exit(0)
     fail_open()
 
 # 3. Explicit close-over-break waiver (agent- or human-usable — see header).
@@ -572,6 +598,13 @@ print("OK")
 [ -z "$RESULT" ] && exit 0
 case "$RESULT" in
   OK) exit 0 ;;
+  NOSPEC)
+    # 0.48.0, step 2b above: entered the loop, no spec anywhere. Advisory in BOTH modes, on
+    # purpose — it exits here, before the GOAL_GATE_ENFORCE teeth at the end of this file.
+    MSG="goalspec se cargó en esta sesión pero no hay un ## Goal-spec visible (goalspec:entered-no-spec). Sin spec, el cierre no tiene contra qué revisarse."
+    AGENT_MSG="This session loaded the goalspec skill but no \`## Goal-spec\` exists as visible assistant text or in this session's .goalspec/checkpoint (goalspec:entered-no-spec). Write it now as a visible text block — a spec you only planned in your thinking does not count: thinking is not read, even when your screen shows it like a message. Then route the outcome to the adversary and declare [COMPLETION-REVIEW: …] as SKILL.md describes."
+    MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage":os.environ["MSG"],"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":os.environ["AGENT_MSG"]}}))'
+    exit 0 ;;
   REMIND*) : ;;
   *) exit 0 ;;
 esac

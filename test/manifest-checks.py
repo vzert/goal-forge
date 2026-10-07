@@ -316,7 +316,12 @@ if unregistered:
 suites = sorted(f for f in os.listdir(os.path.join(REPO, "test")) if f.endswith("-branches.py"))
 n = len(suites)
 WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
-         8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve"}
+         8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve", 13: "thirteen",
+         14: "fourteen", 15: "fifteen", 16: "sixteen", 17: "seventeen", 18: "eighteen",
+         19: "nineteen", 20: "twenty"}
+# 0.48.0: the table stopped at twelve, so at thirteen suites the correct word was not a number to
+# this checker and every document read as stating no count at all. Extended, and DIGITS is now
+# derived from it, so the two tables cannot drift apart again.
 word = WORDS.get(n, str(n))
 
 # Every place either document states a suite count must state the RIGHT one. The first version of
@@ -336,8 +341,7 @@ word = WORDS.get(n, str(n))
 # documents and is written the same way in both.
 COUNT_RE = re.compile(
     r"\b([A-Za-z]+|\d+)\s+(?:mechanical\s+|hermetic\s+)?(?:branch\s+)?suites?\b", re.I)
-DIGITS = {"1": "one", "2": "two", "3": "three", "4": "four", "5": "five", "6": "six",
-          "7": "seven", "8": "eight", "9": "nine", "10": "ten", "11": "eleven", "12": "twelve"}
+DIGITS = {str(k): v for k, v in WORDS.items()}
 
 # The CI workflow header states the count too (0.46.0: it still said "nine" at eleven suites,
 # found by an external adversary round), so it is scanned like the two documents.

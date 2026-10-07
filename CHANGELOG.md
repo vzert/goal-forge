@@ -6,6 +6,38 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.48.0] - 2026-10-06
+
+### Cargar goalspec sin escribir el spec ya no deja el cierre sin control
+
+Medido 2026-10-06 sobre 275 sesiones reales (Mac del mantenedor + VPS del equipo): **25 cargaron el
+loop de goalspec y nunca escribieron un `## Goal-spec` visible**, y en **13** el Stop gate no vio
+ningún spec, ni en texto ni en el checkpoint. En esas 13 el gate salía en silencio (`fail_open`) y
+nunca pidió un cierre. En los transcripts aparecieron dos formas: un agente escribió el spec solo en
+su razonamiento interno y lo creyó visible (su propio razonamiento lo dice, y su adversario rompió
+por eso); otro cargó la skill con la tarea ya concreta, planeó en el razonamiento y pasó directo a
+herramientas. Una réplica controlada reprodujo la segunda forma sin ningún encargo de supervisor
+(2 de 2 corridas limpias), así que el encargo no es la causa necesaria.
+
+- **Stop gate, paso 2b** (`hooks/gate-goal-close.sh`): si la sesión cargó el loop (Skill
+  `goalspec:goalspec` o `/goalspec` tecleado) y no hay spec en ningún lado, avisa
+  `(goalspec:entered-no-spec)` con una línea al agente: escribir el spec como texto visible; el
+  razonamiento interno no cuenta. **Es aviso en los dos modos**: con `GOAL_GATE_ENFORCE=1` tampoco
+  bloquea, porque un turno puede terminar legítimamente antes del spec (la pregunta de aclarar).
+  Silencio si la entrada fue solo `/goalspec:interview` (tiene su propio aviso) o solo
+  `goalspec:adversary`, si hay un waiver, en un Stop reentrante, o si la librería no carga. Corrido
+  sobre las 9 sesiones locales invisibles: 7 reciben el aviso, 2 siguen en silencio por su waiver.
+- **Hook nuevo `hooks/nudge-spec-on-entry.sh`** (PostToolUse, matcher `Skill`): justo después de
+  cargar el loop, si no hay spec, una línea al agente pide publicar el `## Goal-spec` visible antes
+  de la siguiente herramienta, y aclara que un brief con criterios es entrada del spec, no el spec.
+  No bloquea nada.
+- Tests: `gate-branches.py` gana la sección "entered the loop, never wrote a spec" (10 casos × 2
+  modos; los 2 que hablan fallan contra el gate de 0.47.0; `--compare` en los dos modos: 45 ramas,
+  0 cambios). Suite nueva `test/spec-on-entry-branches.py` (12 casos, `--selftest` con 7
+  mutaciones). `manifest-checks.py` solo conocía los números hasta "twelve"; ahora llega a "twenty".
+
+Límite honesto: ninguna suite muestra que el agente obedezca la línea. Eso se observa en vivo.
+
 ## [0.47.0] - 2026-10-06
 
 ### Toda corrida lleva adversario; el externo se suma en lo terminal

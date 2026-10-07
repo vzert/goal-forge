@@ -75,7 +75,8 @@ except Exception:
 if data.get("stop_hook_active"):
     silent()
 
-# 1. Only within a goalspec-tracked session (mirrors gate-goal-close.sh conditionality).
+# 1. Only within a goalspec-tracked session (mirrors the spec precondition of gate-goal-close.sh;
+#    the 0.48.0 entered-no-spec reminder is deliberately NOT mirrored here: no spec, no budget).
 lam = data.get("last_assistant_message")
 lam_text = lam if isinstance(lam, str) else ""
 tx_parts = []

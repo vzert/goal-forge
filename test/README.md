@@ -1,6 +1,6 @@
 # test/
 
-**Twelve** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Thirteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -541,6 +541,29 @@ malformed input, an interview that concluded "nothing to do" followed by plain c
 ```sh
 python3 test/interview-handoff-branches.py
 python3 test/interview-handoff-branches.py --selftest
+```
+
+## `spec-on-entry-branches.py` — post the spec when the loop loads (0.48.0)
+
+For `hooks/nudge-spec-on-entry.sh`. Measured 2026-10-06 over 275 real sessions (maintainer Mac +
+team VPS): 25 loaded the goalspec loop and never posted a visible `## Goal-spec`, and in 13 the Stop
+gate never saw one anywhere. One agent wrote it only in its thinking and believed it visible;
+another planned in its thinking and went straight to tools. The hook adds one agent-facing line
+(`terminal_actions.SPEC_ON_ENTRY_NUDGE`) right after a Skill call that loads `goalspec:goalspec`
+while no spec exists yet. It blocks nothing. 12 cases, hermetic: the nudging ones (loop loaded,
+bare skill name, a spec that lives only in a `thinking` block, no transcript), and the silent ones
+(interview, standalone adversary, another skill, another tool, a spec already in text or in the
+checkpoint file, another event, malformed input). New with no predecessor, so `--selftest` mutates
+the component (7 mutations) and requires a case to catch each.
+
+The Stop-gate half of the same release lives in `gate-branches.py`, section "entered the loop,
+never wrote a spec": 10 cases run in both modes, asserting an advisory that never blocks, silence
+for interview-only, adversary-only, waiver, re-entrant Stop and a missing lib, and the ordinary
+branches once a spec exists.
+
+```sh
+python3 test/spec-on-entry-branches.py
+python3 test/spec-on-entry-branches.py --selftest
 ```
 
 The hook is new, so "fails against the previous version" would prove nothing. `--selftest` copies

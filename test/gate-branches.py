@@ -414,6 +414,15 @@ def stale_transcript(events, name):
             if "write" in ev:
                 fp, body = ev["write"]
                 content.append({"type": "tool_use", "name": "Write", "input": {"file_path": fp, "content": body}})
+            if "user" in ev:
+                # A user event (0.48.0): a typed `/goalspec` reaches the transcript only as the
+                # harness's `<command-name>` tag inside one.
+                fh.write(json.dumps({"type": "user", "timestamp": ev.get("timestamp"),
+                                     "message": {"role": "user", "content": ev["user"]}}) + "\n")
+                continue
+            if "skill" in ev:
+                content.append({"type": "tool_use", "name": "Skill", "id": "sk-" + ev["skill"],
+                                "input": {"skill": ev["skill"]}})
             if "text" in ev:
                 content.append({"type": "text", "text": ev["text"]})
             fh.write(json.dumps({"type": "assistant", "timestamp": ev.get("timestamp"),
@@ -611,6 +620,105 @@ def run_checkpoint_goalspec(gate, name, events):
 def checkpoint_goalspec_suite(gate):
     return [(name, run_checkpoint_goalspec(gate, name, events))
             for name, events, _ in CHECKPOINT_GOALSPEC_CASES]
+
+
+# --- entered the loop, never wrote a spec (0.48.0) -------------------------------------------------
+# Before 0.48.0 a session with no `## Goal-spec` anywhere went straight to fail_open(), even when it
+# had loaded the goalspec skill — measured 2026-10-06: 13 of 275 real sessions (Mac + team VPS)
+# loaded it and the gate never saw a spec, so it never asked them for a close. Step 2b now speaks
+# there. These cases pin, in BOTH modes: (a) it speaks, as an ADVISORY with an agent-facing line,
+# and never blocks, not even under GOAL_GATE_ENFORCE=1; (b) only the loop entry arms it — an
+# interview-only or adversary-only session stays silent; (c) a waiver or a re-entrant Stop still
+# silences it; (d) once a spec exists (text or checkpoint) the ordinary branches take over, unchanged;
+# (e) with no importable lib the gate degrades to the old silence, never to a new block.
+# Not part of CASES: run() cannot see `additionalContext` and CASES builds text-only transcripts.
+# (name, events, payload_extra, use_lib, want) — want: (outcome, detail, has_agent_ctx)
+ENTRY_NOSPEC_CASES = [
+    ("entry-01-skill-loaded-no-spec-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"text": "working on it."}], {}, True,
+     ("advisory", "goalspec:entered-no-spec", True)),
+    ("entry-02-typed-command-no-spec-SPEAKS",
+     [{"user": "<command-name>/goalspec:goalspec</command-name>\n<command-args>audit x</command-args>"},
+      {"text": "working on it."}], {}, True,
+     ("advisory", "goalspec:entered-no-spec", True)),
+    ("entry-03-interview-only-SILENT",
+     [{"skill": "goalspec:interview"}, {"text": "question round 1."}], {}, True,
+     ("silent", None, False)),
+    ("entry-04-adversary-only-SILENT",
+     [{"skill": "goalspec:adversary"}, {"text": "verified."}], {}, True,
+     ("silent", None, False)),
+    ("entry-05-no-entry-SILENT",
+     [{"text": "just some text, no spec, no goalspec."}], {}, True,
+     ("silent", None, False)),
+    ("entry-06-waiver-SILENT",
+     [{"skill": "goalspec:goalspec"}, {"text": WAIVER}], {}, True,
+     ("silent", None, False)),
+    ("entry-07-reentrant-SILENT",
+     [{"skill": "goalspec:goalspec"}, {"text": "working on it."}], {"stop_hook_active": True}, True,
+     ("silent", None, False)),
+    ("entry-08-spec-in-text-ordinary-branch",
+     [{"skill": "goalspec:goalspec"}, {"text": SPEC + "I did the work."}], {}, True,
+     ("advisory-or-block", "completion-review:absent", None)),
+    ("entry-09-spec-in-checkpoint-ordinary-branch",
+     [{"skill": "goalspec:goalspec"}, {"write": (".goalspec/checkpoint-ab12.md", SPEC)},
+      {"text": "still working."}], {}, True,
+     ("advisory-or-block", "completion-review:absent", None)),
+    ("entry-10-no-lib-degrades-SILENT",
+     [{"skill": "goalspec:goalspec"}, {"text": "working on it."}], {}, False,
+     ("silent", None, False)),
+]
+
+
+def run_entry_nospec(gate, name, events, extra, use_lib, enforce):
+    tx = stale_transcript(events, "entry-" + name)
+    payload = {"last_assistant_message": events[-1].get("text", ""), "transcript_path": tx}
+    payload.update(extra)
+    env = dict(os.environ)
+    env.pop("GOAL_GATE_ENFORCE", None)
+    if enforce:
+        env["GOAL_GATE_ENFORCE"] = "1"
+    if use_lib:
+        env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")
+    else:
+        env["CLAUDE_PLUGIN_ROOT"] = os.path.join(TMP, "no-plugin-root")
+    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=env).stdout.strip()
+    if not out:
+        return ("silent", None, False)
+    try:
+        d = json.loads(out)
+    except Exception:
+        return ("unparseable", None, False)
+    msg = d.get("systemMessage") or d.get("reason") or ""
+    m = re.search(r"\((goalspec:entered-no-spec|completion-review:[^)]+)\)", msg)
+    ctx = ((d.get("hookSpecificOutput") or {}).get("additionalContext") or "")
+    return ("block" if d.get("decision") == "block" else "advisory",
+            m.group(1) if m else "NO-DETAIL", bool(ctx))
+
+
+def entry_nospec_failures(gate):
+    fails = []
+    for name, events, extra, use_lib, want in ENTRY_NOSPEC_CASES:
+        for enforce in (False, True):
+            got = run_entry_nospec(gate, name, events, extra, use_lib, enforce)
+            w_out, w_detail, w_ctx = want
+            ok = (got[0] == w_out or (w_out == "advisory-or-block" and got[0] in ("advisory", "block"))) \
+                and (w_detail is None or got[1] == w_detail) and (w_ctx is None or got[2] == w_ctx)
+            # The agent-facing line must say thinking does not count — that is the observed failure.
+            if ok and got[1] == "goalspec:entered-no-spec":
+                d = json.loads(subprocess.run(["bash", gate], input=json.dumps(dict(
+                    {"last_assistant_message": events[-1].get("text", ""),
+                     "transcript_path": stale_transcript(events, "entry-" + name)}, **extra)),
+                    capture_output=True, text=True, env=dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(
+                        REPO, "plugins", "goalspec"))).stdout)
+                if "thinking does not count" not in d["hookSpecificOutput"]["additionalContext"]:
+                    ok = False
+            print("%-46s %-8s %-10s %-30s ctx=%-5s%s" % (name, "ENFORCE" if enforce else "default",
+                  got[0], got[1] or "", got[2], "" if ok else "   <-- FAILS (want %s)" % (want,)))
+            if not ok:
+                fails.append("%s [%s]: want %s, got %s" % (name, "ENFORCE" if enforce else "default",
+                                                            want, got))
+    return fails
 
 
 # --- payload shape: who the floor talks to (0.36.0, amended 0.43.0) -------------------------------
@@ -868,6 +976,12 @@ def main():
         print("%-52s %-10s %-30s%s" % (name, got_decision, got_detail or "", "" if ok else "   <-- FAILS"))
     if ckpt_failures:
         print("\nCHECKPOINT-GOALSPEC FAILURES: %d\n  %s" % (len(ckpt_failures), "\n  ".join(ckpt_failures)))
+        return 1
+
+    print("\n--- entered the loop, never wrote a spec (0.48.0) ---")
+    entry_fails = entry_nospec_failures(a.gate)
+    if entry_fails:
+        print("\nENTRY-NOSPEC FAILURES: %d\n  %s" % (len(entry_fails), "\n  ".join(entry_fails)))
         return 1
 
     # Payload shape — what the floor spends. Not part of --compare parity: the whole point is that
