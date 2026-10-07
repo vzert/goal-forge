@@ -26,7 +26,10 @@ entrada: 1 de 6 escribió el spec antes de trabajar.
 - Dos diseños descartados con datos: aceptar solo texto visible dejó trabadas a 2 de 6 corridas con
   dos redacciones distintas de la negación (afirmaban haber publicado un spec que no existía en
   ningún lado). Con el checkpoint aceptado: 6 de 6 escribieron el spec antes del primer Bash, ninguna
-  trabada, 2 negaciones como máximo. Esa ronda tuvo Write y Edit disponibles, como una sesión real.
+  trabada, 2 negaciones como máximo. Pero 3 de esas 6 lo publicaron en texto antes de cualquier
+  negación, y la ronda tuvo Write y Edit disponibles (las anteriores no) sin un brazo sin freno con
+  Write: lo que se le puede atribuir al freno son las otras 3, que escribieron el checkpoint tras 1 o
+  2 negaciones, y que no trabó a nadie. N=6.
 - `test/spec-brake-branches.py`: 36 casos, `--selftest` con 20 mutaciones.
 ## [0.48.2] - 2026-10-07
 
