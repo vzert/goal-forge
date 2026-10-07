@@ -108,6 +108,12 @@ CASES = [
     # remind() got in 0.44.5. Before this release the hook sent the identical long English text to
     # BOTH fields; the human read the same dense wall the agent did.
     ("11-audience-split", ONE_ROUND, SESSION, {}, "split-ok"),
+    # THE THIRD READING (p-55cec2045a). Observed 2026-10-06: a parallel session of the same project
+    # wrote under .goalspec/ during an adversary round, and the message could only blame the adversary
+    # or the executor. It must name a third writer, must stop claiming there are exactly two readings,
+    # and — the half that keeps it from being a free pass — must say that the third reading needs
+    # evidence naming the other writer, or the verdict stays UNVERIFIED. The human line names it too.
+    ("12-third-reading", ONE_ROUND, SESSION, {}, "third-reading-ok"),
 ]
 
 
@@ -132,6 +138,18 @@ def classify(res, name, findings_path):
         if sysmsg.isascii() and any(c.isalpha() for c in sysmsg):
             return "systemMessage-looks-english"
         return "split-ok"
+
+    if name.startswith("12"):
+        low = (agent_msg or "").lower()
+        if "exactly two readings" in low:
+            return "still-claims-two-readings"
+        if "another writer" not in low or "parallel session" not in low:
+            return "third-reading-missing"
+        if "names the other writer" not in low or "verdict stays unverified" not in low:
+            return "third-reading-without-evidence-bar"
+        if "otra sesión" not in sysmsg:
+            return "human-line-misses-third-reading"
+        return "third-reading-ok"
 
     # Everything else — including the audience-line case (08) — reads the technical text, which now
     # lives in additionalContext only.
@@ -212,13 +230,21 @@ MUTATIONS = [
      '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
      "11"),
     ("the human-facing message grown past the length budget",
-     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia."',
-     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia. Se agrega aquí texto adicional de relleno para asegurar que el mensaje humano supere ampliamente los trescientos caracteres de longitud total y ya no sea breve ni conciso."',
+     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia."',
+     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia. Se agrega aquí texto adicional de relleno para asegurar que el mensaje humano supere ampliamente los trescientos caracteres de longitud total y ya no sea breve ni conciso."',
      "11"),
     ("the human-facing message switched to English",
-     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia."',
+     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia."',
      'MSG="An independent adversary ran while the file tree was changing (${ROUNDS} round(s)) - your close must state whether the adversary or you wrote, with the evidence."',
      "11"),
+    ("the third reading removed",
+     " (3) ANOTHER WRITER changed the repository during the round — a parallel session on the same "
+     "project, the human, a background job.", "", "12"),
+    ("the third reading kept, its evidence bar removed",
+     "A bare \\\"probably another session\\\" is not evidence: without it, (1) and (2) stand and "
+     "the verdict stays UNVERIFIED. ", "", "12"),
+    ("the human line back to two writers",
+     "si escribió el adversario, tú u otra sesión,", "si fue el adversario o tú quien escribió,", "12"),
 ]
 
 

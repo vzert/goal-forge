@@ -390,12 +390,15 @@ audience line AND to disarm an adversary reading it in a transcript (the executo
 exactly what an adversary reads for its principle-4 check, so this text *will* land in front of one);
 removing either half flips the case to `reported-no-audience-line`. **09** requires the findings file
 to be consumed, or every later turn re-reports a stale finding as new. **04** pins the session
-keying, **05** that garbage is skipped rather than fatal, **03/06/07/10** the fail-open paths.
+keying, **05** that garbage is skipped rather than fatal, **03/06/07/10** the fail-open paths. **12** (p-55cec2045a) requires the message to name a THIRD writer — a parallel session on the
+same project, the human — to stop claiming "exactly two readings", and to keep the evidence bar that
+stops the third reading from being a free pass for the executor (name the other writer, or the
+verdict stays UNVERIFIED); the human line must name "otra sesión" too.
 
 **Its baseline is NOT 0.44.0**, and that matters: this hook did not exist then, so "fails against the
 old hook" says nothing about it. An external partner caught exactly that — case 09 passes against the
 0.44.0 watcher for the wrong reason (that hook never reports, so "silent on the second call" is
-trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs four
+trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs ten
 of them, each required to be noticed by the case written for it.
 
 ```sh

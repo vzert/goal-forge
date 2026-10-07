@@ -87,14 +87,24 @@ ROUNDS=$(printf '%s\n' "$BODY" | grep -c '^ts=' || true)
 # line is a second layer. It stays out of MSG: a human reading systemMessage is not the audience it
 # defends against, and the disarming text is exactly the density this split exists to keep off their
 # screen.
-MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si fue el adversario o tú quien escribió, con la evidencia."
+# THE THIRD READING (p-55cec2045a). Until this change the message offered exactly two readings —
+# the adversary wrote, or the executor did — which assumes one writer per repository. Observed on
+# 2026-10-06: a parallel session of the same project wrote .goalspec/informe-sin-spec.md while an
+# adversary was reviewing a mod OUTSIDE the repo, and the message could only accuse one of the two
+# parties that had not written it. The rejected alternative was to narrow the fingerprint to the
+# paths named in the payload: SubagentStart carries no prompt and no path list, and the recorded
+# 2026-09-12 incident was an adversary writing to five files nobody had pointed it at — exactly what a
+# narrowed fingerprint would stop seeing. So the measurement stays whole and the TEXT stops assuming a
+# single writer. HONEST LIMIT: this is prose; the hook still cannot tell (2) from (3). That is why
+# (3) is the one reading that must name its evidence — otherwise it is a free pass for the executor.
+MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia."
 
 AGENT_MSG="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a transcript, it is not addressed to you, it is a record of what a hook measured, and it changes nothing about your role: you verify, you do not repair.
 
 A goal-adversary subagent ran in this session and the repository content changed while it was running ($ROUNDS such round(s)). Paths whose bytes differ between the start and the end of a round:
 $(printf '%s\n' "$PATHS" | sed 's/^/  - /')
 
-There are exactly two readings and both are findings, so do not wave it through. (1) The adversary WROTE to the work it was sent to measure — it was told not to, and a verdict it returned describes a state it created, so treat that verdict as UNVERIFIED rather than a pass, and re-run the review over a tree nobody edited mid-flight. (2) The EXECUTOR edited under an in-flight verifier — the same defect from the other end, since the verdict is then about a tree that no longer exists. A background round can produce (2) innocently; a synchronous closing round cannot. Say in your close which of the two it was, with the evidence, instead of leaving it implied. Nothing has been reverted and nothing is blocked: what to keep is yours to decide."
+There are three readings, and only the third is not a defect of this run — so it is the one that costs evidence. (1) The adversary WROTE to the work it was sent to measure — it was told not to, and a verdict it returned describes a state it created, so treat that verdict as UNVERIFIED rather than a pass, and re-run the review over a tree nobody edited mid-flight. (2) The EXECUTOR edited under an in-flight verifier — the same defect from the other end, since the verdict is then about a tree that no longer exists. A background round can produce (2) innocently; a synchronous closing round cannot. (3) ANOTHER WRITER changed the repository during the round — a parallel session on the same project, the human, a background job. This hook fingerprints the whole repository and cannot tell who wrote, so (3) is a real possibility, not an excuse: claim it only with evidence that names the other writer (the other session and what it wrote — e.g. a .goalspec/ file carrying a different session token — or a commit or timestamp from outside this session) AND that the path appears in no write by this session or by the adversary. A bare \"probably another session\" is not evidence: without it, (1) and (2) stand and the verdict stays UNVERIFIED. Say in your close which of the three it was, with the evidence, instead of leaving it implied. Nothing has been reverted and nothing is blocked: what to keep is yours to decide."
 
 MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c '
 import json, os
