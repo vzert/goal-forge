@@ -543,6 +543,14 @@ python3 test/interview-handoff-branches.py
 python3 test/interview-handoff-branches.py --selftest
 ```
 
+The hook is new, so "fails against the previous version" would prove nothing. `--selftest` copies
+the plugin, applies nine mutations to the component (pending always true, loop entry ignored,
+checkpoint spec ignored, a spec before the interview counted, the tool filter dropped, the wrong
+`hookEventName`, the work requirement dropped, work never recorded, the interview kind lost) and
+requires at least one case to fail under each. Run
+over this machine's 70 real interview transcripts, the detector marks exactly the 8 that went on
+with no spec and no loop call. What no suite can show: that the agent then obeys the reminder.
+
 ## `spec-on-entry-branches.py` — post the spec when the loop loads (0.48.0)
 
 For `hooks/nudge-spec-on-entry.sh`. Measured 2026-10-06 over 275 real sessions (maintainer Mac +
@@ -565,14 +573,6 @@ branches once a spec exists.
 python3 test/spec-on-entry-branches.py
 python3 test/spec-on-entry-branches.py --selftest
 ```
-
-The hook is new, so "fails against the previous version" would prove nothing. `--selftest` copies
-the plugin, applies nine mutations to the component (pending always true, loop entry ignored,
-checkpoint spec ignored, a spec before the interview counted, the tool filter dropped, the wrong
-`hookEventName`, the work requirement dropped, work never recorded, the interview kind lost) and
-requires at least one case to fail under each. Run
-over this machine's 70 real interview transcripts, the detector marks exactly the 8 that went on
-with no spec and no loop call. What no suite can show: that the agent then obeys the reminder.
 
 ## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)
 

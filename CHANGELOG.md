@@ -10,7 +10,8 @@ version bump are never delivered to already-installed users.
 
 ### Cargar goalspec sin escribir el spec ya no deja el cierre sin control
 
-Medido 2026-10-06 sobre 275 sesiones reales (Mac del mantenedor + VPS del equipo): **25 cargaron el
+Medido 2026-10-06 sobre 275 sesiones reales (172 en la Mac del mantenedor y 103 en el VPS del
+equipo; en el VPS se corrió el mismo script, solo lectura, y quedan solo los conteos): **25 cargaron el
 loop de goalspec y nunca escribieron un `## Goal-spec` visible**, y en **13** el Stop gate no vio
 ningún spec, ni en texto ni en el checkpoint. En esas 13 el gate salía en silencio (`fail_open`) y
 nunca pidió un cierre. En los transcripts aparecieron dos formas: un agente escribió el spec solo en
