@@ -29,15 +29,15 @@ entrada: 1 de 6 escribió el spec antes de trabajar.
   trabada, 2 negaciones como máximo. Esa ronda tuvo Write y Edit disponibles (las anteriores no), así
   que se corrió un control intercalado con las mismas herramientas: sin freno, 2 de 6 escribieron el
   spec antes de trabajar; con freno, 6 de 6 y ninguna trabada. N=6 por brazo.
-- `test/spec-brake-branches.py`: 38 casos, `--selftest` con 21 mutaciones.
-- Límites que se declaran y no se arreglan aquí (los encontró el adversario externo del release): un
-  encabezado `## Goal-spec` sin contenido libera el freno, porque usa el mismo detector que el gate y
-  el precheck; y un Write con spec a un checkpoint libera el freno aunque otro hook lo niegue, porque
-  la librería cuenta la llamada, no su resultado (al gate y al precheck les pasa igual desde antes).
-  Es un freno de cumplimiento, no una barrera de seguridad. Corregido en la misma ronda: sin
-  `session_id` usable, la negación nombraba una ruta que el detector no acepta; ahora nombra
-  `.goalspec/checkpoint.md`.
-## [0.48.2] - 2026-10-07
+- `test/spec-brake-branches.py`: 42 casos, `--selftest` con 24 mutaciones.
+- Endurecido en las rondas del release (adversario externo): el freno exige contenido bajo el
+  encabezado (100 caracteres sin espacios; un encabezado vacío ya no lo libera), solo cuenta el
+  checkpoint de esta sesión (`checkpoint-<id>.md` o `checkpoint.md`; un Write al de otra sesión, aunque
+  otro hook lo niegue, ya no lo libera) y valida el `session_id` antes de usarlo en la ruta (si no es
+  letras, números y guiones, nombra `.goalspec/checkpoint.md`). El gate y el precheck siguen con su
+  detector de solo encabezado. Los 19 specs reales de las corridas medidas pasan las dos condiciones
+  nuevas. Sigue siendo un freno de cumplimiento, no una barrera de seguridad: cuenta la llamada a Write,
+  no su resultado.
 
 Las dos cosas salen de una sesión de campo (VPS del equipo, 2026-10-07): un hotfix de 3 líneas en el
 que el adversario externo hizo rondas de más. Los breaks de esas rondas fueron correctos; lo que se

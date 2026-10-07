@@ -62,11 +62,11 @@ if tool != "Bash":
         sys.exit(0)
 
 items = ta.read_transcript_items(data.get("transcript_path"))
-if not ta.spec_brake_armed(items):
+sid = str(data.get("session_id") or "").strip()
+if not ta.spec_brake_armed(items, sid):
     sys.exit(0)
 
-sid = str(data.get("session_id") or "").strip()
-path = ".goalspec/checkpoint-%s.md" % sid if sid and ta.CHECKPOINT_PATH_RE.search(".goalspec/checkpoint-%s.md" % sid) else ".goalspec/checkpoint.md"
+path = ".goalspec/checkpoint-%s.md" % sid if ta.SESSION_ID_RE.fullmatch(sid) else ".goalspec/checkpoint.md"
 reason = ta.SPEC_BRAKE_REASON.format(path=path) + ta.spec_brake_evidence(items)
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                          "permissionDecision": "deny",

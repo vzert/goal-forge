@@ -20,7 +20,9 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
 TMP = tempfile.mkdtemp(prefix="spec-brake-branches-")
 
-SPEC = "## Goal-spec\nAsked (your words): whatever.\n"
+SPEC = ("## Goal-spec\nAsked (your words): whatever.\n1. Real objective: make the report exist.\n"
+        "2. Measurable success: the file is committed and every figure re-derives.\n")
+BARE = "## Goal-spec\nAsked (your words): x\n"
 
 
 def transcript(events, name):
@@ -67,6 +69,8 @@ def run(plugin, payload_text, env_extra=None):
         # Which evidence: the agent's own last visible text quoted back, or "no visible text".
         if "QUOTE-ME-BACK" in reason and "2 visible text block(s)" in reason:
             return "deny-quotes"
+        if "1 visible text block(s)" in reason and "Asked (your words): x" in reason:
+            return "deny-quotes-bare"
         if "no visible text from you at all" in reason:
             if ".goalspec/checkpoint-SID-42.md" in reason:
                 return "deny-path"
@@ -101,7 +105,15 @@ CASES = [
     ("08-spec-only-in-thinking-denied", lambda: pre([LOAD, {"thinking": SPEC}], "08"), "deny-none"),
     # v3: a spec written with Write to the checkpoint releases it (show-checkpoint-spec.sh shows it).
     ("09-spec-in-checkpoint-allows",
-     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-ab12.md", SPEC)}], "09"), "allow"),
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC)}], "09"), "allow"),
+    ("09d-plain-checkpoint-allows",
+     lambda: pre([LOAD, {"write": ("/r/.goalspec/checkpoint.md", SPEC)}], "09d"), "allow"),
+    # Release round (codex): another session's checkpoint never releases it, nor a bare heading.
+    ("09e-foreign-checkpoint-denies",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-other-session.md", SPEC)}], "09e"), "deny-none"),
+    ("09f-bare-heading-checkpoint-denies",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", BARE)}], "09f"), "deny-none"),
+    ("10b-bare-heading-text-denies", lambda: pre([LOAD, {"text": BARE}], "10b"), "deny-quotes-bare"),
     ("09b-checkpoint-without-spec-still-denies",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-ab12.md", "# notes\n")}], "09b"), "deny-none"),
     ("09c-spec-in-other-file-still-denies",
@@ -215,7 +227,7 @@ MUTATIONS = [
      'it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items',
      'it["kind"] == "goalspec_entry" for it in items'),
     ("visible spec ignored", LIB,
-     'return not has_goal_spec("\\n".join(it["text"] for it in items if it["kind"] == "text"))',
+     'return not spec_has_body("\\n".join(it["text"] for it in items if it["kind"] == "text"))',
      "return True"),
     ("evidence dropped from the deny", HOOK,
      "ta.SPEC_BRAKE_REASON.format(path=path) + ta.spec_brake_evidence(items)",
@@ -227,7 +239,13 @@ MUTATIONS = [
      "reply. A spec you wrote or planned only in your thinking does not count, even if you believe ",
      "reply. Your plan counts, even if you believe "),
     ("checkpoint spec no longer releases", LIB,
-     'if any(it["kind"] == "goal_spec_file" for it in items):', "if False:"),
+     "           and spec_has_body(it[\"text\"]) for it in items):",
+     "           and False for it in items):"),
+    ("body requirement dropped", LIB,
+     "        if len(re.sub(r\"\\s\", \"\", body)) >= SPEC_BRAKE_MIN_BODY:", "        if True:"),
+    ("own-checkpoint restriction dropped", LIB,
+     'it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")', 'it["kind"] == "goal_spec_file"'),
+    ("session id not validated", HOOK, 'if ta.SESSION_ID_RE.fullmatch(sid) else', 'if sid else'),
     ("fallback path back to a placeholder", HOOK, 'else ".goalspec/checkpoint.md"',
      'else ".goalspec/checkpoint-<session>.md"'),
     ("reason path not filled", HOOK, 'ta.SPEC_BRAKE_REASON.format(path=path)',

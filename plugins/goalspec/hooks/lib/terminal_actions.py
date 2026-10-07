@@ -691,7 +691,8 @@ def _collect_event(ev, items, state=None):
                 for key in ("content", "new_string"):
                     v = ti.get(key)
                     if isinstance(v, str) and re.search(GOAL_SPEC_RE, v, re.I):
-                        items.append({"kind": "goal_spec_file", "timestamp": ts, "text": v})
+                        items.append({"kind": "goal_spec_file", "timestamp": ts, "text": v,
+                                      "path": fp.replace("\\", "/")})
 
 
 def read_transcript_items(transcript_path):
@@ -842,22 +843,53 @@ SPEC_BRAKE_REASON = (
 )
 
 
-def spec_brake_armed(items):
+SPEC_BRAKE_MIN_BODY = 100  # non-whitespace characters under the heading; a real spec has six answers
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
+
+
+def spec_has_body(text):
+    """A `## Goal-spec` heading followed by at least SPEC_BRAKE_MIN_BODY non-whitespace characters
+    before the next same-or-higher heading. 0.49.0 release round (external adversary): the brake
+    released on a bare heading. The gate and precheck keep their heading-only detector; only the
+    brake, which exists to make the plan exist, asks for a body."""
+    for m in re.finditer(GOAL_SPEC_RE, text or "", re.I):
+        rest = text[m.end():]
+        nxt = re.search(r"\n#{1,2}\s", rest)
+        body = rest[:nxt.start()] if nxt else rest
+        if len(re.sub(r"\s", "", body)) >= SPEC_BRAKE_MIN_BODY:
+            return True
+    return False
+
+
+def own_checkpoint_re(session_id):
+    """The checkpoint paths this session may release the brake with: checkpoint-<its id>.md, or the
+    plain checkpoint.md. Another session's checkpoint never counts (release round: a Write to a
+    foreign checkpoint, denied by the overwrite precheck, still released the brake)."""
+    sid = session_id if isinstance(session_id, str) and SESSION_ID_RE.fullmatch(session_id) else None
+    tail = r"(-%s)?" % re.escape(sid) if sid else ""
+    return re.compile(r"(^|/)\.goalspec/checkpoint%s\.md$" % tail)
+
+
+def spec_brake_armed(items, session_id=None):
     """True when this session entered the goalspec LOOP (the Skill tool or a typed
-    /goalspec[:goalspec]) and has no `## Goal-spec` yet, neither in the assistant's visible text
-    nor in a Write/Edit to its .goalspec/ checkpoint (the same union transcript_signals uses).
+    /goalspec[:goalspec]) and has no `## Goal-spec` with a body yet, neither in the assistant's
+    visible text nor in a Write/Edit to THIS session's .goalspec/ checkpoint.
 
     v3 (ronda 6 of p-718231fa66): v1 and v2 accepted only visible text, and 2 of 6 agents stayed
     stuck in both -- they believed they had posted a spec that existed nowhere visible, and no
     deny wording moved them. A Write call is a tool call, not a claim about their own output, so
     it is accepted; hooks/show-checkpoint-spec.sh puts what they wrote in front of the human.
     The interview alone does not arm it (it hands off to the loop, and the loop arms it), and
-    neither does goalspec:adversary, which is not an entry."""
+    neither does goalspec:adversary, which is not an entry. A Write is counted when requested,
+    not when it succeeds; limiting it to this session's own path is what keeps a denied write to
+    another session's file from counting."""
     if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
         return False
-    if any(it["kind"] == "goal_spec_file" for it in items):
+    own = own_checkpoint_re(session_id)
+    if any(it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")
+           and spec_has_body(it["text"]) for it in items):
         return False
-    return not has_goal_spec("\n".join(it["text"] for it in items if it["kind"] == "text"))
+    return not spec_has_body("\n".join(it["text"] for it in items if it["kind"] == "text"))
 
 
 def spec_brake_evidence(items):
