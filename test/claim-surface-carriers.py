@@ -258,7 +258,7 @@ def main():
 
     # --- 7f. Every run gets the adversary; external is ADDED on terminal (0.47.0) -------------
     # The rule changed from "terminal -> adversary (external instead of subagent when configured)"
-    # to "every run -> subagent on a different model; terminal -> external too". It has eight
+    # to "every run -> subagent on a different model; terminal -> external too". It has ten
     # carriers checked here (plus CLAUDE.md's acid test, prose only); one left on the old wording sends agents back to the slow backend on every plan,
     # or to no adversary at all on a non-terminal run.
     readme = read(os.path.join(REPO, "README.md"))

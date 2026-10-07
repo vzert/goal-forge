@@ -35,9 +35,12 @@ paso 6), `agents/goal-adversary.md` (descripción), `skills/adversary/SKILL.md` 
 `hooks/route-external-adversary.sh` (el aviso ya no dice "en vez de": dice "también, si es
 terminal o tras dos breaks", y que no puede ver ninguna de las dos cosas),
 `references/external-adversary-setup.md`, `references/adaptation-guide.md`,
-`goal.config.example.json`, `README.md` y la prueba manual de `CLAUDE.md`.
-`test/claim-surface-carriers.py` comprueba la regla nueva en ocho portadores y que seis frases viejas
-no sobrevivan en cinco de ellos (18 comprobaciones nuevas; las 18 fallan contra 0.46.9).
+`goal.config.example.json`, `README.md`, la prueba manual de `CLAUDE.md`, el aviso de
+`hooks/gate-goal-close.sh` cuando falta el cierre (solo el texto: la lógica no cambia, paridad con
+`--compare` en los dos modos) y la cabecera de `hooks/external-adversary.sh`. Cinco de estos los
+encontró la primera ronda de adversario; el primer barrido no los había visto.
+`test/claim-surface-carriers.py` comprueba la regla nueva en diez portadores y que diez frases viejas
+no sobrevivan en siete de ellos (27 comprobaciones nuevas; las 27 fallan contra 0.46.9).
 
 Límite: nada mecánico obliga a la ronda en lo no terminal. El gate sigue aceptando `none` con
 cualquier razón, así que un cierre que se salte la ronda pasa igual que antes; la regla nueva es
