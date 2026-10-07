@@ -137,6 +137,10 @@ breaks; a non-terminal claim with no streak closes on the subagent alone.
   silence on one is a defect in that round, not a refutation. And rounds that only ever return
   findings *inside* the frame the payload handed over are evidence that the frame went
   unexamined, not that it held.
+- **Only BLOCKING findings count; a MINOR one is a note** (0.49.1). The adversary classifies each
+  finding by its rubric (`agents/goal-adversary.md`, same grep term), and you never reclassify one.
+  A round whose findings are all MINOR is a `hold`. Report MINOR notes to the user as notes: they
+  open no round and no pending item (the goalspec skill's step 6, "Severity").
 - On **`break`**: report the confirmed violations to the user with the adversary's ground-truth
   for each. This command runs **one round per invocation** — it does not loop. What happens next
   is the user's decision, and a decision narrated is not a decision owned — so **ask it, don't

@@ -430,6 +430,15 @@ turn end (fail-open). Stuck on a residual break you've judged non-actionable?
 `[GOAL-CLOSE-WAIVED reason=<≥20 chars>]` is the honest close — usable by the agent itself, not only
 a human operator.
 
+Since v0.49.1 a `break` takes a BLOCKING finding: a success criterion that fails, a false claim, harm
+or a hole inside the threat model your spec declares, a statement a reader will act on that is false,
+or an autonomy violation. A MINOR finding — wording that is ambiguous but not false, an edge case
+outside that threat model, a pre-existing defect, style — is reported as a note and opens no round
+and no pending item. The adversary classifies; the executor cannot downgrade. Measured before the
+change over 65 real break rounds: 5 had only minor findings, 13 mixed a blocking one with minor ones,
+and in 6 of them the executor had called 8 blocking findings "wording" (a CHANGELOG line
+contradicting the code, a cited path that did not exist, an overstated published figure).
+
 **What `GOAL_GATE_ENFORCE=1` actually buys (measured, 0.19.0).** It sends the *same reminder* as a
 formal block rather than as advisory context, **at most once per user prompt** — the re-entrant
 guard added in 0.18.1 runs ahead of the teeth, so the Stop that follows a block passes. It is not

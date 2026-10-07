@@ -6,6 +6,46 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.49.1] - 2026-10-07
+
+### Solo cuenta lo que bloquea; lo menor es una nota
+
+Medido antes del cambio sobre 65 rondas reales con `break` (goalspec 0.46 o posterior, 7 proyectos
+locales y el VPS del equipo): 5 traían solo hallazgos menores, 13 mezclaban uno que bloquea con
+otros menores, y en 6 el ejecutor llamó "redacción" a 8 hallazgos que sí bloqueaban (una línea del
+CHANGELOG que contradecía el código, una ruta citada que no existía, una cifra publicada inflada).
+Arreglar los menores junto con el que bloquea hacía crecer el delta, y la ronda siguiente encontraba
+algo en lo recién escrito.
+
+- `agents/goal-adversary.md` y el prompt de `hooks/external-adversary.sh`: el adversario clasifica
+  cada hallazgo. **BLOCKING** (se cuenta): falla un criterio de éxito, una afirmación es falsa o no
+  verificada, hay daño o un hueco dentro del modelo de amenaza declarado, un texto que alguien va a
+  usar es falso, o hay una violación de autonomía. **MINOR** (nota, no se cuenta): redacción ambigua
+  pero no falsa, un caso borde fuera del modelo de amenaza, un defecto previo fuera del delta, estilo.
+  Sin modelo de amenaza declarado, todo hueco cuenta. En la duda, bloquea. El ejecutor no reclasifica.
+- Un MINOR no abre ronda ni pendiente: se arregla en el momento si no cambia comportamiento, o se deja.
+- SKILL.md Q4: si el trabajo es un chequeo, riel o validador, el spec declara su modelo de amenaza en
+  una línea. SKILL.md paso 6 y `skills/adversary/SKILL.md` llevan la regla del lado del ejecutor.
+
+### El adversario prueba, no solo lee
+
+Donde un revisor que lee y uno que prueba entradas fabricadas revisaron el mismo árbol y no
+coincidieron, el que lee dio hold 9 de 10 veces (6 de esos 9 pares son de una sola sesión). Ahora,
+por cada regla, chequeo o validador que el cambio agrega, el adversario arma y corre al menos tres
+entradas pensadas para romperlo dentro del modelo de amenaza, y reporta cada una.
+
+### Cómo se probó
+
+- `test/claim-surface-carriers.py`: 22 chequeos nuevos, el prompt externo leído como lo emite el
+  hook. Una mutación por carrier (15) confirmó que cada uno falla si se quita la cláusula.
+- Codex, mismo árbol (0.49.0 ronda 2) y mismo payload con tres ataques nombrados: con el prompt de
+  0.49.0 contó 7 hallazgos; con el de 0.49.1 contó 3. La ruta fuera del proyecto, excluida por el
+  modelo de amenaza, bajó a MINOR. El CHANGELOG que contradecía el código siguió contando. Una
+  corrida por brazo; codex no es determinista.
+- Sonnet con la definición nueva corrió 7 entradas contra el hook real y las reportó. La prueba de
+  Sonnet no separa el efecto: el spec de prueba ya nombraba el ataque y el control también lo
+  encontró.
+
 ## [0.49.0] - 2026-10-07
 
 ### Un freno: sin spec no se trabaja

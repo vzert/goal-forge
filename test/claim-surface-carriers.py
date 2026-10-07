@@ -523,6 +523,28 @@ def main():
     check("whole:skill-names-hook-token", LAST in fs)
     check("whole:setup-names-hook-token", LAST in fx)
 
+    # --- 0.49.1: severity (BLOCKING counts, MINOR is a note) + probe-do-not-only-read ----------
+    def fl(t):
+        return " ".join(t.split())
+    fa_, fs_, fk_, fe_ = fl(agent), fl(skill), fl(read(os.path.join(P, "skills", "adversary", "SKILL.md"))), fl(emitted)
+    for name, t in (("agent", fa_), ("emitted", fe_)):
+        check("sev:%s-only-blocking-counts" % name, ("Count only BLOCKING" in t or "COUNT ONLY BLOCKING" in t))
+        check("sev:%s-false-is-blocking" % name, "before you call it wording" in t)
+        check("sev:%s-outside-threat-model-is-minor" % name, "outside" in t.lower() and "declared threat model" in t)
+        check("sev:%s-no-threat-model-hole-counts" % name, "nothing is outside it and a hole counts" in t)
+        check("sev:%s-doubt-is-blocking" % name, "When you cannot tell false from ambiguous, it is BLOCKING" in t)
+        check("sev:%s-minor-opens-no-round-no-pending" % name, "it opens no round and no pending item" in t)
+        check("sev:%s-executor-may-not-reclassify" % name, "executor may not reclassify" in t)
+        check("probe:%s-three-inputs-run" % name, ("at least three inputs aimed at breaking it" in t
+              or "at least three inputs aimed at breaking it" in t.replace("**", "")) and "run" in t.lower())
+    check("sev:agent-verdict-counts-blocking", "`break` if the total confirmed BLOCKING count" in agent)
+    check("sev:emitted-verdict-counts-blocking", "any confirmed BLOCKING count is >=1" in fe_)
+    check("sev:skill-step6-bullet", "only BLOCKING findings count; a MINOR one is a note, and it opens no round and no pending item" in fs_)
+    check("sev:skill-never-yours", "The classification is the adversary's, never yours" in fs_)
+    check("sev:skill-q4-threat-model", "also declare its threat model" in fs_)
+    check("sev:adversary-skill", "Only BLOCKING findings count; a MINOR one is a note" in fk_
+          and "you never reclassify one" in fk_ and "open no round and no pending item" in fk_)
+
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]
     for label, ok, detail in checks:
