@@ -86,7 +86,7 @@ msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). T
        "mutation) and as the mandated switch after two consecutive subagent breaks (step 6). If either "
        "holds, pipe the same pointer payload the subagent spawn takes (paths to where the goal-spec/"
        "outcome are written, where the work lives, and the session transcript; not a narrated account) "
-       "to `" + hook_path + "` (it runs `" + ext_cmd + "`, a different vendor), read its "
+       "to `" + hook_path + "` (it runs the configured `" + ext_cmd + "`), read its "
        "[ADVERSARY-VERDICT:]/[ADVERSARY-MODEL:] from there; a terminal run closes backends=both. If neither holds "
        "(a plan, an investigation, a draft not sent, no break streak) the subagent alone is the rule "
        "and you can ignore this. This nudge cannot see your streak or whether the run is terminal, so "
