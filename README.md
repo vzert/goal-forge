@@ -433,8 +433,10 @@ a human operator.
 Since v0.49.1 a `break` takes a BLOCKING finding: a success criterion that fails, a false claim, harm
 or a hole inside the threat model your spec declares, a statement a reader will act on that is false,
 or an autonomy violation. A MINOR finding — wording that is ambiguous but not false, an edge case
-outside that threat model, a pre-existing defect, style — is reported as a note and opens no round
-and no pending item. The adversary classifies; the executor cannot downgrade. Measured before the
+outside that threat model, a pre-existing defect no success criterion rests on, style — is reported as a note and opens no round
+and no pending item. The adversary classifies; the executor cannot downgrade. With no threat model declared every hole
+counts, in doubt a finding is BLOCKING, and the threat model is fixed when the spec is written — one
+narrowed after a finding counts as BLOCKING. Measured before the
 change over 65 real break rounds: 5 had only minor findings, 13 mixed a blocking one with minor ones,
 and in 6 of them the executor had called 8 blocking findings "wording" (a CHANGELOG line
 contradicting the code, a cited path that did not exist, an overstated published figure).

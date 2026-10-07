@@ -545,6 +545,19 @@ def main():
     check("sev:adversary-skill", "Only BLOCKING findings count; a MINOR one is a note" in fk_
           and "you never reclassify one" in fk_ and "open no round and no pending item" in fk_)
 
+    # --- 0.49.1 round 1: pre-existing only when no criterion rests on it; threat model fixed ---
+    readme_ = fl(read(os.path.join(REPO, "README.md")))
+    for name, t in (("agent", fa_), ("emitted", fe_), ("skill", fs_), ("adversary-skill", fk_), ("readme", readme_)):
+        check("sev2:%s-preexisting-only-if-no-criterion" % name, "no success criterion rests on" in t)
+        check("sev2:%s-no-threat-model-every-hole" % name,
+              "nothing is outside it and a hole counts" in t or "every hole counts" in t)
+        check("sev2:%s-doubt-is-blocking" % name,
+              "When you cannot tell false from ambiguous, it is BLOCKING" in t or "in doubt a finding is BLOCKING" in t)
+        check("sev2:%s-threat-model-not-narrowed" % name, "narrowed after a finding" in t)
+    check("sev2:agent-threat-model-only-grows", "The threat model is fixed when the spec is written and only grows" in fa_)
+    check("sev2:emitted-threat-model-only-grows", "THE THREAT MODEL IS FIXED WHEN THE SPEC IS WRITTEN AND ONLY GROWS" in fe_)
+    check("sev2:skill-q4-only-grows", "The line is fixed when you write the spec and only grows" in fs_)
+
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]
     for label, ok, detail in checks:

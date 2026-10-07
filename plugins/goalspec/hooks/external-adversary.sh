@@ -262,9 +262,12 @@ declares; a statement a reader will act on is FALSE (check it against the code o
 you call it wording); an autonomy violation.
 MINOR (a bullet that starts with MINOR, not counted): wording that is ambiguous but not false
 against ground truth; an edge case OUTSIDE the declared threat model, such as a crafted evasion of
-a rail built to catch an accidental omission; a pre-existing defect outside the delta; style or
-naming.
-If the goal-spec declares no threat model, nothing is outside it and a hole counts. When you cannot
+a rail built to catch an accidental omission; a pre-existing defect outside the delta that no
+success criterion rests on (one that makes a criterion fail is BLOCKING); style or naming.
+If the goal-spec declares no threat model, nothing is outside it and a hole counts. THE THREAT
+MODEL IS FIXED WHEN THE SPEC IS WRITTEN AND ONLY GROWS: test the declared line against what the user
+actually asked, and a line narrower than that ask, or one written or narrowed after a finding, is
+itself a BLOCKING finding. When you cannot
 tell false from ambiguous, it is BLOCKING. A MINOR note asks for nothing: the executor fixes it on
 the spot only if the fix changes no behavior, or leaves it; it opens no round and no pending item.
 

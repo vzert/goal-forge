@@ -24,6 +24,8 @@ algo en lo recién escrito.
   pero no falsa, un caso borde fuera del modelo de amenaza, un defecto previo fuera del delta, estilo.
   Sin modelo de amenaza declarado, todo hueco cuenta. En la duda, bloquea. El ejecutor no reclasifica.
 - Un MINOR no abre ronda ni pendiente: se arregla en el momento si no cambia comportamiento, o se deja.
+- Un defecto previo solo es MINOR si ningún criterio de éxito depende de él. El modelo de amenaza se
+  fija al escribir el spec y solo crece; el adversario lo contrasta con lo que pidió el usuario.
 - SKILL.md Q4: si el trabajo es un chequeo, riel o validador, el spec declara su modelo de amenaza en
   una línea. SKILL.md paso 6 y `skills/adversary/SKILL.md` llevan la regla del lado del ejecutor.
 
@@ -40,8 +42,11 @@ entradas pensadas para romperlo dentro del modelo de amenaza, y reporta cada una
   hook. Una mutación por carrier (15) confirmó que cada uno falla si se quita la cláusula.
 - Codex, mismo árbol (0.49.0 ronda 2) y mismo payload con tres ataques nombrados: con el prompt de
   0.49.0 contó 7 hallazgos; con el de 0.49.1 contó 3. La ruta fuera del proyecto, excluida por el
-  modelo de amenaza, bajó a MINOR. El CHANGELOG que contradecía el código siguió contando. Una
-  corrida por brazo; codex no es determinista.
+  modelo de amenaza, bajó a MINOR. El CHANGELOG que contradecía el código siguió contando. La
+  comparación no es uno a uno: en el brazo nuevo también bajaron a MINOR dos suites en rojo por el
+  sandbox de codex (en el host pasan), y tres hallazgos del control no aparecieron (SKILL.md sin la
+  vía del checkpoint, una cifra 0/6 contra 4–6/6, un checkpoint armado en dos ediciones). Una corrida
+  por brazo; codex no es determinista.
 - Sonnet con la definición nueva corrió 7 entradas contra el hook real y las reportó. La prueba de
   Sonnet no separa el efecto: el spec de prueba ya nombraba el ataque y el control también lo
   encontró.
