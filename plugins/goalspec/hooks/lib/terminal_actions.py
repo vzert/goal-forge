@@ -91,7 +91,11 @@ _GIT_GLOBAL_OPT = (
 _GIT_PREFIX = r"\bgit(?:\s+" + _GIT_GLOBAL_OPT + r")*\s+"
 PUSH_RE = re.compile(_GIT_PREFIX + r"push\b")
 GH_MERGE_RE = re.compile(r"\bgh\s+pr\s+merge\b")
-GIT_MERGE_RE = re.compile(_GIT_PREFIX + r"merge\b")
+# `merge(?![\w-])`, not `merge\b`: \b also stops at the hyphen, so the read-only `git merge-base`
+# (and merge-tree/merge-file) classified as a merge and the precheck denied it (measured
+# 2026-10-05 in live transcripts). git_calls() already compares the whole token, so only the regex
+# needed this.
+GIT_MERGE_RE = re.compile(_GIT_PREFIX + r"merge(?![\w-])")
 DEPLOY_RE = re.compile(
     r"\bwrangler\s+deploy\b"
     r"|\bvercel\b[^\n]*--prod\b"

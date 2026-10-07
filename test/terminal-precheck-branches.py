@@ -748,6 +748,23 @@ case("95-hold-only-in-message-text-is-not-a-relay-DENY", _relay_case(
     "Spawn goal-adversary", absent="as a subagent result"))
 
 
+# Live transcripts (2026-10-05): `git merge-base` (read-only) was denied as a merge, because the
+# merge regex ended in \b and \b also stops at the hyphen. A spec and no verdict, so any real merge
+# here is denied; merge-base, alone or inside $(...), must not be. The last case keeps a real merge
+# chained after a merge-base denied.
+case("96-merge-base-alone-is-not-a-merge-ALLOW", lambda: run_hook(
+    make_repo("96", None, None), "git merge-base HEAD origin/main",
+    transcript([{"text": SPEC_TEXT}], "96")))
+
+case("97-merge-base-in-subshell-is-not-a-merge-ALLOW", lambda: run_hook(
+    make_repo("97", None, None), "git diff --stat $(git merge-base HEAD origin/main)",
+    transcript([{"text": SPEC_TEXT}], "97")))
+
+case("98-merge-base-then-real-merge-DENY", lambda: run_hook(
+    make_repo("98", None, None), "git merge-base HEAD origin/main && git merge origin/main",
+    transcript([{"text": SPEC_TEXT}], "98")))
+
+
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True,

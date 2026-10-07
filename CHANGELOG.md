@@ -6,6 +6,22 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.48.1] - 2026-10-07
+
+### `git merge-base` ya no se toma como un merge
+
+Medido 2026-10-05 en transcripts reales: el precheck de acciones terminales negó un
+`git merge-base`, que solo lee. El regex de merge en `hooks/lib/terminal_actions.py` terminaba en
+`\b`, y `\b` también corta antes del guion, así que `merge-base` (y `merge-tree`, `merge-file`)
+contaban como merge. Ahora es `merge(?![\w-])`. `git_calls()` ya comparaba el token entero y no
+cambia.
+
+- Tres casos nuevos en `test/terminal-precheck-branches.py`: `merge-base` solo (96) y dentro de
+  `$(...)` (97) pasan; un merge real encadenado después de un `merge-base` (98) se sigue negando.
+  Contra la librería anterior solo cambian 96 y 97 (de negar a permitir).
+- `test/gate-branches.py` da la misma salida con la librería anterior y la nueva, en modo default y
+  con `GOAL_GATE_ENFORCE=1`.
+
 ## [0.48.0] - 2026-10-06
 
 ### Cargar goalspec sin escribir el spec ya no deja el cierre sin control
