@@ -604,8 +604,8 @@ posted a spec that existed nowhere); the shipped design also accepts the spec wr
 Write/Edit to this session's `.goalspec/checkpoint-<session>.md`, and the second hook shows that
 spec to the human as a `systemMessage`. Measured on that design (N=6, Write and Edit available,
 unlike the earlier rounds): 6 of 6 wrote the spec before the first Bash that ran, none stuck, at
-most 2 denials -- but 3 of the 6 posted it before any denial, so the brake's own share is the other
-3, which wrote the checkpoint after 1 or 2 denials. No arm without the brake had Write available.
+most 2 denials. An interleaved control with the same tools (Write and Edit, no brake) then gave 2 of
+6 against 6 of 6 with the brake, none stuck. N=6 per arm.
 
 28 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
 a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path), and
