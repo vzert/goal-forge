@@ -1,0 +1,216 @@
+#!/usr/bin/env python3
+"""Branch suite for plugins/goalspec/hooks/precheck-spec-before-work.sh (0.49.0).
+
+    python3 test/spec-brake-branches.py              # the cases
+    python3 test/spec-brake-branches.py --selftest   # break the component, require a case to notice
+
+The hook denies Bash, Write, Edit, MultiEdit and NotebookEdit while this session has entered the
+goalspec LOOP and posted no `## Goal-spec` as visible assistant text. It allows Read-class tools,
+writes under .goalspec/, any call made inside a subagent (agent_id in the payload), sessions that
+only ran the interview or the standalone adversary, sessions with no goalspec at all, and anything
+when GOAL_SPEC_BRAKE=0. Hermetic: synthetic transcripts in a temp dir, no git.
+
+There is no predecessor to compare against (the hook is new in 0.49.0), so "fails against the old
+version" would be vacuous. `--selftest` copies the plugin to a temp dir, applies one mutation at a
+time to the component itself, and requires at least one case to fail under each.
+"""
+import json, os, shutil, subprocess, sys, tempfile
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PLUGIN = os.path.join(REPO, "plugins", "goalspec")
+TMP = tempfile.mkdtemp(prefix="spec-brake-branches-")
+
+SPEC = "## Goal-spec\nAsked (your words): whatever.\n"
+
+
+def transcript(events, name):
+    p = os.path.join(TMP, name + ".jsonl")
+    with open(p, "w", encoding="utf-8") as fh:
+        for ev in events:
+            if "typed" in ev:
+                fh.write(json.dumps({"type": "user", "message": {"content": [
+                    {"type": "text", "text": ev["typed"]}]}}) + "\n")
+                continue
+            content = []
+            if "skill" in ev:
+                content.append({"type": "tool_use", "name": "Skill", "input": {"skill": ev["skill"]}})
+            if "write" in ev:
+                fp, body = ev["write"]
+                content.append({"type": "tool_use", "name": "Write",
+                                "input": {"file_path": fp, "content": body}})
+            if "thinking" in ev:
+                content.append({"type": "thinking", "thinking": ev["thinking"]})
+            if "text" in ev:
+                content.append({"type": "text", "text": ev["text"]})
+            fh.write(json.dumps({"type": "assistant", "message": {"content": content}}) + "\n")
+    return p
+
+
+def run(plugin, payload_text, env_extra=None):
+    out = subprocess.run(["bash", os.path.join(plugin, "hooks", "precheck-spec-before-work.sh")],
+                         input=payload_text, capture_output=True, text=True,
+                         env={**os.environ, "CLAUDE_PLUGIN_ROOT": plugin, **(env_extra or {})})
+    raw = out.stdout.strip()
+    if not raw:
+        return "allow"
+    try:
+        d = json.loads(raw)
+    except Exception:
+        return "unparseable"
+    hso = d.get("hookSpecificOutput") or {}
+    reason = hso.get("permissionDecisionReason") or ""
+    # The three claims the reason exists to make: post it visibly, in a LATER message, and
+    # thinking does not count. A deny that drops any of them strands the agent in the observed loop.
+    if (hso.get("hookEventName") == "PreToolUse" and hso.get("permissionDecision") == "deny"
+            and "## Goal-spec" in reason and "LATER message" in reason
+            and "only in your thinking does not count" in reason and "Evidence:" in reason):
+        # Which evidence: the agent's own last visible text quoted back, or "no visible text".
+        if "QUOTE-ME-BACK" in reason and "2 visible text block(s)" in reason:
+            return "deny-quotes"
+        if "no visible text from you at all" in reason:
+            return "deny-none"
+        return "deny"
+    return "other-output"
+
+
+def pre(events, name, tool="Bash", tool_input=None, **extra):
+    if tool_input is None:
+        tool_input = {"command": "ls"} if tool == "Bash" else {"file_path": "src/app.py"}
+    return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input,
+                       "transcript_path": transcript(events, name), **extra})
+
+
+LOAD = {"skill": "goalspec:goalspec"}
+CASES = [
+    ("01-loop-no-spec-bash-denied", lambda: pre([LOAD], "01"), "deny-none"),
+    ("02-loop-no-spec-write-denied", lambda: pre([LOAD], "02", tool="Write"), "deny-none"),
+    ("03-loop-no-spec-edit-denied", lambda: pre([LOAD], "03", tool="Edit"), "deny-none"),
+    ("04-loop-no-spec-multiedit-denied", lambda: pre([LOAD], "04", tool="MultiEdit"), "deny-none"),
+    ("05-loop-no-spec-notebook-denied",
+     lambda: pre([LOAD], "05", tool="NotebookEdit", tool_input={"notebook_path": "a.ipynb"}), "deny-none"),
+    ("06-bare-skill-name-arms", lambda: pre([{"skill": "goalspec"}], "06"), "deny-none"),
+    ("07-typed-command-arms",
+     lambda: pre([{"typed": "<command-name>/goalspec</command-name>"}], "07"), "deny-none"),
+    # The observed failure: a spec that lives only in thinking does not release the brake.
+    ("08-spec-only-in-thinking-denied", lambda: pre([LOAD, {"thinking": SPEC}], "08"), "deny-none"),
+    # Deliberate: a checkpoint-only spec is invisible to the human, so it does not release it either.
+    ("09-spec-only-in-checkpoint-denied",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-ab12.md", SPEC)}], "09"), "deny-none"),
+    ("10-spec-in-text-allows", lambda: pre([LOAD, {"text": SPEC}], "10"), "allow"),
+    ("11-spec-before-reentry-allows", lambda: pre([{"text": SPEC}, LOAD], "11"), "allow"),
+    ("12-checkpoint-write-allowed",
+     lambda: pre([LOAD], "12", tool="Write",
+                 tool_input={"file_path": "/repo/.goalspec/checkpoint-ab12.md"}), "allow"),
+    ("13-relative-checkpoint-write-allowed",
+     lambda: pre([LOAD], "13", tool="Edit", tool_input={"file_path": ".goalspec/checkpoint-ab12.md"}),
+     "allow"),
+    ("14-lookalike-path-denied",
+     lambda: pre([LOAD], "14", tool="Write", tool_input={"file_path": "/repo/not.goalspec/x.md"}),
+     "deny-none"),
+    ("15-read-tool-allowed", lambda: pre([LOAD], "15", tool="Read",
+                                         tool_input={"file_path": "src/app.py"}), "allow"),
+    ("16-subagent-allowed", lambda: pre([LOAD], "16", agent_id="a1b2", agent_type="Explore"), "allow"),
+    ("17-interview-only-allowed", lambda: pre([{"skill": "goalspec:interview"}], "17"), "allow"),
+    ("18-adversary-only-allowed", lambda: pre([{"skill": "goalspec:adversary"}], "18"), "allow"),
+    ("19-no-goalspec-allowed", lambda: pre([{"text": "hello"}], "19"), "allow"),
+    ("20-other-event-allowed",
+     lambda: json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Bash",
+                         "tool_input": {"command": "ls"}, "transcript_path": transcript([LOAD], "20")}),
+     "allow"),
+    ("21-malformed-stdin-allowed", lambda: "not json {{{", "allow"),
+    ("22-no-transcript-allowed",
+     lambda: json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                         "tool_input": {"command": "ls"}}), "allow"),
+]
+CASES += [
+    # 0.49.0 ronda 4: two agents insisted the spec was "already posted above". The deny quotes back
+    # what they actually posted, so the claim can be checked against their own words.
+    ("25-evidence-quotes-last-text",
+     lambda: pre([LOAD, {"text": "first words"}, {"text": "the spec is above QUOTE-ME-BACK"}], "25"),
+     "deny-quotes"),
+]
+ENV_CASES = [
+    ("23-opt-out-env-allowed", lambda: pre([LOAD], "23"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
+    ("24-other-env-value-still-denies", lambda: pre([LOAD], "24"), {"GOAL_SPEC_BRAKE": "1"}, "deny-none"),
+]
+
+LIB = os.path.join("hooks", "lib", "terminal_actions.py")
+HOOK = os.path.join("hooks", "precheck-spec-before-work.sh")
+# (description, file, old, new): each must make at least one case fail.
+MUTATIONS = [
+    ("tool filter widened to every tool", HOOK,
+     'if tool not in ("Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"):', "if False:"),
+    ("NotebookEdit dropped from the filter", HOOK,
+     '"MultiEdit", "NotebookEdit"):', '"MultiEdit"):'),
+    ("subagent exemption dropped", HOOK, 'if data.get("agent_id"):', "if False:"),
+    ("checkpoint exemption dropped", HOOK,
+     'if path.startswith(".goalspec/") or "/.goalspec/" in path:', "if False:"),
+    ("checkpoint exemption widened to a substring", HOOK,
+     'if path.startswith(".goalspec/") or "/.goalspec/" in path:', 'if ".goalspec/" in path:'),
+    ("event filter dropped", HOOK, 'if data.get("hook_event_name") != "PreToolUse":', "if False:"),
+    ("opt-out dropped", HOOK, '[ "${GOAL_SPEC_BRAKE:-}" = "0" ] && exit 0', ":"),
+    ("interview arms the brake", LIB,
+     'it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items',
+     'it["kind"] == "goalspec_entry" for it in items'),
+    ("visible spec ignored", LIB,
+     'return not has_goal_spec("\\n".join(it["text"] for it in items if it["kind"] == "text"))',
+     "return True"),
+    ("checkpoint spec releases the brake", HOOK,
+     "if not ta.spec_brake_armed(items):",
+     "if ta.transcript_signals(data.get(\"transcript_path\"))[\"goal_spec\"] or not "
+     "ta.transcript_signals(data.get(\"transcript_path\"))[\"goalspec_entered\"]:"),
+    ("evidence dropped from the deny", HOOK,
+     "ta.SPEC_BRAKE_REASON + ta.spec_brake_evidence(items)", "ta.SPEC_BRAKE_REASON"),
+    ("evidence counts nothing", LIB, "% (len(texts), last))", "% (0, last))"),
+    ("reason loses the later-message clause", LIB, "call the tool again in a LATER message",
+     "call the tool again"),
+    ("reason loses the thinking clause", LIB,
+     "this call cannot be seen yet. A spec you wrote or planned only in your thinking does not \"\n"
+     "    \"count",
+     "this call cannot be seen yet. Your plan \"\n    \"counts"),
+]
+
+
+def suite(plugin):
+    rows = [(name, want, run(plugin, build())) for name, build, want in CASES]
+    rows += [(name, want, run(plugin, build(), env)) for name, build, env, want in ENV_CASES]
+    return rows
+
+
+def main():
+    if "--selftest" in sys.argv:
+        failed = []
+        for desc, rel, old, new in MUTATIONS:
+            d = tempfile.mkdtemp(prefix="brake-mut-")
+            mp = os.path.join(d, "goalspec")
+            shutil.copytree(PLUGIN, mp)
+            f = os.path.join(mp, rel)
+            s = open(f).read()
+            if old not in s:
+                failed.append("%s: mutation target not found (suite drifted from the code)" % desc)
+                continue
+            open(f, "w").write(s.replace(old, new, 1))
+            caught = [n for n, want, got in suite(mp) if want != got]
+            print("%-45s %s" % (desc, ("caught by " + ", ".join(caught)) if caught else "NOT CAUGHT"))
+            if not caught:
+                failed.append(desc)
+            shutil.rmtree(d, ignore_errors=True)
+        if failed:
+            print("\nSELFTEST FAILURES: %d\n  %s" % (len(failed), "\n  ".join(failed)))
+            return 1
+        print("\nOK — %d mutations, each caught by at least one case" % len(MUTATIONS))
+        return 0
+
+    rows = suite(PLUGIN)
+    bad = [(n, w, g) for n, w, g in rows if w != g]
+    for n, w, g in rows:
+        print("%-45s %-14s %s" % (n, g, "" if w == g else "<-- FAILS (want %s)" % w))
+    if bad:
+        print("\nFAILURES: %d" % len(bad))
+        return 1
+    print("\nOK — %d cases, all as expected" % len(rows))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

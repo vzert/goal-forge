@@ -822,6 +822,56 @@ SPEC_ON_ENTRY_NUDGE = (
 )
 
 
+# 0.49.0 (p-718231fa66) — the brake behind SPEC_ON_ENTRY_NUDGE. Measured 2026-10-07 with an
+# isolated `claude -p` replica (fresh copy per run, no MCP, N=6 per arm): with a shell available
+# the agent posted no visible spec before its first Bash in 0 of 6 runs on 0.47.0 and on 0.44.0,
+# and in 1 of 6 on 0.48.0 — the nudge above fired in all 6 and changed nothing at entry. Two of
+# those agents then wrote "I already posted the Goal-spec at the start; the hook does not see it":
+# false, the spec was only in their thinking. Without a shell the same agents posted it 6 of 6.
+# A reminder cannot fix an agent that believes it already complied; holding the work can.
+SPEC_BRAKE_REASON = (
+    "goalspec: the loop is loaded and no ## Goal-spec has been posted as visible text in this "
+    "session, so this tool call is held until it is. Post the ## Goal-spec now as a text block in "
+    "your reply (Asked line, then the six answers), and call the tool again in a LATER message: a "
+    "message reaches the transcript only after its tool calls run, so a spec in the same message as "
+    "this call cannot be seen yet. A spec you wrote or planned only in your thinking does not "
+    "count, even if you believe you already posted it: this hook reads your visible text, and "
+    "there is no spec in it. Read, Grep and Glob are not held -- use them if you need to ground "
+    "the spec first. A Write or Edit to your .goalspec/ checkpoint is not held either (through "
+    "Bash it is), but it does not release this: only the spec in your visible text does."
+)
+
+
+def spec_brake_evidence(items):
+    """What the agent actually posted, quoted back in the deny. Measured 2026-10-07 (ronda 4 of
+    p-718231fa66): with the reason alone, 2 of 6 agents answered every deny with "the spec is
+    already posted above, the hook must be broken" -- it never was. An assertion about their own
+    output did not move them; this shows them the output instead."""
+    texts = [it["text"] for it in items if it["kind"] == "text" and it["text"].strip()]
+    if not texts:
+        return (" Evidence: this session has no visible text from you at all -- everything you "
+                "wrote so far was thinking or tool calls.")
+    last = " ".join(texts[-1].split())[:160]
+    return (" Evidence: you have posted %d visible text block(s) in this session, and none has a "
+            "line that starts with `## Goal-spec`. The most recent one begins: \"%s\". Write the "
+            "heading `## Goal-spec` literally, at the start of a line, in your reply text."
+            % (len(texts), last))
+
+
+def spec_brake_armed(items):
+    """True when this session entered the goalspec LOOP (the Skill tool or a typed
+    /goalspec[:goalspec]) and no `## Goal-spec` appears in the assistant's visible text.
+
+    Deliberately narrower than transcript_signals()["goal_spec"]: a spec written only to the
+    .goalspec/ checkpoint does NOT release the brake. What the brake exists for is the human seeing
+    the plan before the work starts; a checkpoint the human never opens is the same invisible spec
+    the measurement found. The interview alone does not arm it (it hands off to the loop, and the
+    loop arms it), and neither does goalspec:adversary, which is not an entry."""
+    if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
+        return False
+    return not has_goal_spec("\n".join(it["text"] for it in items if it["kind"] == "text"))
+
+
 def waiver_covers_command(items, command, tool_use_id=None):
     """0.45.0 — the PreToolUse precheck's waiver: honored only if a `[GOAL-CLOSE-WAIVED ...]` was
     written AFTER the last terminal Bash call on record AND after the last user prompt, so one
