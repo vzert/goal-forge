@@ -870,10 +870,36 @@ def own_checkpoint_re(session_id):
     return re.compile(r"(^|/)\.goalspec/checkpoint%s\.md$" % tail)
 
 
-def spec_brake_armed(items, session_id=None):
+def own_checkpoint_roots(cwd):
+    """The directories whose .goalspec/ may hold this session's checkpoint: the working directory
+    and the git top level above it. Release round 3 (external adversary): a Write to
+    `../../elsewhere/.goalspec/checkpoint-<id>.md` or `/tmp/.goalspec/...` released the brake,
+    because the path regex matched any directory."""
+    roots = set()
+    base = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+    try:
+        roots.add(os.path.realpath(base))
+    except Exception:
+        return roots
+    top = _run(["git", "rev-parse", "--show-toplevel"], base)
+    if top and top.strip():
+        roots.add(os.path.realpath(top.strip()))
+    return roots
+
+
+def _in_own_root(path, cwd, roots):
+    try:
+        full = os.path.realpath(path if os.path.isabs(path) else os.path.join(cwd or os.getcwd(), path))
+    except Exception:
+        return False
+    return os.path.dirname(os.path.dirname(full)) in roots
+
+
+def spec_brake_armed(items, session_id=None, cwd=None):
     """True when this session entered the goalspec LOOP (the Skill tool or a typed
     /goalspec[:goalspec]) and has no `## Goal-spec` with a body yet, neither in the assistant's
-    visible text nor in a Write/Edit to THIS session's .goalspec/ checkpoint.
+    visible text nor in a Write/Edit to THIS session's .goalspec/ checkpoint, in the working directory
+    or the git top level above it.
 
     v3 (ronda 6 of p-718231fa66): v1 and v2 accepted only visible text, and 2 of 6 agents stayed
     stuck in both -- they believed they had posted a spec that existed nowhere visible, and no
@@ -886,7 +912,9 @@ def spec_brake_armed(items, session_id=None):
     if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
         return False
     own = own_checkpoint_re(session_id)
+    roots = own_checkpoint_roots(cwd)
     if any(it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")
+           and _in_own_root(it.get("path") or "", cwd, roots)
            and spec_has_body(it["text"]) for it in items):
         return False
     return not spec_has_body("\n".join(it["text"] for it in items if it["kind"] == "text"))

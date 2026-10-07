@@ -63,7 +63,7 @@ if tool != "Bash":
 
 items = ta.read_transcript_items(data.get("transcript_path"))
 sid = str(data.get("session_id") or "").strip()
-if not ta.spec_brake_armed(items, sid):
+if not ta.spec_brake_armed(items, sid, data.get("cwd") or os.getcwd()):
     sys.exit(0)
 
 path = ".goalspec/checkpoint-%s.md" % sid if ta.SESSION_ID_RE.fullmatch(sid) else ".goalspec/checkpoint.md"

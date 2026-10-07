@@ -29,14 +29,15 @@ entrada: 1 de 6 escribió el spec antes de trabajar.
   trabada, 2 negaciones como máximo. Esa ronda tuvo Write y Edit disponibles (las anteriores no), así
   que se corrió un control intercalado con las mismas herramientas: sin freno, 2 de 6 escribieron el
   spec antes de trabajar; con freno, 6 de 6 y ninguna trabada. N=6 por brazo.
-- `test/spec-brake-branches.py`: 42 casos, `--selftest` con 24 mutaciones.
+- `test/spec-brake-branches.py`: 45 casos, `--selftest` con 25 mutaciones.
 - Endurecido en las rondas del release (adversario externo): el freno exige contenido bajo el
   encabezado (100 caracteres sin espacios; un encabezado vacío ya no lo libera), solo cuenta el
-  checkpoint de esta sesión (`checkpoint-<id>.md` o `checkpoint.md`; un Write al de otra sesión, aunque
-  otro hook lo niegue, ya no lo libera) y valida el `session_id` antes de usarlo en la ruta (si no es
-  letras, números y guiones, nombra `.goalspec/checkpoint.md`). El gate y el precheck siguen con su
-  detector de solo encabezado. Los 19 specs reales de las corridas medidas pasan las dos condiciones
-  nuevas. Sigue siendo un freno de cumplimiento, no una barrera de seguridad: cuenta la llamada a Write,
+  checkpoint de esta sesión (`checkpoint-<id>.md` o `checkpoint.md`, en el directorio de trabajo o en la
+  raíz git del proyecto; un Write al de otra sesión o fuera del proyecto, aunque otro hook lo niegue, ya
+  no lo libera) y valida el `session_id` antes de usarlo en la ruta (si no es
+  letras, números y guiones, nombra `.goalspec/checkpoint.md`). El gate y el precheck de push
+  (`precheck-terminal-push.sh`) siguen con su detector de solo encabezado. Los 21 specs reales de las
+  18 corridas de las rondas 6 y 7 pasan las condiciones nuevas. Sigue siendo un freno de cumplimiento, no una barrera de seguridad: cuenta la llamada a Write,
   no su resultado.
 
 Las dos cosas salen de una sesión de campo (VPS del equipo, 2026-10-07): un hotfix de 3 líneas en el

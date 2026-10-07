@@ -19,6 +19,11 @@ import json, os, shutil, subprocess, sys, tempfile
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
 TMP = tempfile.mkdtemp(prefix="spec-brake-branches-")
+PROJ = os.path.join(TMP, "proj")  # the session's working directory (not a git repo)
+os.makedirs(os.path.join(PROJ, "sub"), exist_ok=True)
+REPO2 = os.path.join(TMP, "repo2")  # a git repo: the agent works in a subdir, checkpoint at the top
+os.makedirs(os.path.join(REPO2, "sub"), exist_ok=True)
+subprocess.run(["git", "init", "-q", REPO2], check=True)
 
 SPEC = ("## Goal-spec\nAsked (your words): whatever.\n1. Real objective: make the report exist.\n"
         "2. Measurable success: the file is committed and every figure re-derives.\n")
@@ -85,6 +90,7 @@ def pre(events, name, tool="Bash", tool_input=None, **extra):
     if tool_input is None:
         tool_input = {"command": "ls"} if tool == "Bash" else {"file_path": "src/app.py"}
     extra.setdefault("session_id", "sess-1")  # real payloads carry one; case 27 removes it
+    extra.setdefault("cwd", PROJ)
     extra = {k: v for k, v in extra.items() if v is not None}
     return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input,
                        "transcript_path": transcript(events, name), **extra})
@@ -107,7 +113,18 @@ CASES = [
     ("09-spec-in-checkpoint-allows",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC)}], "09"), "allow"),
     ("09d-plain-checkpoint-allows",
-     lambda: pre([LOAD, {"write": ("/r/.goalspec/checkpoint.md", SPEC)}], "09d"), "allow"),
+     lambda: pre([LOAD, {"write": (os.path.join(PROJ, ".goalspec", "checkpoint.md"), SPEC)}], "09d"),
+     "allow"),
+    # Release round 3 (codex): a checkpoint outside the working directory never releases it.
+    ("09g-checkpoint-outside-cwd-denies",
+     lambda: pre([LOAD, {"write": ("../../outside/.goalspec/checkpoint-sess-1.md", SPEC)}], "09g"),
+     "deny-none"),
+    ("09i-git-toplevel-checkpoint-from-subdir-allows",
+     lambda: pre([LOAD, {"write": (os.path.join(REPO2, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "09i", cwd=os.path.join(REPO2, "sub")), "allow"),
+    ("09h-absolute-foreign-dir-denies",
+     lambda: pre([LOAD, {"write": (os.path.join(TMP, ".goalspec", "checkpoint-sess-1.md"), SPEC)}], "09h"),
+     "deny-none"),
     # Release round (codex): another session's checkpoint never releases it, nor a bare heading.
     ("09e-foreign-checkpoint-denies",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-other-session.md", SPEC)}], "09e"), "deny-none"),
@@ -245,6 +262,8 @@ MUTATIONS = [
      "        if len(re.sub(r\"\\s\", \"\", body)) >= SPEC_BRAKE_MIN_BODY:", "        if True:"),
     ("own-checkpoint restriction dropped", LIB,
      'it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")', 'it["kind"] == "goal_spec_file"'),
+    ("working-directory restriction dropped", LIB,
+     '           and _in_own_root(it.get("path") or "", cwd, roots)\n', ""),
     ("session id not validated", HOOK, 'if ta.SESSION_ID_RE.fullmatch(sid) else', 'if sid else'),
     ("fallback path back to a placeholder", HOOK, 'else ".goalspec/checkpoint.md"',
      'else ".goalspec/checkpoint-<session>.md"'),
