@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # external-adversary.sh — optional independence backend for the goal-adversary.
 #
-# Implements the community "partner reviews, never the host" pattern: instead of a same-model
-# subagent (structured self-critique with correlated bias), route the adversarial verification to a
-# DIFFERENT model/CLI for true independence. Reads the POINTER PAYLOAD on stdin — where the goal-spec
+# Implements the community "partner reviews, never the host" pattern: alongside the subagent (a
+# different tier of the same family, which keeps some correlated bias), add the adversarial
+# verification of a DIFFERENT vendor's model/CLI. Since 0.47.0 this backend is additive: the subagent
+# runs on every goalspec run, and this one joins it on terminal actions and after two subagent breaks. Reads the POINTER PAYLOAD on stdin — where the goal-spec
 # and outcome are written, where the work lives, the session transcript path and which decisions to
 # look for in it — pipes it with the adversary prompt to the configured external command, and prints
 # the same [ADVERSARY-VERDICT: ...] block the subagent backend produces.

@@ -3,8 +3,9 @@
 **Contents**: [When to use which](#when-to-use-which) · [Enabling the external backend](#enabling-the-external-backend) · [Contract](#contract) · [Safety rails](#safety-rails)
 
 By default the adversary is a `goal-adversary` **subagent**: fresh context — it hasn't seen your
-reasoning, so it can't inherit your conversation's blind spots. Since 0.5.0, for **terminal
-decisions** the executor also spawns it on a **different model tier** than its own (a per-spawn
+reasoning, so it can't inherit your conversation's blind spots. Since 0.5.0 the executor also spawns
+it on a **different model tier** than its own — for **terminal decisions** until 0.47.0, on **every run**
+since (a per-spawn
 `model` override — zero install, zero config) and verifies where it actually ran from the
 adversary's own `[ADVERSARY-MODEL: …]` self-report, because harnesses fall back silently when an
 override can't be honored. That closes most of the correlated-bias gap within one model family.

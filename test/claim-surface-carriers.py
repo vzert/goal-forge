@@ -285,7 +285,25 @@ def main():
           "ADDED to it, not routed " in route)
     check("readme:adversary-on-every-run",
           "independent adversary on every run" in readme)
+    # Round 1 of 0.47.0 found five more carriers the first sweep missed (both backends agreed on two).
+    gate_src = read(os.path.join(P, "hooks", "gate-goal-close.sh"))
+    ext_src = read(os.path.join(P, "hooks", "external-adversary.sh"))
+    check("gate:absent-msg-routes-to-adversary-first",
+          "then route to the adversary (every run since 0.47.0)" in gate_src
+          and "is only for when no adversary round could run" in gate_src)
+    check("external-hook:header-is-additive",
+          "this backend is additive" in ext_src)
+    check("agent:different-tier-on-every-run",
+          "On every run (since 0.47.0; before, only for terminal decisions)" in agent)
+    check("setup:intro-different-tier-on-every-run",
+          "on **every run**" in setup)
+    check("readme:adversary-command-routes-to-subagent-always",
+          "routes it to the subagent on a different model (always)" in readme)
     OLD = (
+        ("gate", gate_src, "then declare \\`[COMPLETION-REVIEW: none reason=…]\\` (≥20 chars) or route to the adversary"),
+        ("external-hook", ext_src, "instead of a same-model\n# subagent"),
+        ("agent", agent, "For terminal decisions the executor spawns you"),
+        ("readme", readme, "(subagent by default, or the external\nmodel/CLI)"),
         ("skill", skill, "route to the adversary if warranted"),
         ("agent", agent, "(for terminal actions) a DIFFERENT model"),
         ("adversary-skill", adv_skill_raw, "For a non-terminal claim, `model=same` is"),
