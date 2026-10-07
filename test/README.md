@@ -607,14 +607,14 @@ unlike the earlier rounds): 6 of 6 wrote the spec before the first Bash that ran
 most 2 denials. An interleaved control with the same tools (Write and Edit, no brake) then gave 2 of
 6 against 6 of 6 with the brake, none stuck. N=6 per arm.
 
-28 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
+30 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
 a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path), and
 allowed (a spec in text, a spec written to the checkpoint, a checkpoint write, Read, a subagent
 call, interview-only, adversary-only, no goalspec, another event, malformed input, no transcript,
-`GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path and quote back the
-agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
+`GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path (or `.goalspec/checkpoint.md` when the
+payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
 silent for no spec, another file, a spec already in text, a subagent, another event, malformed
-input). New with no predecessor, so `--selftest` mutates the components (20 mutations) and requires
+input). New with no predecessor, so `--selftest` mutates the components (21 mutations) and requires
 a case to catch each. What no suite can show: that an agent then writes the spec.
 
 ```sh

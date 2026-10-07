@@ -29,7 +29,14 @@ entrada: 1 de 6 escribió el spec antes de trabajar.
   trabada, 2 negaciones como máximo. Esa ronda tuvo Write y Edit disponibles (las anteriores no), así
   que se corrió un control intercalado con las mismas herramientas: sin freno, 2 de 6 escribieron el
   spec antes de trabajar; con freno, 6 de 6 y ninguna trabada. N=6 por brazo.
-- `test/spec-brake-branches.py`: 36 casos, `--selftest` con 20 mutaciones.
+- `test/spec-brake-branches.py`: 38 casos, `--selftest` con 21 mutaciones.
+- Límites que se declaran y no se arreglan aquí (los encontró el adversario externo del release): un
+  encabezado `## Goal-spec` sin contenido libera el freno, porque usa el mismo detector que el gate y
+  el precheck; y un Write con spec a un checkpoint libera el freno aunque otro hook lo niegue, porque
+  la librería cuenta la llamada, no su resultado (al gate y al precheck les pasa igual desde antes).
+  Es un freno de cumplimiento, no una barrera de seguridad. Corregido en la misma ronda: sin
+  `session_id` usable, la negación nombraba una ruta que el detector no acepta; ahora nombra
+  `.goalspec/checkpoint.md`.
 ## [0.48.2] - 2026-10-07
 
 Las dos cosas salen de una sesión de campo (VPS del equipo, 2026-10-07): un hotfix de 3 líneas en el

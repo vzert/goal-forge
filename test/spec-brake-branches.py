@@ -70,6 +70,8 @@ def run(plugin, payload_text, env_extra=None):
         if "no visible text from you at all" in reason:
             if ".goalspec/checkpoint-SID-42.md" in reason:
                 return "deny-path"
+            if "create .goalspec/checkpoint.md " in reason:
+                return "deny-plainpath"
             return "deny-none"
         return "deny"
     return "other-output"
@@ -78,6 +80,8 @@ def run(plugin, payload_text, env_extra=None):
 def pre(events, name, tool="Bash", tool_input=None, **extra):
     if tool_input is None:
         tool_input = {"command": "ls"} if tool == "Bash" else {"file_path": "src/app.py"}
+    extra.setdefault("session_id", "sess-1")  # real payloads carry one; case 27 removes it
+    extra = {k: v for k, v in extra.items() if v is not None}
     return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input,
                        "transcript_path": transcript(events, name), **extra})
 
@@ -130,6 +134,12 @@ CASES = [
 ]
 CASES += [
     ("26-reason-names-session-checkpoint", lambda: pre([LOAD], "26", session_id="SID-42"), "deny-path"),
+    # Release round (codex): with no usable session_id the named path must still be one the
+    # checkpoint detector accepts -- a "<session>" placeholder never released the brake.
+    ("27-no-session-id-names-detectable-path", lambda: pre([LOAD], "27", session_id=None),
+     "deny-plainpath"),
+    ("27b-unsafe-session-id-names-detectable-path",
+     lambda: pre([LOAD], "27b", session_id="../x y"), "deny-plainpath"),
     # 0.49.0 ronda 4: two agents insisted the spec was "already posted above". The deny quotes back
     # what they actually posted, so the claim can be checked against their own words.
     ("25-evidence-quotes-last-text",
@@ -218,6 +228,8 @@ MUTATIONS = [
      "reply. Your plan counts, even if you believe "),
     ("checkpoint spec no longer releases", LIB,
      'if any(it["kind"] == "goal_spec_file" for it in items):', "if False:"),
+    ("fallback path back to a placeholder", HOOK, 'else ".goalspec/checkpoint.md"',
+     'else ".goalspec/checkpoint-<session>.md"'),
     ("reason path not filled", HOOK, 'ta.SPEC_BRAKE_REASON.format(path=path)',
      'ta.SPEC_BRAKE_REASON.format(path=".goalspec/checkpoint-<session>.md")'),
 ]

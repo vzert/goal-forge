@@ -66,7 +66,7 @@ if not ta.spec_brake_armed(items):
     sys.exit(0)
 
 sid = str(data.get("session_id") or "").strip()
-path = ".goalspec/checkpoint-%s.md" % sid if sid and "/" not in sid else ".goalspec/checkpoint-<session>.md"
+path = ".goalspec/checkpoint-%s.md" % sid if sid and ta.CHECKPOINT_PATH_RE.search(".goalspec/checkpoint-%s.md" % sid) else ".goalspec/checkpoint.md"
 reason = ta.SPEC_BRAKE_REASON.format(path=path) + ta.spec_brake_evidence(items)
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                          "permissionDecision": "deny",
