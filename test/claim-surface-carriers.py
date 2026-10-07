@@ -557,6 +557,9 @@ def main():
     check("sev2:agent-threat-model-only-grows", "The threat model is fixed when the spec is written and only grows" in fa_)
     check("sev2:emitted-threat-model-only-grows", "THE THREAT MODEL IS FIXED WHEN THE SPEC IS WRITTEN AND ONLY GROWS" in fe_)
     check("sev2:skill-q4-only-grows", "The line is fixed when you write the spec and only grows" in fs_)
+    for name, t in (("adversary-skill", fk_), ("readme", readme_)):
+        check("sev2:%s-threat-model-only-grows-vs-ask" % name,
+              "fixed when the spec is written and only grows" in t and "against what" in t)
 
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]
