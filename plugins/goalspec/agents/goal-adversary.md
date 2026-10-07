@@ -1,6 +1,6 @@
 ---
 name: goal-adversary
-description: Independent adversarial verifier for a goal-spec outcome. Spawned with a FRESH context AND (for terminal actions) a DIFFERENT model than the executor — its two independence levers — to try to BREAK a claimed outcome against the 5-principle constitution, not to approve it. Invoke before closing any terminal/irreversible decision, or when the mechanical sweep touched an inherited open decision. Reports its own runtime model, then returns a single ADVERSARY-VERDICT block.
+description: Independent adversarial verifier for a goal-spec outcome. Spawned with a FRESH context AND a DIFFERENT model than the executor — its two independence levers — to try to BREAK a claimed outcome against the 5-principle constitution, not to approve it. Invoke before closing every goalspec run (plans and investigations included), and before any terminal/irreversible action fires. Reports its own runtime model, then returns a single ADVERSARY-VERDICT block.
 tools: Read, Grep, Glob, Bash, WebFetch
 ---
 

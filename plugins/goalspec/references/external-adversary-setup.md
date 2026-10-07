@@ -16,8 +16,16 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
 
 | Backend | Independence | Setup | Use when |
 |---|---|---|---|
-| `subagent` (default) | Fresh context; different *tier* of the same family for terminal actions (self-attested; you declare the degradation, ungated) | None | Most tasks, including terminal ones |
-| `external` | Different **vendor** *and* context | A second CLI on PATH | The premise under review came from your model family; single-model harnesses; maximum decorrelation |
+| `subagent` (default) | Fresh context; different *tier* of the same family on every run (self-attested; you declare the degradation, ungated) | None | Every run — it is the round every goalspec run gets |
+| `external` | Different **vendor** *and* context | A second CLI on PATH | **Added** to the subagent, not instead of it: on terminal actions (then `backends=both`), and as the mandated switch after two consecutive subagent breaks |
+
+**Since 0.47.0 `external` adds a backend; it no longer replaces one.** Before, `backend: external`
+meant "route the adversary here instead of the subagent", so every round of every run went to the
+slow, costly partner (measured 2026-10-06: rounds of 18 and 23 minutes on one read-only report).
+Now the subagent on a different model runs on every run, plans and investigations included, and the
+external partner joins it where undoing is hard. A host that pins subagents to a weak tier (the
+reason some setups chose `external` globally) still gets that subagent round; the external partner
+is what brings the capable reader on terminal actions, and after two subagent breaks on any run.
 
 ## Enabling the external backend
 
@@ -57,7 +65,7 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
    value here suspends that. Both surfaces use this same per-key fallback — `/goalspec` step 6 reads `adversary.backend`,
    `external-adversary.sh` reads `external_cmd` — so the routing decision and the command invoked are
    drawn from the same resolution and never disagree.
-3. `/goalspec` step 6 will then run `hooks/external-adversary.sh`, which pipes the pointer payload +
+3. On a terminal run (and after two consecutive subagent breaks), `/goalspec` step 6 will then also run `hooks/external-adversary.sh`, which pipes the pointer payload +
    the adversary prompt to that command on stdin and expects the standard
    `[ADVERSARY-VERDICT: ...]` block back.
 

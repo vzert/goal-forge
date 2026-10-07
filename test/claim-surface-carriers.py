@@ -253,9 +253,48 @@ def main():
           "not a cap" in adapt and "mandatory for the next round" in adapt)
     check("example-config:backend-is-not-a-ceiling",
           "not a ceiling" in example)
-    check("route-hook:does-not-call-a-mandated-switch-an-oversight",
-          "UNLESS this round is the mandated switch" in route
-          and "cannot see your streak" in route)
+    check("route-hook:says-it-cannot-see-streak-or-terminality",
+          "cannot see your streak or whether the run is terminal" in route)
+
+    # --- 7f. Every run gets the adversary; external is ADDED on terminal (0.47.0) -------------
+    # The rule changed from "terminal -> adversary (external instead of subagent when configured)"
+    # to "every run -> subagent on a different model; terminal -> external too". It has eight
+    # carriers checked here (plus CLAUDE.md's acid test, prose only); one left on the old wording sends agents back to the slow backend on every plan,
+    # or to no adversary at all on a non-terminal run.
+    readme = read(os.path.join(REPO, "README.md"))
+    adv_skill_raw = read(os.path.join(P, "skills", "adversary", "SKILL.md"))
+    check("skill:every-run-routes-to-the-adversary",
+          "every run routes to the adversary" in skill)
+    check("skill:external-joins-does-not-replace",
+          "It joins the subagent; it does not replace it" in skill)
+    check("skill:none-is-the-exception",
+          "the exception, not a low-stakes shortcut" in skill)
+    check("skill:description-adds-external-on-terminal",
+          "also to an external vendor's CLI when one is configured" in skill.split("---")[1])
+    check("agent:invoked-on-every-run",
+          "Invoke before closing every goalspec run" in agent)
+    check("adversary-skill:external-adds-a-backend",
+          "`external` adds a backend, it does not replace one" in adv_skill_raw)
+    check("setup:external-adds-a-backend",
+          "adds a backend; it no longer replaces one" in setup)
+    check("adaptation:external-is-additive",
+          "is **additive**" in adapt)
+    check("example-config:external-adds",
+          "ADDS the external CLI on terminal actions" in example)
+    check("route-hook:external-is-added-not-instead",
+          "ADDED to it, not routed " in route)
+    check("readme:adversary-on-every-run",
+          "independent adversary on every run" in readme)
+    OLD = (
+        ("skill", skill, "route to the adversary if warranted"),
+        ("agent", agent, "(for terminal actions) a DIFFERENT model"),
+        ("adversary-skill", adv_skill_raw, "For a non-terminal claim, `model=same` is"),
+        ("route-hook", route, "Route this \"\n       \"goal-adversary verification through the external"),
+        ("route-hook", route, "routing to ONLY the subagent silently skips"),
+        ("readme", readme, "routes\nterminal decisions to the adversary"),
+    )
+    for _n, _t, _old in OLD:
+        check("%s:old-terminal-only-rule-gone" % _n, _old not in _t, _old[:40])
 
     # --- 8. No carrier claims ownership it does not have ------------------------------------
     for name, text in (("agent", agent), ("external", external)):

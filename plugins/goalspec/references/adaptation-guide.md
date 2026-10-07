@@ -26,7 +26,7 @@ Create a `goal.config.json` (copy `goal.config.example.json`) **only** for these
 | Field | When to set it |
 |---|---|
 | `sweep_files` | You want the inherited-decision grep to be *deterministic* — pin the exact files instead of relying on discovery. |
-| `adversary.backend` / `external_cmd` | You want the adversary routed to a *different vendor's model/CLI* (`codex`, `gemini`, another Claude) for maximum decorrelation. Note it sets the **default** route, not a cap: two consecutive breaks from one backend make the other mandatory for the next round, whatever this key says. (A different *tier* of the same family is already automatic for terminal actions — no config.) This is a preference — it can't be inferred. See `external-adversary-setup.md`. |
+| `adversary.backend` / `external_cmd` | You want a *different vendor's model/CLI* (`codex`, `gemini`, another Claude) added to the adversary for maximum decorrelation. Since 0.47.0 `external` is **additive**: the subagent on a different tier runs on every run (automatic, no config), and the external backend joins it on terminal actions. It is not a cap either: two consecutive breaks from one backend make the other mandatory for the next round, whatever this key says. This is a preference — it can't be inferred. See `external-adversary-setup.md`. |
 
 The remaining fields (`ground_truth_sources`, `enumerate_entities_step`, `no_harm_threshold`,
 `terminal_actions`) exist in the example only as **overrides** — set them to *force* a fixed value
@@ -67,7 +67,7 @@ like if you wanted to pin it.
 }
 ```
 - Grounding here means every claim maps to a primary source you read — not a secondary summary.
-- `publish` is terminal → the adversary tries to break each claim before it ships.
+- `publish` is terminal → the adversary tries to break each claim before it ships, with the external backend joining it if one is configured.
 
 ### Water-treatment operations (a non-software example)
 
@@ -81,7 +81,7 @@ like if you wanted to pin it.
 ```
 - Ground-truth is a sensor reading and a lab result, not an operator's recollection.
 - The coverage floor stops "I looked at the clarifier that alarmed" — you check the whole train.
-- Raising the chlorine dose is terminal (hard to walk back downstream) → it routes to the adversary.
+- Raising the chlorine dose is terminal (hard to walk back downstream) → the external backend joins the adversary round, if one is configured.
 
 ## To adapt: nothing. To override (optional):
 

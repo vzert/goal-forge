@@ -99,22 +99,25 @@ Read `adversary.backend` per-key — project `.claude/goal.config.json` if set t
 user-global `~/.claude/goal.config.json`, default `subagent` — the same resolution the goalspec
 skill and the hooks use.
 
-- **subagent** (default): spawn the `goal-adversary` agent via the Task tool with the payload.
+The subagent always runs; `external` adds a backend, it does not replace one (0.47.0). With
+`external` configured, run it **too** when the claimed outcome contains a terminal/irreversible
+action (then close `backends=both`), or as the mandated switch after two consecutive subagent
+breaks; a non-terminal claim with no streak closes on the subagent alone.
+
+- **subagent** (always): spawn the `goal-adversary` agent via the Task tool with the payload.
   Never as a teammate; nothing is sent to it after the spawn. Wait for the result — do not
   close the round with the verifier still in flight.
-- **external**: pipe the payload on stdin to
+- **external** (when configured, per the paragraph above): pipe the payload on stdin to
   `"${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh"`, invoked from inside the repo under
   review (the script relocates to the repo root itself; from outside any repo the partner CLI
   may refuse the directory). Write its output to a uniquely named file per run if you need to
   re-read it — never re-read a previous run's dump.
-- **Model rule when the claimed outcome contains a terminal/irreversible action** (deploy,
-  delete, publish, merge, send — judge reversibility per action): the different-model rule
+- **Model rule — on every claim, terminal or not** (since 0.47.0): the different-model rule
   applies exactly as the goalspec skill's step 6 states it — read **your own** model from your
   context, pass a `model` override targeting a different tier (above Sonnet-class → `sonnet`;
   Sonnet-class or below → `opus`), and trust the adversary's `[ADVERSARY-MODEL: …]` self-report,
   never the parameter you passed (harnesses fall back silently). Same or UNKNOWN → the verdict
-  still counts, but disclose it as `model=same`. For a non-terminal claim, `model=same` is
-  acceptable — still disclose it.
+  still counts, but disclose it as `model=same`.
 
 ## 5. Report the verdict — verbatim, then judge it
 

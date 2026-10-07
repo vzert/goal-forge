@@ -65,12 +65,14 @@ on any domain with **zero configuration** — no control plane, no fleet, no han
    stays open the whole run: a fork it discovers *inside* the work — the kind you only see once
    you've read the code — comes back to you as a question, not as a line in a summary you can't
    reply to. A decision it never asked is a decision you never made.
-3. **Red-teams itself, then routes to an independent adversary** for terminal/irreversible decisions
-   — a fresh-context subagent spawned on a **different model tier** than the executor (automatic,
+3. **Red-teams itself, then routes to an independent adversary on every run** — plans and
+   investigations included; terminal/irreversible decisions also get the external backend when one
+   is configured — a fresh-context subagent spawned on a **different model tier** than the executor (automatic,
    zero-config; the adversary self-attests where it ran, and the method's rule is that a same-model
    fallback gets announced rather than passed off as independent — a rule the skill states and the
    gate only half-enforces, since it can reject an unsupported `model=different` claim but not a
-   close that omits the field), or a different vendor's model/CLI for maximum decorrelation.
+   close that omits the field) — plus, on terminal decisions, a different vendor's model/CLI for
+   maximum decorrelation when you configure one.
 4. **Closes through a completion gate** — a Stop hook that requires a `[COMPLETION-REVIEW: …]`
    declaration. Fail-open/advisory by default; opt-in blocking with `GOAL_GATE_ENFORCE=1` — which,
    measured, buys one formal block per user prompt carrying the same text the advisory already
@@ -208,7 +210,7 @@ No setup, no config file. Just run it, whatever your agent does:
 ```
 
 The command writes the goal-spec, executes the work steered by it, red-teams the outcome, routes
-terminal decisions to the adversary, and declares the completion-review — inferring everything
+it to the adversary (plus the external backend on terminal decisions, when configured), and declares the completion-review — inferring everything
 domain-specific from the task itself.
 
 ### Standalone adversary — `/goalspec:adversary`

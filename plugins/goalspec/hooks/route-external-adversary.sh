@@ -9,8 +9,10 @@
 # instrument-validity defect the method warns about (references/instrument-validity-own-tools.md).
 #
 # What it does: fires just before a `goal-adversary` subagent is spawned (Task/Agent tool). If the
-# per-key-resolved config says backend=external, it injects a one-line reminder to route the verification
-# through hooks/external-adversary.sh (the configured external_cmd) — at exactly the moment it matters.
+# per-key-resolved config says backend=external, it injects a one-line reminder that the external backend
+# (hooks/external-adversary.sh, the configured external_cmd) is owed TOO on a terminal run or after two
+# consecutive subagent breaks — at exactly the moment it matters. Since 0.47.0 the subagent runs on every
+# goalspec run and external is additive, so the reminder no longer says "route here instead".
 #
 # Deliberately NON-BLOCKING and fail-open, in the method's spirit:
 #   * It never denies the spawn. The subagent is still a valid adversary (context-independent), and
@@ -77,18 +79,19 @@ ext_cmd = read_key(proj, "external_cmd") or (read_key(glob, "external_cmd") if g
 root = os.environ.get("PLUGIN_ROOT") or ""
 hook_path = os.path.join(root, "hooks", "external-adversary.sh") if root else "hooks/external-adversary.sh"
 
-msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). Route this "
-       "goal-adversary verification through the external backend — pipe the same pointer payload the "
-       "subagent spawn takes (paths to where the goal-spec/outcome are written, where the work lives, "
-       "and the session transcript; not a narrated account) to `" + hook_path + "` "
-       "(it runs `" + ext_cmd + "`, a different vendor) and read its "
-       "[ADVERSARY-VERDICT:]/[ADVERSARY-MODEL:] from there. Running the subagent too is fine (both "
-       "backends is stronger); routing to ONLY the subagent silently skips the independence you "
-       "configured — UNLESS this round is the mandated switch: after two consecutive breaks from one "
-       "backend the skill requires the NEXT round to run on the other one (step 6), and this nudge "
-       "cannot see your streak, so it fires the same either way. If you are switching because of a "
-       "streak, you are following the rule, not skipping it. If the external binary is unreachable it "
-       "fails open to an UNVERIFIED hold — not a block.")
+msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). The subagent you are "
+       "spawning is owed on every run; since 0.47.0 the external backend is ADDED to it, not routed "
+       "instead of it. It is owed TOO when this run carries a terminal/irreversible action (push, merge, "
+       "deploy, delete, publish, send; or the sweep touched an inherited decision, or you affirmed a "
+       "mutation) and as the mandated switch after two consecutive subagent breaks (step 6). If either "
+       "holds, pipe the same pointer payload the subagent spawn takes (paths to where the goal-spec/"
+       "outcome are written, where the work lives, and the session transcript; not a narrated account) "
+       "to `" + hook_path + "` (it runs `" + ext_cmd + "`, a different vendor), read its "
+       "[ADVERSARY-VERDICT:]/[ADVERSARY-MODEL:] from there; a terminal run closes backends=both. If neither holds "
+       "(a plan, an investigation, a draft not sent, no break streak) the subagent alone is the rule "
+       "and you can ignore this. This nudge cannot see your streak or whether the run is terminal, so "
+       "it fires the same either way. If the external binary is unreachable it fails open to an "
+       "UNVERIFIED hold — not a block.")
 
 print(json.dumps({
     "systemMessage": msg,

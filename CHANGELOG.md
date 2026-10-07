@@ -6,6 +6,43 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.47.0] - 2026-10-06
+
+### Toda corrida lleva adversario; el externo se suma en lo terminal
+
+Hasta 0.46.9, una corrida sin acción terminal cerraba con la autocrítica del ejecutor, y
+`adversary.backend: external` mandaba **cada** ronda al CLI externo **en vez del** subagente.
+Desde 0.47.0:
+
+- **Toda corrida de goalspec** — planes e investigaciones incluidos — cierra con el subagente
+  `goal-adversary` en un modelo distinto al del ejecutor (mismo proveedor, sin config).
+- **Una acción terminal** (push, merge, deploy, borrar, publicar, enviar; o el barrido tocó una
+  decisión heredada, o se afirmó una mutación) **suma** el backend externo si está configurado: los
+  dos verifican el mismo árbol y el cierre dice `backends=both`.
+- La regla de dos `break` seguidos del mismo backend sigue igual, también en lo no terminal: con
+  external configurado, la tercera ronda va al CLI externo.
+- `[COMPLETION-REVIEW: none reason=…]` queda como **excepción**: solo si ninguna ronda pudo correr
+  (sin spawn de subagente y sin externo, o el harness lo negó) o si no se ejecutó nada (el usuario
+  paró en el gate 4b). El gate **no** cambia: sigue aceptando cualquier `reason` de 20+ caracteres.
+
+Por qué: medido 2026-10-06 en un agente de investigación de solo lectura, dos rondas del externo
+(codex, esfuerzo max) tardaron 23 y 18 minutos, 41 de los 80 de la sesión; la ronda del subagente
+en otro modelo tardó ~1. Y en el uso de campo, el revisor en otro modelo resultó útil también en
+planes, donde una premisa equivocada es más barata de cazar.
+
+Portadores actualizados: `skills/goalspec/SKILL.md` (descripción, marcadores, "Before closing",
+paso 6), `agents/goal-adversary.md` (descripción), `skills/adversary/SKILL.md` (paso 4),
+`hooks/route-external-adversary.sh` (el aviso ya no dice "en vez de": dice "también, si es
+terminal o tras dos breaks", y que no puede ver ninguna de las dos cosas),
+`references/external-adversary-setup.md`, `references/adaptation-guide.md`,
+`goal.config.example.json`, `README.md` y la prueba manual de `CLAUDE.md`.
+`test/claim-surface-carriers.py` comprueba la regla nueva en ocho portadores y que seis frases viejas
+no sobrevivan en cinco de ellos (18 comprobaciones nuevas; las 18 fallan contra 0.46.9).
+
+Límite: nada mecánico obliga a la ronda en lo no terminal. El gate sigue aceptando `none` con
+cualquier razón, así que un cierre que se salte la ronda pasa igual que antes; la regla nueva es
+texto que el agente sigue, no un gate.
+
 ## [0.46.9] - 2026-10-06
 
 ### El recordatorio del hand-back llega también con la sesión libre

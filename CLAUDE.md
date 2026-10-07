@@ -36,8 +36,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    `/goalspec audit <thing> and decide what to kill`. Assert: a `## Goal-spec` with grounded criteria
    appears; because the spec carries a terminal action (kill), the **4b ratify-the-spec gate** fires
    (an `AskUserQuestion` presenting scope/blast-radius before execution, least-irreversible default);
-   the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (terminal
-   action) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
+   the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (every run
+   since 0.47.0; with an external backend configured, the terminal action adds that one too) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
 3. Run **the twelve branch suites plus the carrier suite** (thirteen commands; one of them is not a
    branch suite — it checks written rules across their carriers): `python3 test/gate-branches.py` (Stop gate — includes the
