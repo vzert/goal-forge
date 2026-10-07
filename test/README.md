@@ -116,6 +116,14 @@ checkpoint and staleness sections, which run against the edited module only, are
 module. When a change touches `terminal_actions.py`, a `parity OK` line is a necessary check, never
 a sufficient one.
 
+To measure a change to the module itself, swap the FILE, not the environment: every runner in this
+suite (and in `terminal-precheck-branches.py`) sets `CLAUDE_PLUGIN_ROOT` to the repo on its own,
+so pointing that variable at an old copy from outside changes nothing. Copy the pre-edit module
+aside, put it in place, run the suite in both modes, restore the edited module, run again, and
+diff the two outputs (drop lines carrying temp paths first). Restore it before anything else
+reads the tree. 0.48.1 measured its `git merge-base` fix this way: identical in both modes here,
+and only the two new cases changed in the precheck suite.
+
 **Staleness backstop cases (`stale-01`..`09`; 01-04 from 0.32.0)** live in this same file but run separately
 from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
 `commits_since()`), unlike every other case here, which is pure-transcript with no filesystem

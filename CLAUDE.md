@@ -81,7 +81,10 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    **When editing the gate, copy the
    pre-edit script somewhere and `--compare` against it afterwards, in both default and
    `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed, which turns "no
-   regression" from an eyeball into a measurement. See `test/README.md`.
+   regression" from an eyeball into a measurement. See `test/README.md`. **That parity is blind to
+   `hooks/lib/terminal_actions.py`**: both copies of the gate import the same module, and the
+   suites set `CLAUDE_PLUGIN_ROOT` themselves, so for a module change swap the module file in place
+   (pre-edit copy, run both modes, restore, run again, diff) — `test/README.md` has the recipe.
 
 ## Memory System
 This project uses the 3-tier memory plugin. Operational indexes live in `memory/`:
