@@ -300,8 +300,9 @@ instead, which is the fail-open path working as designed, not a regression; the 
 stays strict because that fallback is not what a normal, unsandboxed run (every real CI job) should
 ever show.
 
-**32** covers that fallback's attribution (p-55cec2045a). An unborn repo (no commit) cannot be
-isolated, so the partner reviews the live shared tree, where a parallel session's write looks the
+**32** covers that fallback's attribution (p-55cec2045a). The hook builds its private copy from
+`HEAD` only, so an unborn repo (no commit) takes the fallback — git itself could isolate it with
+`worktree add --orphan`; the hook does not try. The partner then reviews the live shared tree, where a parallel session's write looks the
 same as the partner's. The hold must still degrade, and the message must name the other-writer
 reading with its evidence bar (name the other writer, or the partner reading stands). Commits
 already had that hedge; file paths did not. **16/17/19** assert the other half: isolated, the hedge

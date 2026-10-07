@@ -221,8 +221,9 @@ CASES = [
      "tail20+verdict+rcnote"),
     ("31-mutated-break-note-survives-tail", "STUB_MUTATE_BREAK_PAD", {"_PIPE": "tail -20"},
      "MUTREPO", "tail20+verdict+mutnote+path"),
-    # --- the other-writer hedge, un-isolated fallback (p-55cec2045a). An UNBORN repo (no commit)
-    # skips isolation, so the partner reviews the live shared tree — where a parallel session's write
+    # --- the other-writer hedge, un-isolated fallback (p-55cec2045a). The hook isolates from HEAD
+    # only, so an UNBORN repo (no commit) skips isolation (git could, via `worktree add --orphan`;
+    # the hook does not try), so the partner reviews the live shared tree — where a parallel session's write
     # is indistinguishable from the partner's. The hold must still degrade (the tree changed
     # mid-flight, whoever did it) AND the message must name the other-writer reading with its
     # evidence bar. 16/17/19 are the other half: isolated, the hedge must NOT appear (+otherwriter
@@ -334,8 +335,8 @@ echo "%s"
 
 
 def make_mutrepo_unborn(workdir, name):
-    """Same dirty state as make_mutrepo but with NO commit: HEAD is unborn, so the hook cannot build
-    its private review copy and falls back to reviewing the live repo (case 32)."""
+    """Same dirty state as make_mutrepo but with NO commit: HEAD is unborn, and the hook builds its
+    private review copy from HEAD only, so it falls back to reviewing the live repo (case 32)."""
     root = tempfile.mkdtemp(prefix="mutrepo-unborn-" + name + "-", dir=workdir)
     os.makedirs(os.path.join(root, ".goalspec"))
     subprocess.run(["git", "init", "-q", root], check=True, capture_output=True)
