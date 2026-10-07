@@ -38,6 +38,9 @@ The two 0.21.1 fixes are the point of this file:
   relay and the quote reminder to survive. Fails against 0.46.4, which printed both notices first.
   Case 29 feeds a transcript larger than a pipe buffer and requires no "write error: Broken pipe"
   on stderr (grep -m1 closes the pipe early). Fails against 0.46.4 as `pass+sandboxfwd+brokenpipe`.
+* Filter-proof UNVERIFIED line (0.48.2) — cases 33/34/35 run the hook through the filter an executor
+  actually used (`grep -v '^external-adversary\|^  ' | tail -14`) on the three paths that mark a
+  hold UNVERIFIED, and require the unprefixed notice as the LAST line. All three fail against 0.48.1.
 
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
@@ -57,6 +60,9 @@ MODEL_UNKNOWN = "[ADVERSARY-MODEL: GPT-5 / UNKNOWN]"
 MODEL_UNKNOWN_BRACKET = "[ADVERSARY-MODEL: Claude [x] / UNKNOWN]"
 HOLD = ("[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 "
         "autonomy-violations=0 unsafe=0]")
+# The filter an executor actually used on this hook (2026-10-07, team VPS). Cases 33-35.
+FILTER = "grep -v '^external-adversary\\|^  ' | tail -14"
+UNV = "UNVERIFIED (goalspec external adversary):"
 FILLED_RE = re.compile(r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+")
 BULLETS = ("- checked coverage-floor table against narrative: rows reconcile\n"
            "- re-derived the inherited count from the source file: matches\n"
@@ -230,6 +236,21 @@ CASES = [
     # there is a failure), because nothing else writes to the private copy.
     ("32-unisolated-mutation-hedged", "STUB_MUTATE", {}, "MUTREPO_UNBORN",
      "mutation-unverified+otherwriter"),
+    # --- the UNVERIFIED notice survives the executor's own filter (0.48.2). Observed 2026-10-07 on
+    # the team VPS: an executor read this hook as `2>&1 | grep -v '^external-adversary\|^  ' |
+    # tail -14`; codex ended its run with the template's own `break|hold` placeholder (counts filled
+    # in), the synthetic hold fell off the tail, the prefixed warning fell to the grep, and what was
+    # left was the partner's unparseable verdict line. 33 is that run; 34 and 35 are the other two
+    # paths that mark a hold UNVERIFIED. All three fail against 0.48.1 as tail20-lost:unverified.
+    ("33-template-verdict-survives-filter",
+     "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL_UNKNOWN + "\n"
+     + BULLETS + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
+     "autonomy-violations=0 unsafe=0]\ntokens used\n148,832\n", {"_PIPE": FILTER}, None,
+     "tail20+unverified+noparse"),
+    ("34-mutated-hold-survives-filter", "STUB_MUTATE", {"_PIPE": FILTER}, "MUTREPO",
+     "tail20+unverified+synthetic"),
+    ("35-bare-hold-survives-filter", MODEL + "\n" + HOLD + "\n", {"_PIPE": FILTER}, None,
+     "tail20+unverified+bare"),
 ]
 
 
@@ -383,6 +404,12 @@ PAYLOAD = "goal-spec: /nonexistent/spec.md\noutcome: /nonexistent/outcome.md\n"
 # What each piped case must still see after `tail -20`. 30/31 need the BREAK itself, not any
 # filled verdict: a synthetic hold on stdout would also match FILLED_RE.
 TAIL_MARKERS = {
+    "33": [("unverified", lambda o: UNV in o.splitlines()[-1] if o.strip() else False),
+           ("noparse", lambda o: "no well-formed verdict line" in o)],
+    "34": [("unverified", lambda o: UNV in o.splitlines()[-1] if o.strip() else False),
+           ("synthetic", lambda o: "repository content changed" in o)],
+    "35": [("unverified", lambda o: UNV in o.splitlines()[-1] if o.strip() else False),
+           ("bare", lambda o: "bare verdict, not a verified one" in o)],
     "28": [("verdict", lambda o: bool(FILLED_RE.search(o))),
            ("sandbox", lambda o: "declared its own sandbox" in o),
            ("quote", lambda o: "quote the [ADVERSARY-MODEL" in o)],

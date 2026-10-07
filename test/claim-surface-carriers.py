@@ -58,6 +58,16 @@ adversaries read (`agents/goal-adversary.md`, `hooks/external-adversary.sh` -- t
 the prompt the hook actually EMITS, via a stub partner), the executor-side payload rule in SKILL.md,
 and the setup reference. The remote half is not measured by any hook, and this suite does not
 change that.
+
+FIFTH AND SIXTH RULES (0.48.2), both from one field session (2026-10-07, team VPS), both executor-side.
+MOVING TIP: a diff pointer ends at HEAD, never at a commit id the executor typed; the commit a round
+reviews is read with `git rev-parse HEAD` and named in the payload. Carriers: SKILL.md step 6,
+`references/durable-artifact.md` ("What goes in it", which also says it is NOT an exemption), and
+`skills/adversary/SKILL.md`. WHOLE OUTPUT: the executor reads the external hook's output unfiltered,
+because `grep -v '^external-adversary' | tail -N` deleted the notice that the hold was synthetic.
+Carriers: both SKILL.md files and the setup reference; the hook's own filter-proof last line is
+pinned here by its token and driven for real in `test/external-adversary-branches.py` cases 33-35.
+Presence only, as everywhere in this file.
 """
 
 import json
@@ -491,6 +501,27 @@ def main():
     out, _ = emit("gate-goal-close.sh", {"last_assistant_message": lam,
                   "transcript_path": jsonl("gate-model", [lam])})
     check("visible:gate-model-requote-emits", "vuelve a citar" in out and VIS_ES in out)
+
+    # --- 0.48.2: moving-tip diff pointer + read the external hook's whole output ---------------
+    def flat(t):
+        return " ".join(t.split())
+    adv_skill = read(os.path.join(P, "skills", "adversary", "SKILL.md"))
+    fs, fd, fa, fx, fe = flat(skill), flat(durable), flat(adv_skill), flat(setup), flat(external)
+    for name, t in (("skill", fs), ("durable", fd), ("adversary-skill", fa)):
+        check("tip:%s-range-ends-at-moving-tip" % name, "moving tip" in t and "...HEAD" in t)
+        check("tip:%s-commit-read-at-spawn" % name, "git rev-parse HEAD" in t and "payload" in t)
+    check("tip:skill-never-a-typed-id", "never at a commit id you typed" in fs)
+    check("tip:adversary-skill-never-a-typed-id", "never at a commit id you typed" in fa)
+    check("tip:durable-never-a-typed-id", "never as a range ending at a commit id you typed" in fd)
+    check("tip:durable-not-an-exemption", "This is not an exemption" in fd
+          and "stays on the claim surface" in fd and "a real break, not bookkeeping" in fd)
+    NOFILTER = "never through `grep -v`, `tail -N` or `head`"
+    for name, t in (("skill", fs), ("adversary-skill", fa), ("setup", fx)):
+        check("whole:%s-read-unfiltered" % name, NOFILTER in t)
+    LAST = "UNVERIFIED (goalspec external adversary):"
+    check("whole:hook-emits-last-line-token", LAST in fe)
+    check("whole:skill-names-hook-token", LAST in fs)
+    check("whole:setup-names-hook-token", LAST in fx)
 
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]

@@ -570,6 +570,17 @@ else
   VERDICT_IS_BREAK=0
 fi
 
+# The LAST line on every path that marks a hold UNVERIFIED (0.48.2). Executors read this hook through
+# filters, and the observed one deletes exactly these warnings: 2026-10-07 on the team VPS, an
+# executor ran it as `2>&1 | grep -v '^external-adversary\|^  ' | tail -14`, the partner returned the
+# template's own `break|hold` placeholder, and the synthetic hold (printed first) fell off the tail
+# while the prefixed warning fell to the grep — what remained was the partner's unparseable verdict
+# line, read as if it were one. So this line has no `external-adversary:` prefix, no leading
+# whitespace, no bracket marker (a verdict-shaped string here would feed the verdict nudge and the
+# gate), and it prints after everything else. Cases 33-35 pipe the hook through that filter.
+_adv_unverified_last_line() {
+  echo "UNVERIFIED (goalspec external adversary): $1 It is NOT a pass. Re-run the round or route it to the other backend." >&2
+}
 if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; then
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
   {
@@ -581,6 +592,7 @@ if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; the
       printf '%s\n' "$MUTATED" | sed 's/^/  /'
     fi
   } >&2
+  _adv_unverified_last_line "the partner (exit $RC) returned no well-formed verdict line (a template echo such as 'break|hold' or '<n>' does not parse), so the 'hold' this hook printed is synthetic and no verdict-looking line in the partner output counts as a verdict."
   exit 0
 fi
 
@@ -638,6 +650,7 @@ if [ -n "$MUTATED" ]; then
       echo "not own. Then re-run the review over a tree nobody edited mid-flight. Partner output:"
       printf '%s\n' "$OUT" 2>/dev/null | head -40
     } >&2
+    _adv_unverified_last_line "the repository content changed during the partner's run, so the 'hold' this hook printed is synthetic: the partner's own hold describes a tree nobody reviewed as it stands."
     exit 0
   fi
 fi
@@ -783,4 +796,9 @@ fi
 # floor, not proof of diligence) -- caught by adversary review when this line still said "a real
 # verdict." Judging genuineness stays the executor's job, same as for every other self-report.
 echo "external-adversary: a verdict-shaped block was just produced above -- whether it reflects genuine adversarial work is still yours to judge (see the bare-verdict-floor note above). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM in your very next assistant turn -- each on its OWN line, in plain text, nothing before it and nothing after the closing bracket on that same line: no bold or code-span wrapping, no trailing citation. It must be a visible text block you emit -- a quote you only write or plan in your thinking does not count: thinking is not read, even when your screen shows it like a message. The gate matches the marker only when its line ends at that bracket, so decorating it while quoting degrades a genuine model=different to model=same, silently. The Stop gate cannot see this script's stdout directly, only text you personally author — this is far easier to forget once you move on to other work than it is right now." >&2
+# Bare verdict: the partner's own line is printed and stays well-formed, so only the filter-proof
+# last line is added here (case 35) — the prefixed floor warning above is the one the grep deletes.
+if [ "$EVIDENCE_LINES" -eq 0 ]; then
+  _adv_unverified_last_line "the partner's verdict above came with no evidence of work (no bullets or ground truth above it), so it is a bare verdict, not a verified one."
+fi
 

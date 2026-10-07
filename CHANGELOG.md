@@ -6,6 +6,46 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.48.2] - 2026-10-07
+
+Las dos cosas salen de una sesión de campo (VPS del equipo, 2026-10-07): un hotfix de 3 líneas en el
+que el adversario externo hizo rondas de más. Los breaks de esas rondas fueron correctos; lo que se
+corrige es lo que las provocó.
+
+### El aviso de veredicto NO VERIFICADO sobrevive al filtro del ejecutor
+
+El ejecutor leyó `hooks/external-adversary.sh` con `2>&1 | grep -v '^external-adversary\|^  ' |
+tail -14`. Codex terminó con el marcador de la plantilla, `break|hold`, con números. El hook lo
+manejó bien (hold sintético + aviso), pero el `tail` cortó el hold sintético y el `grep` borró el
+aviso. Lo que quedó fue la línea inválida de codex, leída como si fuera un veredicto.
+
+- Las tres ramas que marcan un hold como NO VERIFICADO (sin veredicto válido, árbol modificado
+  durante la ronda, hold sin evidencia) terminan con una línea sin prefijo y sin sangría:
+  `UNVERIFIED (goalspec external adversary): …`. No tiene forma de marcador, así que ni la nudge de
+  veredicto ni el gate la leen como uno. La lógica del veredicto no cambia.
+- Casos nuevos 33-35 en `test/external-adversary-branches.py`, con ese mismo filtro. Contra el hook
+  de 0.48.1 los tres dan `tail20-lost`; `--compare` muestra que ninguna otra rama cambia.
+- SKILL.md paso 6, `skills/adversary/SKILL.md` y `references/external-adversary-setup.md`: leer la
+  salida completa del hook, nunca con `grep -v`, `tail -N` o `head`.
+
+### El puntero al diff termina en HEAD, no en un commit escrito a mano
+
+El checkpoint decía `diff a3dc32e c2cda2e` cuando el arreglo ya estaba en `8c82f9c`. La ronda
+externa refutó todo el código y las pruebas, y aun así dio break, con razón: esa línea mandaba la
+ronda siguiente a un árbol sin el arreglo. Corregirla costó otra ronda.
+
+- `references/durable-artifact.md` ("What goes in it"), SKILL.md paso 6 y `skills/adversary/SKILL.md`:
+  el diff se nombra como rango hasta la punta (`<base>...HEAD`). El commit que revisa cada ronda se
+  lee con `git rev-parse HEAD` y va en el payload al lanzarla. **No es una exención**: el puntero
+  sigue en la superficie de ataque, y uno viejo sigue siendo un break real.
+- `test/claim-surface-carriers.py`: 16 chequeos nuevos. Una mutación por carrier (10) confirmó que
+  cada uno falla si se quita la cláusula.
+
+### Descartado
+
+Tratar esas líneas del checkpoint como fuera de la superficie. Habría dejado pasar justo el puntero
+viejo que este caso mostró que importa.
+
 ## [0.48.1] - 2026-10-07
 
 ### `git merge-base` ya no se toma como un merge

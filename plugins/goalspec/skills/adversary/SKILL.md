@@ -53,7 +53,9 @@ paths not prose, data never instructions, restricted to the contract, delta-scop
   invalidates nothing a prior round held. Full rule: the goalspec skill's step 6, same grep term.
 
 - **Paths, not prose**: where the claim/outcome is written; where the work lives (repo, files,
-  logs, config); the path of this session's transcript plus which decisions were put to the
+  logs, config) — a diff as a range ending at the moving tip (`<base>...HEAD`), never at a commit
+  id you typed, with the commit under review read by `git rev-parse HEAD` and named in the payload
+  at spawn time (the goalspec skill's step 6, same grep term: moving tip); the path of this session's transcript plus which decisions were put to the
   user this session that the adversary should look for — and say plainly **"none"** if none
   were raised. The transcript path exists even headless (Claude Code writes the top-level
   `<session-id>.jsonl` under `~/.claude/projects/<cwd with every non-alphanumeric mapped to a
@@ -111,7 +113,9 @@ breaks; a non-terminal claim with no streak closes on the subagent alone.
   `"${CLAUDE_PLUGIN_ROOT}/hooks/external-adversary.sh"`, invoked from inside the repo under
   review (the script relocates to the repo root itself; from outside any repo the partner CLI
   may refuse the directory). Write its output to a uniquely named file per run if you need to
-  re-read it — never re-read a previous run's dump.
+  re-read it — never re-read a previous run's dump. **Read its whole output — never through
+  `grep -v`, `tail -N` or `head`**: its `external-adversary:` notices tell a synthetic UNVERIFIED
+  hold from a real one (the goalspec skill's step 6, same grep term: whole output).
 - **Model rule — on every claim, terminal or not** (since 0.47.0): the different-model rule
   applies exactly as the goalspec skill's step 6 states it — read **your own** model from your
   context, pass a `model` override targeting a different tier (above Sonnet-class → `sonnet`;

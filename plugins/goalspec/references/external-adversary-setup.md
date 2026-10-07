@@ -76,7 +76,10 @@ is what brings the capable reader on terminal actions, and after two subagent br
 written, where the work lives, the session transcript path and which decisions to look for in it —
 and prints exactly the same verdict grammar the subagent produces, including the model self-report
 that opens it. Paths, not narration: the rule and the reason live in `/goalspec` step 6 (both
-backends take the same payload), and this file does not restate them.
+backends take the same payload), and this file does not restate them. Its warnings go to stderr
+with an `external-adversary:` prefix, and every path that marks a hold UNVERIFIED ends with one
+unprefixed `UNVERIFIED (goalspec external adversary): …` line (0.48.2). Read its whole output, never
+through `grep -v`, `tail -N` or `head` (`/goalspec` step 6, same grep term: whole output).
 
 ```
 [ADVERSARY-MODEL: <name> / <exact id, or UNKNOWN>]

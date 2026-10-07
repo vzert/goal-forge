@@ -222,6 +222,17 @@ Anything already recorded in ground truth — commit messages, the CHANGELOG, th
 gets **pointed at, not copied**. A derived figure with two homes goes stale; that is not a
 hypothetical, it is the failure mode that produced multiple shipped defects in this method.
 
+**A pointer to the work under review is written so a new commit cannot make it stale (0.48.2).** Name
+the diff as a range that ends at the moving tip — `git diff <base>...HEAD`, the branch name — never as
+a range ending at a commit id you typed (`git diff <base> <sha>`). The commit a round actually reviews
+goes in that round's **payload**, read with `git rev-parse HEAD` at the moment you spawn it, where it
+is true by construction. This is not an exemption: the pointer stays on the claim surface, because it
+tells the adversary which tree to attack, and a pinned one that misses your newest commit sends the
+next round to a tree without your fix — a real break, not bookkeeping. Observed 2026-10-07 on a team
+VPS: a checkpoint said `diff a3dc32e c2cda2e` after the fix had landed as `8c82f9c`; the external
+round refuted every code and test claim and still broke, correctly, on that line, and the correction
+cost one more round. Written against the tip, that line never goes stale.
+
 ### Never write a running count of the run's own process into sections 1 or 2 (v0.39.0)
 
 There is one class of figure that goes stale **by construction**, and it burned three adversary
