@@ -1,6 +1,6 @@
 # test/
 
-**Thirteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Fourteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -591,6 +591,33 @@ branches once a spec exists.
 ```sh
 python3 test/spec-on-entry-branches.py
 python3 test/spec-on-entry-branches.py --selftest
+```
+
+## `spec-brake-branches.py` — hold the work until the spec exists (unreleased, branch `spec-brake`)
+
+For `hooks/precheck-spec-before-work.sh` and `hooks/show-checkpoint-spec.sh`. An isolated replica
+(`claude -p`, a fresh copy per run, no MCP, N=6 per arm, 2026-10-07, p-718231fa66) found that an
+agent with a shell loads the goalspec loop and goes to Bash with no visible spec in 4 to 6 of 6
+runs, whatever the version or task, and that 0.48.0's entry nudge did not change that. A brake
+that accepted only visible text left 2 of 6 agents stuck in two wordings (they believed they had
+posted a spec that existed nowhere); the shipped design also accepts the spec written with
+Write/Edit to this session's `.goalspec/checkpoint-<session>.md`, and the second hook shows that
+spec to the human as a `systemMessage`. Measured on that design: 6 of 6 wrote the spec before the
+first Bash that ran, none stuck, at most 2 denials.
+
+28 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
+a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path), and
+allowed (a spec in text, a spec written to the checkpoint, a checkpoint write, Read, a subagent
+call, interview-only, adversary-only, no goalspec, another event, malformed input, no transcript,
+`GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path and quote back the
+agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
+silent for no spec, another file, a spec already in text, a subagent, another event, malformed
+input). New with no predecessor, so `--selftest` mutates the components (20 mutations) and requires
+a case to catch each. What no suite can show: that an agent then writes the spec.
+
+```sh
+python3 test/spec-brake-branches.py
+python3 test/spec-brake-branches.py --selftest
 ```
 
 ## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)

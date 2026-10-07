@@ -6,6 +6,28 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [Unreleased] - rama `spec-brake`
+
+### Un freno: sin spec no se trabaja
+
+Medido 2026-10-07 con una réplica aislada (`claude -p`, una copia nueva por corrida, sin MCP,
+6 corridas por brazo; p-718231fa66). Con shell, un agente que carga el loop de goalspec pasa a Bash
+sin spec visible en 4 a 6 de cada 6 corridas, en 0.44.0, en 0.47.0 y en otra tarea. Sin shell lo
+escribe en 6 de 6. El aviso de 0.48.0 al cargar el loop se disparó en las 6 corridas y no cambió la
+entrada: 1 de 6 escribió el spec antes de trabajar.
+
+- `hooks/precheck-spec-before-work.sh` (PreToolUse, nuevo): después de cargar el loop, niega Bash,
+  Write, Edit, MultiEdit y NotebookEdit mientras no haya `## Goal-spec` en el texto visible ni en el
+  checkpoint de la sesión. No frena lecturas, la escritura del checkpoint, los subagentes (traen
+  `agent_id`), la entrevista sola ni el adversario. La negación da la ruta exacta del checkpoint y
+  cita el último texto visible del agente. `GOAL_SPEC_BRAKE=0` lo apaga.
+- `hooks/show-checkpoint-spec.sh` (PostToolUse Write|Edit, nuevo): si el spec solo llegó por el
+  checkpoint, se lo muestra al humano.
+- Dos diseños descartados con datos: aceptar solo texto visible dejó trabadas a 2 de 6 corridas con
+  dos redacciones distintas de la negación (afirmaban haber publicado un spec que no existía en
+  ningún lado). Con el checkpoint aceptado: 6 de 6 escribieron el spec antes del primer Bash, ninguna
+  trabada, 2 negaciones como máximo. Esa ronda tuvo Write y Edit disponibles, como una sesión real.
+- `test/spec-brake-branches.py`: 36 casos, `--selftest` con 20 mutaciones.
 ## [0.48.2] - 2026-10-07
 
 Las dos cosas salen de una sesión de campo (VPS del equipo, 2026-10-07): un hotfix de 3 líneas en el

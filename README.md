@@ -423,7 +423,7 @@ completion gate" below.) The exit-set defect itself stays open.
 The Stop hook enforces only when a session produced a `## Goal-spec`. Since v0.48.0 a session that
 loaded the goalspec loop and never wrote one also gets a reminder — advisory in both modes, never a
 block — to post the spec as visible text (measured: 25 of 275 real sessions loaded the loop and never
-posted a visible spec, and in 13 the gate never saw one anywhere). If a spec exists but no valid
+posted a visible spec, and in 13 the gate never saw one anywhere). A reminder alone did not change what agents do at entry, so the next release adds a brake: until a spec exists, Bash, Write and Edit are held (reads are not), and a spec written to the session's checkpoint file also releases it and is shown to you (measured: 6 of 6 runs wrote the spec before working, none got stuck; `GOAL_SPEC_BRAKE=0` turns it off). If a spec exists but no valid
 `[COMPLETION-REVIEW: …]` was declared — or the declared one closes over your operative
 `[ADVERSARY-VERDICT: break …]` instead of a `hold` — it posts an **advisory reminder** and lets the
 turn end (fail-open). Stuck on a residual break you've judged non-actionable?
@@ -524,6 +524,8 @@ goal-forge/
     hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor)
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
     hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to post it as visible text (PostToolUse Skill)
+    hooks/precheck-spec-before-work.sh    # PreToolUse: after the goalspec loop loads, holds Bash/Write/Edit until a ## Goal-spec exists in visible text or in this session's checkpoint (reads stay free; GOAL_SPEC_BRAKE=0 turns it off)
+    hooks/show-checkpoint-spec.sh         # PostToolUse Write|Edit: when the spec reaches the session only through the checkpoint file, shows it to the user
     hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale

@@ -39,7 +39,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (every run
    since 0.47.0; with an external backend configured, the terminal action adds that one too) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **the thirteen branch suites plus the carrier suite** (fourteen commands; one of them is not a
+3. Run **the fourteen branch suites plus the carrier suite** (fifteen commands; one of them is not a
    branch suite — it checks written rules across their carriers): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`09`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
@@ -71,7 +71,11 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    goal-adversary verdict that came back as a background hand-back — hermetic, per-case `TMPDIR`; new
    in 0.46.8, so run `--selftest` too), and `python3 test/spec-on-entry-branches.py` (PostToolUse(Skill)
    reminder to post the `## Goal-spec` as visible text right after the goalspec loop loads with no
-   spec yet — hermetic, synthetic transcripts; new in 0.48.0, so run `--selftest` too).
+   spec yet — hermetic, synthetic transcripts; new in 0.48.0, so run `--selftest` too), and
+   `python3 test/spec-brake-branches.py` (PreToolUse brake that holds Bash/Write/Edit after the loop
+   loads until a `## Goal-spec` exists in visible text or in this session's checkpoint, plus the
+   PostToolUse hook that shows a checkpoint-only spec to the human — hermetic, synthetic
+   transcripts; new with no predecessor, so run `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and

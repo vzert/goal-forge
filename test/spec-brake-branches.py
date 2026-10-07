@@ -68,6 +68,8 @@ def run(plugin, payload_text, env_extra=None):
         if "QUOTE-ME-BACK" in reason and "2 visible text block(s)" in reason:
             return "deny-quotes"
         if "no visible text from you at all" in reason:
+            if ".goalspec/checkpoint-SID-42.md" in reason:
+                return "deny-path"
             return "deny-none"
         return "deny"
     return "other-output"
@@ -93,9 +95,13 @@ CASES = [
      lambda: pre([{"typed": "<command-name>/goalspec</command-name>"}], "07"), "deny-none"),
     # The observed failure: a spec that lives only in thinking does not release the brake.
     ("08-spec-only-in-thinking-denied", lambda: pre([LOAD, {"thinking": SPEC}], "08"), "deny-none"),
-    # Deliberate: a checkpoint-only spec is invisible to the human, so it does not release it either.
-    ("09-spec-only-in-checkpoint-denied",
-     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-ab12.md", SPEC)}], "09"), "deny-none"),
+    # v3: a spec written with Write to the checkpoint releases it (show-checkpoint-spec.sh shows it).
+    ("09-spec-in-checkpoint-allows",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-ab12.md", SPEC)}], "09"), "allow"),
+    ("09b-checkpoint-without-spec-still-denies",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-ab12.md", "# notes\n")}], "09b"), "deny-none"),
+    ("09c-spec-in-other-file-still-denies",
+     lambda: pre([LOAD, {"write": ("docs/plan.md", SPEC)}], "09c"), "deny-none"),
     ("10-spec-in-text-allows", lambda: pre([LOAD, {"text": SPEC}], "10"), "allow"),
     ("11-spec-before-reentry-allows", lambda: pre([{"text": SPEC}, LOAD], "11"), "allow"),
     ("12-checkpoint-write-allowed",
@@ -123,6 +129,7 @@ CASES = [
                          "tool_input": {"command": "ls"}}), "allow"),
 ]
 CASES += [
+    ("26-reason-names-session-checkpoint", lambda: pre([LOAD], "26", session_id="SID-42"), "deny-path"),
     # 0.49.0 ronda 4: two agents insisted the spec was "already posted above". The deny quotes back
     # what they actually posted, so the claim can be checked against their own words.
     ("25-evidence-quotes-last-text",
@@ -134,10 +141,55 @@ ENV_CASES = [
     ("24-other-env-value-still-denies", lambda: pre([LOAD], "24"), {"GOAL_SPEC_BRAKE": "1"}, "deny-none"),
 ]
 
+def run_show(plugin, payload_text):
+    out = subprocess.run(["bash", os.path.join(plugin, "hooks", "show-checkpoint-spec.sh")],
+                         input=payload_text, capture_output=True, text=True,
+                         env={**os.environ, "CLAUDE_PLUGIN_ROOT": plugin})
+    raw = out.stdout.strip()
+    if not raw:
+        return "silent"
+    try:
+        msg = json.loads(raw).get("systemMessage") or ""
+    except Exception:
+        return "unparseable"
+    if "## Goal-spec" in msg and "Asked (your words)" in msg:
+        return "shown-cut" if "## Estado" not in msg and "STATE-LINE" not in msg else "shown-uncut"
+    return "other-output"
+
+
+CKPT = ".goalspec/checkpoint-ab12.md"
+FULL = "# Checkpoint\n\n" + SPEC + "1. objective\n\n## Estado\nSTATE-LINE\n"
+
+
+def post_write(events, name, tool="Write", path=CKPT, body=FULL, event="PostToolUse", **extra):
+    ti = {"file_path": path, "content": body} if tool == "Write" else {"file_path": path, "new_string": body}
+    return json.dumps({"hook_event_name": event, "tool_name": tool, "tool_input": ti,
+                       "transcript_path": transcript(events + [{"write": (path, body)}], name), **extra})
+
+
+SHOW_CASES = [
+    ("s1-checkpoint-spec-shown-and-cut", lambda: post_write([LOAD], "s1"), "shown-cut"),
+    ("s2-edit-new-string-shown", lambda: post_write([LOAD], "s2", tool="Edit"), "shown-cut"),
+    ("s3-checkpoint-without-spec-silent", lambda: post_write([LOAD], "s3", body="# notes\n"), "silent"),
+    ("s4-other-file-silent", lambda: post_write([LOAD], "s4", path="docs/plan.md"), "silent"),
+    ("s5-visible-spec-already-silent", lambda: post_write([LOAD, {"text": SPEC}], "s5"), "silent"),
+    ("s6-subagent-silent", lambda: post_write([LOAD], "s6", agent_id="a1"), "silent"),
+    ("s7-pretooluse-silent", lambda: post_write([LOAD], "s7", event="PreToolUse"), "silent"),
+    ("s8-malformed-silent", lambda: "{{{ nope", "silent"),
+]
+
 LIB = os.path.join("hooks", "lib", "terminal_actions.py")
+SHOW = os.path.join("hooks", "show-checkpoint-spec.sh")
 HOOK = os.path.join("hooks", "precheck-spec-before-work.sh")
 # (description, file, old, new): each must make at least one case fail.
 MUTATIONS = [
+    ("show: path filter dropped", SHOW, "if not ta.CHECKPOINT_PATH_RE.search(fp):", "if False:"),
+    ("show: visible-spec silence dropped", SHOW,
+     'if ta.has_goal_spec("\\n".join(it["text"] for it in items if it["kind"] == "text")):', "if False:"),
+    ("show: subagent exemption dropped", SHOW, 'if data.get("agent_id"):', "if False:"),
+    ("show: event filter dropped", SHOW, 'data.get("hook_event_name") != "PostToolUse" or ', ""),
+    ("show: excerpt not cut at the next section", LIB, "    if nxt:\n        body = body[:nxt.start() + 3]\n",
+     "    if False:\n        body = body[:nxt.start() + 3]\n"),
     ("tool filter widened to every tool", HOOK,
      'if tool not in ("Bash", "Write", "Edit", "MultiEdit", "NotebookEdit"):', "if False:"),
     ("NotebookEdit dropped from the filter", HOOK,
@@ -155,25 +207,26 @@ MUTATIONS = [
     ("visible spec ignored", LIB,
      'return not has_goal_spec("\\n".join(it["text"] for it in items if it["kind"] == "text"))',
      "return True"),
-    ("checkpoint spec releases the brake", HOOK,
-     "if not ta.spec_brake_armed(items):",
-     "if ta.transcript_signals(data.get(\"transcript_path\"))[\"goal_spec\"] or not "
-     "ta.transcript_signals(data.get(\"transcript_path\"))[\"goalspec_entered\"]:"),
     ("evidence dropped from the deny", HOOK,
-     "ta.SPEC_BRAKE_REASON + ta.spec_brake_evidence(items)", "ta.SPEC_BRAKE_REASON"),
+     "ta.SPEC_BRAKE_REASON.format(path=path) + ta.spec_brake_evidence(items)",
+     "ta.SPEC_BRAKE_REASON.format(path=path)"),
     ("evidence counts nothing", LIB, "% (len(texts), last))", "% (0, last))"),
     ("reason loses the later-message clause", LIB, "call the tool again in a LATER message",
      "call the tool again"),
     ("reason loses the thinking clause", LIB,
-     "this call cannot be seen yet. A spec you wrote or planned only in your thinking does not \"\n"
-     "    \"count",
-     "this call cannot be seen yet. Your plan \"\n    \"counts"),
+     "reply. A spec you wrote or planned only in your thinking does not count, even if you believe ",
+     "reply. Your plan counts, even if you believe "),
+    ("checkpoint spec no longer releases", LIB,
+     'if any(it["kind"] == "goal_spec_file" for it in items):', "if False:"),
+    ("reason path not filled", HOOK, 'ta.SPEC_BRAKE_REASON.format(path=path)',
+     'ta.SPEC_BRAKE_REASON.format(path=".goalspec/checkpoint-<session>.md")'),
 ]
 
 
 def suite(plugin):
     rows = [(name, want, run(plugin, build())) for name, build, want in CASES]
     rows += [(name, want, run(plugin, build(), env)) for name, build, env, want in ENV_CASES]
+    rows += [(name, want, run_show(plugin, build())) for name, build, want in SHOW_CASES]
     return rows
 
 

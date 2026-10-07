@@ -1,7 +1,7 @@
 name: tests
 
 # The plugin is a skill + hooks + docs, so there is nothing to build and nothing to deploy. What
-# there IS: thirteen hermetic branch suites that drive the hook scripts, one rule-carrier check, and
+# there IS: fourteen hermetic branch suites that drive the hook scripts, one rule-carrier check, and
 # a manifest/wiring check. All of them are pure `python3` + `bash` + `git`, with no network, no
 # credential and no Claude Code install — which is exactly why they are worth running here.
 #

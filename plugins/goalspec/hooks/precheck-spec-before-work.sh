@@ -6,12 +6,15 @@
 # loads the goalspec loop reads one or two files and goes straight to Bash: no visible spec before
 # the first Bash in 0 of 6 runs on 0.47.0, 0 of 6 on 0.44.0, 0 of 6 on another task, and 1 of 6 on
 # 0.48.0, whose entry nudge (nudge-spec-on-entry.sh) fired in all six. Two agents then claimed in
-# writing they had posted the spec at the start; it existed only in their thinking. Without a shell
+# writing they had posted the spec at the start; no visible text held one. Without a shell
 # the same agents posted it 6 of 6. A reminder does not reach an agent that believes it complied.
 #
-# What it does: while this session has entered the goalspec loop and posted no `## Goal-spec` as
-# visible text (terminal_actions.spec_brake_armed), it denies Bash, Write, Edit, MultiEdit and
-# NotebookEdit, with a reason that says how to release it. It does NOT hold: Read/Grep/Glob (not
+# What it does: while this session has entered the goalspec loop and has no `## Goal-spec` -- in
+# visible text or written to its .goalspec/ checkpoint (terminal_actions.spec_brake_armed) -- it
+# denies Bash, Write, Edit, MultiEdit and NotebookEdit, with a reason that names the exact
+# checkpoint path to write (from the payload session_id). v1/v2 accepted visible text only and left
+# 2 of 6 agents stuck; a Write call is a tool call they do make, and show-checkpoint-spec.sh shows
+# its spec to the human. It does NOT hold: Read/Grep/Glob (not
 # matched — grounding the spec needs them), a write under .goalspec/ (the checkpoint), any tool
 # call made inside a subagent (the payload carries agent_id; its transcript_path is the parent's,
 # so without this an explorer spawned before the spec would be held for the parent's missing spec),
@@ -62,9 +65,12 @@ items = ta.read_transcript_items(data.get("transcript_path"))
 if not ta.spec_brake_armed(items):
     sys.exit(0)
 
+sid = str(data.get("session_id") or "").strip()
+path = ".goalspec/checkpoint-%s.md" % sid if sid and "/" not in sid else ".goalspec/checkpoint-<session>.md"
+reason = ta.SPEC_BRAKE_REASON.format(path=path) + ta.spec_brake_evidence(items)
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                          "permissionDecision": "deny",
-                                         "permissionDecisionReason": ta.SPEC_BRAKE_REASON + ta.spec_brake_evidence(items)}}))
+                                         "permissionDecisionReason": reason}}))
 ' 2>/dev/null)
 
 [ -z "$RESULT" ] && exit 0
