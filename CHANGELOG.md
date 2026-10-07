@@ -6,7 +6,7 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
-## [Unreleased] - rama `spec-brake`
+## [0.49.0] - 2026-10-07
 
 ### Un freno: sin spec no se trabaja
 
