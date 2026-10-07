@@ -300,6 +300,13 @@ instead, which is the fail-open path working as designed, not a regression; the 
 stays strict because that fallback is not what a normal, unsandboxed run (every real CI job) should
 ever show.
 
+**32** covers that fallback's attribution (p-55cec2045a). An unborn repo (no commit) cannot be
+isolated, so the partner reviews the live shared tree, where a parallel session's write looks the
+same as the partner's. The hold must still degrade, and the message must name the other-writer
+reading with its evidence bar (name the other writer, or the partner reading stands). Commits
+already had that hedge; file paths did not. **16/17/19** assert the other half: isolated, the hedge
+must not appear, because nothing else writes to the private copy.
+
 Cases **16/17/19** pin the read-only rail (0.44.0), and **18** is its control. **16 is the
 discriminating one**: the stub appends to a file the fixture repo has *already* modified, so the
 `git status` porcelain line is byte-identical before and after — a status-based fingerprint passes

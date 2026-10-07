@@ -221,6 +221,14 @@ CASES = [
      "tail20+verdict+rcnote"),
     ("31-mutated-break-note-survives-tail", "STUB_MUTATE_BREAK_PAD", {"_PIPE": "tail -20"},
      "MUTREPO", "tail20+verdict+mutnote+path"),
+    # --- the other-writer hedge, un-isolated fallback (p-55cec2045a). An UNBORN repo (no commit)
+    # skips isolation, so the partner reviews the live shared tree — where a parallel session's write
+    # is indistinguishable from the partner's. The hold must still degrade (the tree changed
+    # mid-flight, whoever did it) AND the message must name the other-writer reading with its
+    # evidence bar. 16/17/19 are the other half: isolated, the hedge must NOT appear (+otherwriter
+    # there is a failure), because nothing else writes to the private copy.
+    ("32-unisolated-mutation-hedged", "STUB_MUTATE", {}, "MUTREPO_UNBORN",
+     "mutation-unverified+otherwriter"),
 ]
 
 
@@ -323,6 +331,21 @@ echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
 """ % (MODEL, HOLD)
+
+
+def make_mutrepo_unborn(workdir, name):
+    """Same dirty state as make_mutrepo but with NO commit: HEAD is unborn, so the hook cannot build
+    its private review copy and falls back to reviewing the live repo (case 32)."""
+    root = tempfile.mkdtemp(prefix="mutrepo-unborn-" + name + "-", dir=workdir)
+    os.makedirs(os.path.join(root, ".goalspec"))
+    subprocess.run(["git", "init", "-q", root], check=True, capture_output=True)
+    with open(os.path.join(root, ".gitignore"), "w") as f:
+        f.write("/.goalspec/\n")
+    with open(os.path.join(root, "tracked.txt"), "w") as f:
+        f.write("uncommitted work under review\n")
+    with open(os.path.join(root, ".goalspec", "checkpoint-suite.md"), "w") as f:
+        f.write("# checkpoint\n")
+    return root
 
 
 def make_mutrepo(workdir, name):
@@ -480,13 +503,13 @@ def classify(res, case_name):
         warned = "returned a filled 'break'" in err
         branch = ("pass+rcwarned" if kept and warned
                   else ("break-suppressed" if not kept else "pass+rcsilent"))
-    if case_name[:2] in ("16", "17", "19"):
+    if case_name[:2] in ("16", "17", "19", "32"):
         # Two halves, both required: the hook must SAY the partner modified the tree, and it must
         # NAME the path. A warning that cannot name what changed sends the operator to a blank
         # `git status` on an already-dirty tree — the same blindness the content fingerprint exists
         # to remove.
         said = "MODIFIED the repository" in err
-        named = ("tracked.txt" in err if case_name[:2] in ("16", "17")
+        named = ("tracked.txt" in err if case_name[:2] in ("16", "17", "32")
                  else "checkpoint-suite.md" in err)
         if said and named:
             # 16/19: the clean hold is degraded, so stdout must carry a hold and stderr must say so.
@@ -504,6 +527,11 @@ def classify(res, case_name):
                           else "mutation-not-degraded")
         else:
             branch += "+mutation-missed" if not said else "+mutation-unnamed"
+        # The other-writer hedge: required un-isolated (32), forbidden isolated (16/17/19). Both
+        # halves need the evidence bar, or the hedge is a free pass for blaming "another session".
+        if "ANOTHER WRITER" in err:
+            branch += ("+otherwriter" if "evidence naming the other writer" in err
+                       and "the partner reading stands" in err else "+otherwriter-no-evidence-bar")
     if case_name.startswith("22") or case_name.startswith("23"):
         branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
     if case_name.startswith("24"):
@@ -548,6 +576,8 @@ def suite(hook, workdir):
         pipe = env.pop("_PIPE", None)
         if cwd == "WORKDIR":
             run_cwd = workdir
+        elif cwd == "MUTREPO_UNBORN":
+            run_cwd = make_mutrepo_unborn(workdir, name)
         elif cwd == "MUTREPO":
             run_cwd = make_mutrepo(workdir, name)
         else:

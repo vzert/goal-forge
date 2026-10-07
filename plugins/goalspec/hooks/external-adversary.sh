@@ -609,6 +609,21 @@ _adv_print_landed_commits() {
   fi
   printf '%s\n' "$LANDED_COMMITS"
 }
+# THE OTHER-WRITER HEDGE for file content, un-isolated fallback only (p-55cec2045a). Commits already
+# got this hedge above; paths did not, so the 2026-10-06 shape — a parallel session of the same
+# project writing a file (no commit) during a round — read as a flat "the partner MODIFIED the
+# repository". Isolated, nothing else writes to REVIEW_ROOT and the partner reading stands alone
+# (case 24 pins that); un-isolated, the hook cannot tell who wrote. The verdict stays degraded either
+# way — the reviewed tree changed mid-flight whoever did it — so this changes the attribution, never
+# the gate. Same evidence bar as hooks/report-adversary-writes.sh, so the third reading is not a free
+# pass. Case 32 requires it; cases 16/17/19 require its absence when isolated.
+_adv_print_other_writer_hedge() {
+  [ "$ISOLATED" = "1" ] && return 0
+  echo "This review ran UN-ISOLATED, on the live shared repository, so ANOTHER WRITER — a parallel"
+  echo "session on the same project, the human, a hook — may have changed these paths instead of the"
+  echo "partner; this hook cannot tell which. Claim that only with evidence naming the other writer"
+  echo "(the session and what it wrote); without it, the partner reading stands."
+}
 if [ -n "$MUTATED" ]; then
   if printf '%s' "$VERDICT" | grep -qE '\[ADVERSARY-VERDICT:[[:space:]]*hold'; then
     echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
@@ -618,6 +633,7 @@ if [ -n "$MUTATED" ]; then
       echo "not read it as a pass. Paths whose content changed during the run:"
       printf '%s\n' "$MUTATED" | sed 's/^/  /'
       _adv_print_landed_commits
+      _adv_print_other_writer_hedge
       echo "Decide yourself whether to keep or revert them — this hook does not touch files it does"
       echo "not own. Then re-run the review over a tree nobody edited mid-flight. Partner output:"
       printf '%s\n' "$OUT" 2>/dev/null | head -40
@@ -657,6 +673,7 @@ if [ -n "$MUTATED" ]; then
     echo "had already changed — re-derive each before acting. Paths whose content changed:"
     printf '%s\n' "$MUTATED" | sed 's/^/  /'
     _adv_print_landed_commits
+    _adv_print_other_writer_hedge
   } >&2
 fi
 

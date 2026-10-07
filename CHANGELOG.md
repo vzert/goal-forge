@@ -22,6 +22,28 @@ cambia.
 - `test/gate-branches.py` da la misma salida con la librería anterior y la nueva, en modo default y
   con `GOAL_GATE_ENFORCE=1`.
 
+### El aviso de escrituras del adversario ya no supone un solo escritor
+
+Observado 2026-10-06: otra sesión del mismo proyecto escribió `.goalspec/informe-sin-spec.md`
+mientras un goal-adversary revisaba, y el aviso solo podía culpar al adversario o al ejecutor.
+
+- **Adversario subagente** (`hooks/report-adversary-writes.sh`): el aviso da tres lecturas en vez de
+  dos. La tercera es otro escritor (una sesión paralela, el humano). Pide pruebas: nombrar al otro
+  escritor y mostrar que ni el ejecutor ni el adversario escribieron esa ruta. Sin eso, el veredicto
+  sigue sin verificar. El mensaje corto en español dice "el adversario, tú u otra sesión".
+  `SKILL.md` dice lo mismo. Se descartó limitar la huella a las rutas del payload: `SubagentStart`
+  no trae el prompt, y el incidente del 2026-09-12 fue un adversario que escribió en cinco archivos
+  que nadie le había señalado.
+- **Adversario externo** (`hooks/external-adversary.sh`): en el uso normal ya revisaba una copia
+  privada del repo (0.44.9), donde otra sesión no escribe. Cuando no puede crearla y revisa el repo
+  compartido, el aviso de archivos ahora admite otro escritor con la misma exigencia de pruebas, como
+  ya lo hacía el aviso de commits. El `hold` se sigue degradando a no verificado.
+- Casos nuevos: `12-third-reading` en `test/adversary-report-branches.py` (con tres mutaciones en
+  `--selftest`) y `32-unisolated-mutation-hedged` en `test/external-adversary-branches.py`; los casos
+  16/17/19 de esa suite ahora exigen que el matiz NO aparezca con la copia privada. Contra los hooks
+  anteriores solo cambian 12 y 32.
+- Es texto: ningún hook distingue mecánicamente entre "editó el ejecutor" y "escribió otra sesión".
+
 ## [0.48.0] - 2026-10-06
 
 ### Cargar goalspec sin escribir el spec ya no deja el cierre sin control
