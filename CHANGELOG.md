@@ -15,14 +15,19 @@ vivo y avisa. Hasta 0.49.1 el error de `mktemp` y el de `git worktree add` iban 
 fallaba `mktemp` no salía ningún aviso. Codex reportó 4 veces el caso 09 en rojo sin causa
 (p-e4b53e7c57).
 
-- El aviso ahora termina en `Cause:` con la primera línea del error de la herramienta que falló.
-  Si `mktemp` falla, sale un aviso que antes no existía.
+- El aviso ahora termina en `Cause:` con la línea del error de la herramienta que falló: la primera
+  que empieza con `fatal:` o `error:`, o si no hay, la primera no vacía. Si `mktemp` falla, sale un
+  aviso que antes no existía. Si `worktree add` sale bien y falla la copia del estado sin commit, la
+  causa dice eso; lo que git imprimió al salir bien (la salida de un hook `post-checkout`) no cuenta.
+  Un adversario encontró ese caso en el primer borrador.
 - Medido una vez en el sandbox `workspace-write` de codex, con la suite corrida desde un worktree
   enlazado cuyo `.git` común vive en otro directorio: el rojo del caso 09 viene de `mktemp` sobre ese
   `.git` (`Operation not permitted`), no de `worktree add`. No se midió desde un checkout normal. Ese
   rojo sigue siendo esperado ahí. El `expect` del caso 09 no cambia.
-- `test/external-adversary-branches.py`: casos 36 (`worktree add` falla) y 37 (`mktemp` falla).
-  Contra 0.49.1 dan `pass+nocause` y `pass+silent`. El 37 necesita un usuario que no sea root.
+- `test/external-adversary-branches.py`: casos 36 (`worktree add` falla), 37 (`mktemp` falla) y 38
+  (un hook ruidoso y luego falla la copia). Contra 0.49.1 dan `pass+nocause`, `pass+silent` y
+  `pass+nocause`. Los tres exigen además que el partner corra en el repo en vivo. El 37 y el 38
+  necesitan un usuario que no sea root.
 
 ## [0.49.1] - 2026-10-07
 

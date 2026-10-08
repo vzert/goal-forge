@@ -43,7 +43,9 @@ The two 0.21.1 fixes are the point of this file:
   hold UNVERIFIED, and require the unprefixed notice as the LAST line. All three fail against 0.48.1.
 * Isolation fallback names its cause (0.49.2) — case 36 blocks `git worktree add`, 37 blocks `mktemp`
   (needs a non-root user); both must fall back un-isolated AND print the tool's first error line.
-  Against 0.49.1 they are `pass+nocause` and `pass+silent`.
+  Against 0.49.1 they are `pass+nocause` and `pass+silent`. 38: `worktree add` succeeds but a
+  post-checkout hook writes to stderr, then the copy fails — the cause must be the copy, not the hook.
+  All three also require the partner to have run in the live repo (fail-open).
 
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
@@ -260,8 +262,12 @@ CASES = [
     # (.git/worktrees is a FILE, so git cannot create its admin dir); 37 blocks `mktemp` itself
     # (.git read-only), a path that printed no notice at all. Both must still review un-isolated
     # (fail-open) AND carry the tool's own first error line. Against 0.49.1: +nocause / +silent.
-    ("36-worktree-add-fails-names-cause", "STUB_CLEAN", {}, "MUTREPO_WTBLOCKED", "pass+cause:git"),
-    ("37-mktemp-fails-names-cause", "STUB_CLEAN", {}, "MUTREPO_GCDREADONLY", "pass+cause:mktemp"),
+    ("36-worktree-add-fails-names-cause", "STUB_PWD", {}, "MUTREPO_WTBLOCKED", "pass+cause:git"),
+    ("37-mktemp-fails-names-cause", "STUB_PWD", {}, "MUTREPO_GCDREADONLY", "pass+cause:mktemp"),
+    # 38: `worktree add` SUCCEEDS but a post-checkout hook writes to git's stderr (husky, git-lfs),
+    # then the copy step fails on an unreadable untracked file. The first 0.49.2 draft named the
+    # hook's line as the cause; an adversary round found it. The cause must be the copy step.
+    ("38-hook-noise-is-not-the-cause", "STUB_PWD", {}, "MUTREPO_HOOKNOISE", "pass+cause:copy"),
 ]
 
 
@@ -576,6 +582,20 @@ def classify(res, case_name):
                        and "the partner reading stands" in err else "+otherwriter-no-evidence-bar")
     if case_name.startswith("22") or case_name.startswith("23"):
         branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
+    if case_name[:2] in ("36", "37", "38"):
+        # Fail-open, not just a notice: the partner must have run in the LIVE repo (the dir that
+        # holds the common .git), never in a half-built review copy.
+        m = re.search(r"STUB-PWD=(.+)", out)
+        g = re.search(r"STUB-GCD=(.+)", out)
+        live = bool(m and g) and os.path.realpath(m.group(1).strip()) == \
+            os.path.dirname(os.path.realpath(g.group(1).strip()))
+        if not live:
+            return branch + "+not-live"
+    if case_name[:2] == "38":
+        line = re.search(r"Cause: (.*)", err)
+        cause = line.group(1) if line else ""
+        branch += "+cause:copy" if "copying the uncommitted state into it failed" in cause else (
+            "+cause:hooknoise" if "post-checkout" in cause else "+nocause")
     if case_name[:2] == "36":
         named = ("could not materialize an isolated review copy" in err
                  and re.search(r"Cause: fatal: .*worktrees", err))
@@ -636,6 +656,16 @@ def suite(hook, workdir):
         elif cwd == "MUTREPO_WTBLOCKED":
             run_cwd = make_mutrepo(workdir, name)
             open(os.path.join(run_cwd, ".git", "worktrees"), "w").close()
+        elif cwd == "MUTREPO_HOOKNOISE":
+            run_cwd = make_mutrepo(workdir, name)
+            hook_path = os.path.join(run_cwd, ".git", "hooks", "post-checkout")
+            os.makedirs(os.path.dirname(hook_path), exist_ok=True)
+            with open(hook_path, "w") as f:
+                f.write("#!/bin/sh\necho 'husky - post-checkout hook ran' >&2\n")
+            os.chmod(hook_path, 0o755)
+            secret = os.path.join(run_cwd, "secret.txt")
+            open(secret, "w").close()
+            os.chmod(secret, 0)
         elif cwd == "MUTREPO_GCDREADONLY":
             run_cwd = make_mutrepo(workdir, name)
             readonly.append(os.path.join(run_cwd, ".git"))
