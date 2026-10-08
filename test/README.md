@@ -399,6 +399,10 @@ python3 test/external-adversary-branches.py
 python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28,29,30,31
 ```
 
+The `--expected` list above is the one a past edit used; it is per edit, not a standing list. Name
+the cases your change is meant to move and nothing else. For 0.49.2 against the 0.49.1 hook it is
+`--expected 36,37,38`.
+
 Every case carries an `expect` asserted on every run, so the suite is self-verifying without a
 baseline copy; `--compare` works like the gate suite's when the hook is edited again.
 
