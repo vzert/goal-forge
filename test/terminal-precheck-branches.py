@@ -94,7 +94,8 @@ def transcript(events, name):
                                 "input": {"command": ev["bash"]}})
             if "write" in ev:
                 fp, body = ev["write"]
-                content.append({"type": "tool_use", "name": "Write", "input": {"file_path": fp, "content": body}})
+                content.append({"type": "tool_use", "name": "Write", "id": ev.get("write_id"),
+                                "input": {"file_path": fp, "content": body}})
             if "text" in ev:
                 content.append({"type": "text", "text": ev["text"]})
             fh.write(json.dumps({"type": "assistant", "message": {"content": content}}) + "\n")
@@ -763,6 +764,16 @@ case("97-merge-base-in-subshell-is-not-a-merge-ALLOW", lambda: run_hook(
 case("98-merge-base-then-real-merge-DENY", lambda: run_hook(
     make_repo("98", None, None), "git merge-base HEAD origin/main && git merge origin/main",
     transcript([{"text": SPEC_TEXT}], "98")))
+
+# 0.50.1 (p-5b005aba6e): a checkpoint Write whose result is an error wrote no spec, so with no
+# spec in text and no goalspec entry nothing arms the precheck. This LOOSENS it on purpose (before,
+# the denied Write armed it): over 9953 local transcripts no session had a failed checkpoint Write
+# as its only spec signal. Case 20 is the same transcript without the error result.
+case("99-denied-checkpoint-write-is-no-spec-ALLOW", lambda: run_hook(
+    make_repo("99", None, {"src/app.js": "code"}), "git push origin main",
+    transcript([{"write": (".goalspec/checkpoint.md", SPEC_TEXT), "write_id": "w1"},
+                {"user": [{"type": "tool_result", "tool_use_id": "w1", "is_error": True,
+               "content": "Error: denied by hook"}]}], "99")))
 
 
 def run_hook_raw(payload):

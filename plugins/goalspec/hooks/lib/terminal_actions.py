@@ -578,6 +578,13 @@ def _collect_event(ev, items, state=None):
                 items.append(rv)
         ucontent0 = (ev.get("message") or {}).get("content")
         for blk in (ucontent0 if isinstance(ucontent0, list) else []):
+            # 0.50.1 (p-5b005aba6e): a checkpoint Write/Edit whose result is an error never wrote the
+            # spec, so read_transcript_items drops its goal_spec_file item. Measured over the last
+            # 400 local transcripts: all 24 failed Write/Edit results (permission or hook denied,
+            # file not read, tool disabled) carry is_error true; the 913 that succeeded do not. A
+            # call with no result yet still counts: a parallel call's hook can run before it lands.
+            if isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is True:
+                state.setdefault("failed_tool_uses", set()).add(blk.get("tool_use_id"))
             if isinstance(blk, dict) and blk.get("type") == "tool_result" \
                     and blk.get("tool_use_id") in state["adversary_spawns"]:
                 rtext = _tool_result_text(blk.get("content"))
@@ -692,7 +699,7 @@ def _collect_event(ev, items, state=None):
                     v = ti.get(key)
                     if isinstance(v, str) and re.search(GOAL_SPEC_RE, v, re.I):
                         items.append({"kind": "goal_spec_file", "timestamp": ts, "text": v,
-                                      "path": fp.replace("\\", "/")})
+                                      "path": fp.replace("\\", "/"), "id": blk.get("id")})
 
 
 def read_transcript_items(transcript_path):
@@ -727,7 +734,9 @@ def read_transcript_items(transcript_path):
                     continue
     except Exception:
         return []
-    return items
+    failed = state.get("failed_tool_uses") or set()
+    return [it for it in items
+            if not (it["kind"] == "goal_spec_file" and it.get("id") is not None and it["id"] in failed)]
 
 
 def last_completion_review_index(items):
@@ -778,8 +787,9 @@ def interview_handoff_pending(items, require_work=False):
     0.46.0). The PostToolUse(AskUserQuestion) path does not require it: that is the handoff moment.
 
     What counts as starting the spec is the plugin-wide signal (has_goal_spec on assistant text, a
-    checkpoint Write, a Skill call to the loop), read from the transcript as written: a Skill or
-    Write call that then failed still counts. For an advisory nudge that errs toward silence."""
+    checkpoint Write, a Skill call to the loop), read from the transcript as written: a Skill call
+    that then failed still counts; a checkpoint Write whose result is an error does not (0.50.1).
+    For an advisory nudge that errs toward silence."""
     last_iv = None
     for i, it in enumerate(items):
         if it["kind"] == "goalspec_entry" and it.get("skill") == "interview":
@@ -906,9 +916,10 @@ def spec_brake_armed(items, session_id=None, cwd=None):
     deny wording moved them. A Write call is a tool call, not a claim about their own output, so
     it is accepted; hooks/show-checkpoint-spec.sh puts what they wrote in front of the human.
     The interview alone does not arm it (it hands off to the loop, and the loop arms it), and
-    neither does goalspec:adversary, which is not an entry. A Write is counted when requested,
-    not when it succeeds; limiting it to this session's own path is what keeps a denied write to
-    another session's file from counting."""
+    neither does goalspec:adversary, which is not an entry. Since 0.50.1 a Write whose result is
+    an error does not count (read_transcript_items drops it); one with no result yet still does.
+    Limiting it to this session's own path stays: a Write to another session's file that succeeds
+    is still not this session's spec."""
     if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
         return False
     own = own_checkpoint_re(session_id)

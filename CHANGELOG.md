@@ -6,6 +6,28 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [Unreleased]
+
+### Cambiado
+- `hooks/lib/terminal_actions.py`: un Write/Edit al checkpoint cuyo `tool_result` trae
+  `is_error: true` ya no cuenta como spec escrito (p-5b005aba6e). Antes contaba la llamada, no su
+  resultado. Si el resultado todavía no llegó, el Write sigue contando, porque el hook de una
+  llamada en paralelo puede correr antes de que llegue. El freno era el que más lo sufría: un Write
+  negado lo liberaba sin que hubiera spec en disco. `precheck-checkpoint-overwrite.sh` ya exigía un
+  resultado bueno desde antes.
+- Afecta a todos los que leen la librería. El freno, `interview_handoff_pending` y el aviso de
+  entrada se vuelven más estrictos. El Stop gate y el precheck de push se aflojan: un Write negado
+  ya no los arma. Medido en 9953 transcripts locales: 73 sesiones escribieron el spec al checkpoint;
+  en 4 todos esos Write fallaron, y las 4 tenían también el spec en texto visible, así que ninguna
+  sesión real perdió el gate ni el precheck. En 937 resultados de Write/Edit, `is_error` aparece
+  solo en los 24 que fallaron, y siempre como `true`.
+- Casos nuevos: `spec-brake-branches` 09j (Write negado: freno niega), 09k (Write bien: libera), 09l
+  (falla otra llamada: libera) y una mutación; `gate-branches` checkpoint-08 (Write negado, sin spec
+  en texto: silencio) y `terminal-precheck-branches` 99 (Write negado, sin entrada: push permitido).
+  Paridad medida cambiando la librería en su sitio: gate y precheck, en modo normal y con
+  `GOAL_GATE_ENFORCE=1`, dan salida idéntica a la de antes salvo esas filas, y los tres casos que
+  distinguen (09j, checkpoint-08, 99) fallan con la librería anterior.
+
 ## [0.50.0] - 2026-10-08
 
 ### Cada subagente nombra su modelo según su tarea

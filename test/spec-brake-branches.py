@@ -38,12 +38,18 @@ def transcript(events, name):
                 fh.write(json.dumps({"type": "user", "message": {"content": [
                     {"type": "text", "text": ev["typed"]}]}}) + "\n")
                 continue
+            if "result" in ev:  # the tool_result of an earlier call, by tool_use id
+                tid, is_error = ev["result"]
+                fh.write(json.dumps({"type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": tid, "is_error": is_error,
+                     "content": "Error: denied by hook" if is_error else "File created"}]}}) + "\n")
+                continue
             content = []
             if "skill" in ev:
                 content.append({"type": "tool_use", "name": "Skill", "input": {"skill": ev["skill"]}})
             if "write" in ev:
                 fp, body = ev["write"]
-                content.append({"type": "tool_use", "name": "Write",
+                content.append({"type": "tool_use", "name": "Write", "id": ev.get("id", "w0"),
                                 "input": {"file_path": fp, "content": body}})
             if "thinking" in ev:
                 content.append({"type": "thinking", "thinking": ev["thinking"]})
@@ -128,6 +134,17 @@ CASES = [
     # Release round (codex): another session's checkpoint never releases it, nor a bare heading.
     ("09e-foreign-checkpoint-denies",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-other-session.md", SPEC)}], "09e"), "deny-none"),
+    # 0.50.1 (p-5b005aba6e): a checkpoint Write whose result is an error wrote nothing, so it
+    # never releases the brake; a successful result, or another call's error, leaves it counted.
+    ("09j-denied-checkpoint-write-denies",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC), "id": "w1"},
+                  {"result": ("w1", True)}], "09j"), "deny-none"),
+    ("09k-successful-checkpoint-write-allows",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC), "id": "w1"},
+                  {"result": ("w1", False)}], "09k"), "allow"),
+    ("09l-other-calls-error-still-allows",
+     lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC), "id": "w1"},
+                  {"result": ("b9", True)}], "09l"), "allow"),
     ("09f-bare-heading-checkpoint-denies",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", BARE)}], "09f"), "deny-none"),
     ("10b-bare-heading-text-denies", lambda: pre([LOAD, {"text": BARE}], "10b"), "deny-quotes-bare"),
@@ -264,6 +281,9 @@ MUTATIONS = [
      'it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")', 'it["kind"] == "goal_spec_file"'),
     ("working-directory restriction dropped", LIB,
      '           and _in_own_root(it.get("path") or "", cwd, roots)\n', ""),
+    ("denied checkpoint write still counts", LIB,
+     'blk.get("type") == "tool_result" and blk.get("is_error") is True:',
+     'blk.get("type") == "tool_result" and False:'),
     ("session id not validated", HOOK, 'if ta.SESSION_ID_RE.fullmatch(sid) else', 'if sid else'),
     ("fallback path back to a placeholder", HOOK, 'else ".goalspec/checkpoint.md"',
      'else ".goalspec/checkpoint-<session>.md"'),

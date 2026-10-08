@@ -413,7 +413,8 @@ def stale_transcript(events, name):
                 content.append({"type": "tool_use", "name": "Bash", "input": {"command": ev["bash"]}})
             if "write" in ev:
                 fp, body = ev["write"]
-                content.append({"type": "tool_use", "name": "Write", "input": {"file_path": fp, "content": body}})
+                content.append({"type": "tool_use", "name": "Write", "id": ev.get("write_id"),
+                                "input": {"file_path": fp, "content": body}})
             if "user" in ev:
                 # A user event (0.48.0): a typed `/goalspec` reaches the transcript only as the
                 # harness's `<command-name>` tag inside one.
@@ -597,6 +598,17 @@ CHECKPOINT_GOALSPEC_CASES = [
       {"write": (".goalspec/checkpoint.md", SPEC)},
       {"text": "first parked turn after the disk-only spec."}],
      "completion-review:absent"),
+    # 0.50.1 (p-5b005aba6e): a checkpoint Write whose result is an error wrote no spec, so it no
+    # longer arms the gate. This LOOSENS the gate on purpose (before, a denied Write armed it):
+    # measured over 9953 local transcripts, 4 sessions had only failed checkpoint Writes and all 4
+    # also had the spec in visible text, so no real session lost the gate. A session that loaded
+    # the loop is still caught by the entered-no-spec branch.
+    ("checkpoint-08-denied-checkpoint-write-is-no-spec-SILENT",
+     [{"write": (".goalspec/checkpoint-a1b2c3.md", SPEC), "write_id": "w1"},
+      {"user": [{"type": "tool_result", "tool_use_id": "w1", "is_error": True,
+               "content": "Error: denied by hook"}]},
+      {"text": "still working on it."}],
+     None),
 ]
 
 
