@@ -6,6 +6,23 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.49.2] - 2026-10-07
+
+### El aviso de aislamiento dice por qué falló
+
+`external-adversary.sh` intenta revisar una copia aislada del repo. Si no puede, revisa el repo en
+vivo y avisa. Hasta 0.49.1 el error de `mktemp` y el de `git worktree add` iban a `/dev/null`, y si
+fallaba `mktemp` no salía ningún aviso. Codex reportó 4 veces el caso 09 en rojo sin causa
+(p-e4b53e7c57).
+
+- El aviso ahora termina en `Cause:` con la primera línea del error de la herramienta que falló.
+  Si `mktemp` falla, sale un aviso que antes no existía.
+- Medido en el sandbox `workspace-write` de codex: la causa real del rojo del caso 09 es `mktemp`,
+  no `worktree add`. El `.git` del repo queda fuera de las rutas en las que codex puede escribir
+  (`Operation not permitted`). Ese rojo sigue siendo esperado ahí. El `expect` del caso 09 no cambia.
+- `test/external-adversary-branches.py`: casos 36 (`worktree add` falla) y 37 (`mktemp` falla).
+  Contra 0.49.1 dan `pass+nocause` y `pass+silent`. El 37 necesita un usuario que no sea root.
+
 ## [0.49.1] - 2026-10-07
 
 ### Solo cuenta lo que bloquea; lo menor es una nota

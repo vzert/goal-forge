@@ -251,6 +251,14 @@ CASES = [
      "tail20+unverified+synthetic"),
     ("35-bare-hold-survives-filter", MODEL + "\n" + HOLD + "\n", {"_PIPE": FILTER}, None,
      "tail20+unverified+bare"),
+    # --- the isolation fallback names its cause (0.49.2, p-e4b53e7c57). Until then the stderr of
+    # `worktree add` and `mktemp` went to /dev/null, and a write-restricted partner sandbox reported
+    # case 09 red four times (2026-10-07) with no cause anyone could read. 36 blocks `worktree add`
+    # (.git/worktrees is a FILE, so git cannot create its admin dir); 37 blocks `mktemp` itself
+    # (.git read-only), a path that printed no notice at all. Both must still review un-isolated
+    # (fail-open) AND carry the tool's own first error line. Against 0.49.1: +nocause / +silent.
+    ("36-worktree-add-fails-names-cause", "STUB_CLEAN", {}, "MUTREPO_WTBLOCKED", "pass+cause:git"),
+    ("37-mktemp-fails-names-cause", "STUB_CLEAN", {}, "MUTREPO_GCDREADONLY", "pass+cause:mktemp"),
 ]
 
 
@@ -513,6 +521,9 @@ def classify(res, case_name):
             # environment (every real CI run, every ordinary dev checkout), and weakening it would
             # hide a genuine future regression there. A sandboxed reviewer seeing `pass+root`
             # instead is this fallback working as designed, not a new defect to re-report.
+            # 0.49.2: the dump of this red now names the cause. Measured inside codex's
+            # workspace-write sandbox, 2026-10-07: it is `mktemp` under the repo's .git
+            # (`Operation not permitted`), not `worktree add` — cases 36/37 pin both notices.
             branch += "+root"
         elif gcd == repo_git and seen.startswith(repo_git + os.sep):
             branch += "+isolatedroot"  # isolated review copy, provably under REPO's own git-common-dir
@@ -562,6 +573,16 @@ def classify(res, case_name):
                        and "the partner reading stands" in err else "+otherwriter-no-evidence-bar")
     if case_name.startswith("22") or case_name.startswith("23"):
         branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
+    if case_name[:2] == "36":
+        named = ("could not materialize an isolated review copy" in err
+                 and re.search(r"Cause: fatal: .*worktrees", err))
+        branch += "+cause:git" if named else (
+            "+nocause" if "could not materialize" in err else "+silent")
+    if case_name[:2] == "37":
+        named = ("could not create a directory for an isolated review copy" in err
+                 and re.search(r"Cause: mktemp: .*(Permission denied|Operation not permitted)", err))
+        branch += "+cause:mktemp" if named else (
+            "+nocause" if "isolated review copy" in err else "+silent")
     if case_name.startswith("24"):
         contaminated = "MODIFIED the repository" in err
         branch = "pass+isolated-immune" if (branch == "pass" and not contaminated) \
@@ -577,6 +598,7 @@ def suite(hook, workdir):
     with open(codex_path, "w") as f:
         f.write(CODEX_STUB)
     os.chmod(codex_path, 0o755)
+    readonly = []
     for name, transcript, env_extra, cwd, expect in CASES:
         env = dict(os.environ)
         env.pop("GOAL_ADVERSARY_ACTIVE", None)
@@ -608,11 +630,23 @@ def suite(hook, workdir):
             run_cwd = make_mutrepo_unborn(workdir, name)
         elif cwd == "MUTREPO":
             run_cwd = make_mutrepo(workdir, name)
+        elif cwd == "MUTREPO_WTBLOCKED":
+            run_cwd = make_mutrepo(workdir, name)
+            open(os.path.join(run_cwd, ".git", "worktrees"), "w").close()
+        elif cwd == "MUTREPO_GCDREADONLY":
+            run_cwd = make_mutrepo(workdir, name)
+            readonly.append(os.path.join(run_cwd, ".git"))
+            os.chmod(readonly[-1], 0o555)
         else:
             run_cwd = cwd or REPO
         argv = ["bash", "-c", 'bash "$1" 2>&1 | ' + pipe, "_", hook] if pipe else ["bash", hook]
-        res = subprocess.run(argv, input=PAYLOAD, capture_output=True,
-                             text=True, env=env, cwd=run_cwd, timeout=30)
+        try:
+            res = subprocess.run(argv, input=PAYLOAD, capture_output=True,
+                                 text=True, env=env, cwd=run_cwd, timeout=30)
+        finally:
+            # Restore write access, or TemporaryDirectory cannot clean the workdir up.
+            while readonly:
+                os.chmod(readonly.pop(), 0o755)
         rows.append((name, classify(res, name), expect, res))
     return rows
 

@@ -293,6 +293,16 @@ host-side only: from outside any git repo there is no root to resolve, so that b
 stderr instead of relocating (11), and a partner whose own sandbox denies writes the hook's process
 can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 
+**The fallback names its cause (0.49.2)**, cases **36/37**: when isolation fails the hook still
+reviews the live repo (fail-open), and now the notice carries the first error line of the step that
+failed. 36 blocks `git worktree add` (`.git/worktrees` is a file); 37 blocks `mktemp` (`.git`
+read-only), a path that printed no notice at all before. Run inside codex's `workspace-write`
+sandbox (2026-10-07), case 09 goes `pass+root` and the dump now shows the cause: `mktemp: ... .git/
+goalspec-review-...: Operation not permitted` — the repo's `.git` is outside codex's writable roots.
+That `pass+root` stays an expected red in that sandbox; 09's `expect` is not weakened. Against 0.49.1
+36 and 37 come back `pass+nocause` and `pass+silent`. 37 needs a non-root user (root ignores the
+`chmod`).
+
 **Reviewed-state isolation (0.44.9)**, cases **09/16/17/18/19/24**: the hook materializes the exact
 reviewed state into a private linked worktree under the repo's own `git-common-dir` before invoking
 the partner, so a concurrent writer sharing the repo (another local session's commit landing

@@ -490,19 +490,32 @@ if [ -n "$REPO_ROOT" ] && git -C "$REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; th
     # data-loss path directly. A prior run killed before its EXIT trap ran (SIGKILL, a crash)
     # leaves a stale goalspec-review-* registration and directory behind — harmless (nothing under
     # .git/ is visible to `git status`/`ls-files`) and left alone rather than risk this.
-    WORKTREE_DIR=$(mktemp -d "$GIT_COMMON_DIR/goalspec-review-XXXXXX" 2>/dev/null)
+    # The fallback notice names WHY isolation failed (p-e4b53e7c57): until 0.49.2 the stderr of
+    # `mktemp` and `worktree add` went to /dev/null, so a write-restricted partner sandbox reported
+    # case 09 red four times with no cause anyone could read. Only the first line of each — git's
+    # `fatal: ...` is one line — so the notice stays one line. A failed mktemp was silent outright.
+    # mktemp prints the path on stdout only on success, so merging stderr in yields EITHER the path
+    # OR the error — one call, no second directory created to read the message.
+    WORKTREE_DIR=""
+    if _ADV_ISO_ERR=$(mktemp -d "$GIT_COMMON_DIR/goalspec-review-XXXXXX" 2>&1); then
+      WORKTREE_DIR="$_ADV_ISO_ERR"
+    fi
     if [ -n "$WORKTREE_DIR" ]; then
       rmdir "$WORKTREE_DIR" 2>/dev/null
-      if git -C "$REPO_ROOT" worktree add --detach -q "$WORKTREE_DIR" HEAD >/dev/null 2>&1 \
+      _ADV_ISO_ERR=""
+      if _ADV_ISO_ERR=$(git -C "$REPO_ROOT" worktree add --detach -q "$WORKTREE_DIR" HEAD 2>&1 >/dev/null) \
          && _adv_materialize_reviewed_state "$REPO_ROOT" "$WORKTREE_DIR"; then
         REVIEW_ROOT="$WORKTREE_DIR"
         ISOLATED=1
         cd "$WORKTREE_DIR"
       else
-        echo "external-adversary: could not materialize an isolated review copy — reviewing $REPO_ROOT directly (un-isolated; same behavior as before this rail existed)." >&2
+        _ADV_ISO_ERR=$(printf '%s\n' "$_ADV_ISO_ERR" | sed -n '/./{p;q;}')
+        echo "external-adversary: could not materialize an isolated review copy — reviewing $REPO_ROOT directly (un-isolated; same behavior as before this rail existed). Cause: ${_ADV_ISO_ERR:-git worktree add succeeded; copying the uncommitted state into it failed (see any cp/mkdir error above)}" >&2
         _adv_cleanup_worktree
         WORKTREE_DIR=""
       fi
+    else
+      echo "external-adversary: could not create a directory for an isolated review copy under $GIT_COMMON_DIR — reviewing $REPO_ROOT directly (un-isolated). Cause: $(printf '%s\n' "$_ADV_ISO_ERR" | sed -n '/./{p;q;}')" >&2
     fi
   fi
 fi
