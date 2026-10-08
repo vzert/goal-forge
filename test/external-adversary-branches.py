@@ -647,6 +647,7 @@ def suite(hook, workdir):
             env["GOAL_ADVERSARY_CMD"] = "cat " + fixture
         env.update(env_extra)
         pipe = env.pop("_PIPE", None)
+        hook_marker = None
         if cwd == "WORKDIR":
             run_cwd = workdir
         elif cwd == "MUTREPO_UNBORN":
@@ -658,11 +659,18 @@ def suite(hook, workdir):
             open(os.path.join(run_cwd, ".git", "worktrees"), "w").close()
         elif cwd == "MUTREPO_HOOKNOISE":
             run_cwd = make_mutrepo(workdir, name)
-            hook_path = os.path.join(run_cwd, ".git", "hooks", "post-checkout")
-            os.makedirs(os.path.dirname(hook_path), exist_ok=True)
-            with open(hook_path, "w") as f:
-                f.write("#!/bin/sh\necho 'husky - post-checkout hook ran' >&2\n")
-            os.chmod(hook_path, 0o755)
+            # A repo-local core.hooksPath outranks a global/system one, which would otherwise make
+            # git skip .git/hooks and let this case pass against the buggy draft (an adversary
+            # reproduced that). The marker, outside the repo, proves the hook actually ran.
+            hooks_dir = os.path.join(run_cwd, ".git", "suite-hooks")
+            os.makedirs(hooks_dir)
+            hook_marker = run_cwd + ".hook-ran"
+            with open(os.path.join(hooks_dir, "post-checkout"), "w") as f:
+                f.write("#!/bin/sh\ntouch '%s'\necho 'husky - post-checkout hook ran' >&2\n"
+                        % hook_marker)
+            os.chmod(os.path.join(hooks_dir, "post-checkout"), 0o755)
+            subprocess.run(["git", "-C", run_cwd, "config", "core.hooksPath", hooks_dir],
+                           check=True, capture_output=True)
             secret = os.path.join(run_cwd, "secret.txt")
             open(secret, "w").close()
             os.chmod(secret, 0)
@@ -680,7 +688,10 @@ def suite(hook, workdir):
             # Restore write access, or TemporaryDirectory cannot clean the workdir up.
             while readonly:
                 os.chmod(readonly.pop(), 0o755)
-        rows.append((name, classify(res, name), expect, res))
+        branch = classify(res, name)
+        if hook_marker and not os.path.exists(hook_marker):
+            branch += "+hook-did-not-run"
+        rows.append((name, branch, expect, res))
     return rows
 
 

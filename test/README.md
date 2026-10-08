@@ -294,8 +294,8 @@ stderr instead of relocating (11), and a partner whose own sandbox denies writes
 can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 
 **The fallback names its cause (0.49.2)**, cases **36/37/38**: when isolation fails the hook still
-reviews the live repo (fail-open), and now the notice carries the first error line of the step that
-failed. 36 blocks `git worktree add` (`.git/worktrees` is a file); 37 blocks `mktemp` (`.git`
+reviews the live repo (fail-open), and now the notice carries one line of the failing step's error:
+its first `fatal:`/`error:` line, else its first non-empty line. 36 blocks `git worktree add` (`.git/worktrees` is a file); 37 blocks `mktemp` (`.git`
 read-only), a path that printed no notice at all before. Run inside codex's `workspace-write`
 sandbox (2026-10-07) from a linked worktree whose common `.git` lives elsewhere, case 09 goes
 `pass+root` and the dump now shows the cause: `mktemp: ... .git/goalspec-review-...: Operation not
@@ -304,7 +304,9 @@ That `pass+root` stays an expected red in that sandbox; 09's `expect` is not wea
 36 and 37 come back `pass+nocause` and `pass+silent`. **38** is the trap an adversary found in the
 first draft: `worktree add` succeeds but a post-checkout hook writes to git's stderr, then the copy
 fails on an unreadable file; the cause must name the copy, not the hook (the draft gives
-`pass+cause:hooknoise`). All three also require the stub to have run in the live repo. 37 and 38
+`pass+cause:hooknoise`). The fixture sets a repo-local `core.hooksPath` (a global one would make git
+skip the hook and the case pass vacuously, found in adversary round 2) and requires the hook's
+marker file, else `+hook-did-not-run`. All three also require the stub to have run in the live repo. 37 and 38
 need a non-root user (root ignores the `chmod`).
 
 **Reviewed-state isolation (0.44.9)**, cases **09/16/17/18/19/24**: the hook materializes the exact

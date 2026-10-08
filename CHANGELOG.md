@@ -26,7 +26,10 @@ fallaba `mktemp` no salía ningún aviso. Codex reportó 4 veces el caso 09 en r
   rojo sigue siendo esperado ahí. El `expect` del caso 09 no cambia.
 - `test/external-adversary-branches.py`: casos 36 (`worktree add` falla), 37 (`mktemp` falla) y 38
   (un hook ruidoso y luego falla la copia). Contra 0.49.1 dan `pass+nocause`, `pass+silent` y
-  `pass+nocause`. Los tres exigen además que el partner corra en el repo en vivo. El 37 y el 38
+  `pass+nocause`. Los tres exigen además que el partner corra en el repo en vivo. El 38 fija un
+  `core.hooksPath` propio del repo y exige el archivo que deja el hook: con un `core.hooksPath`
+  global, git no corría el hook y el caso pasaba contra el código con el fallo (lo encontró la
+  segunda ronda del adversario). El 37 y el 38
   necesitan un usuario que no sea root.
 
 ## [0.49.1] - 2026-10-07
