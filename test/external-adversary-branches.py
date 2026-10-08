@@ -41,6 +41,9 @@ The two 0.21.1 fixes are the point of this file:
 * Filter-proof UNVERIFIED line (0.48.2) — cases 33/34/35 run the hook through the filter an executor
   actually used (`grep -v '^external-adversary\|^  ' | tail -14`) on the three paths that mark a
   hold UNVERIFIED, and require the unprefixed notice as the LAST line. All three fail against 0.48.1.
+* Isolation fallback names its cause (0.49.2) — case 36 blocks `git worktree add`, 37 blocks `mktemp`
+  (needs a non-root user); both must fall back un-isolated AND print the tool's first error line.
+  Against 0.49.1 they are `pass+nocause` and `pass+silent`.
 
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
@@ -522,8 +525,8 @@ def classify(res, case_name):
             # hide a genuine future regression there. A sandboxed reviewer seeing `pass+root`
             # instead is this fallback working as designed, not a new defect to re-report.
             # 0.49.2: the dump of this red now names the cause. Measured inside codex's
-            # workspace-write sandbox, 2026-10-07: it is `mktemp` under the repo's .git
-            # (`Operation not permitted`), not `worktree add` — cases 36/37 pin both notices.
+            # workspace-write sandbox, 2026-10-07 (run from a linked worktree): it is `mktemp`
+            # under the common .git (`Operation not permitted`), not `worktree add` — 36/37 pin both.
             branch += "+root"
         elif gcd == repo_git and seen.startswith(repo_git + os.sep):
             branch += "+isolatedroot"  # isolated review copy, provably under REPO's own git-common-dir
