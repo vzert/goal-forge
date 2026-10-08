@@ -12,7 +12,10 @@ version bump are never delivered to already-installed users.
 
 Una corrida de goalspec en otro proyecto (2026-10-08) repartió su trabajo en 5 subagentes
 general-purpose en paralelo y no le pasó `model` a ninguno. Los 5 corrieron en el modelo de la
-sesión (Opus) para leer y clasificar alertas; el más grande leyó unos 18 millones de tokens de caché.
+sesión (Opus) para leer y clasificar alertas. El más grande pasaba de 18 millones de tokens leídos de caché
+(`cache_read_input_tokens` sumado sobre las respuestas de su JSONL de subagente, medido el
+2026-10-08 mientras seguía corriendo: 18,015,388 en 125 respuestas y, minutos después, 18,747,716
+en 128).
 SKILL.md le daba un modelo más barato al explorador del paso 3 y no decía nada de los workers del
 reparto de ejecución.
 
@@ -24,6 +27,8 @@ reparto de ejecución.
   independencia, no baja por costo. El bullet del explorador, "Decompose execution", los pasos 3 y 5,
   `references/durable-artifact.md` (el brief de workers) y el aviso de `nudge-decompose.sh` citan
   esa tabla. Cambio de regla: el explorador con criterio pasa de "el modelo de la sesión" a `sonnet`.
+  Esto reemplaza la regla que introdujo 0.7.0 ("judgment-heavy explorations keep the session
+  tier"); esa entrada se deja como está porque es el registro de lo que hizo 0.7.0.
 - `hooks/precheck-subagent-model.sh` (PreToolUse Task|Agent, nuevo): en una sesión que entró a
   goalspec, niega una vez el primer lanzamiento de subagente sin `model`, con la tabla en la razón.
   El adversario tiene su propio contador y su propia razón (modelo distinto). El siguiente
