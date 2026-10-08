@@ -64,8 +64,8 @@ python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh --expected 16-hold
 ```
 
 **Before editing the gate, copy it somewhere and `--compare` against that copy afterwards** — in both
-modes. Exit code is non-zero if any observed cell changed, so the parity claim is mechanical rather
-than eyeballed. That is how v0.15.0's convergence floor was shown to leave the eleven pre-existing
+modes. Exit code is non-zero if any observed cell changed that `--expected` did not declare, or if a
+declared one did not change, so the parity claim is mechanical rather than eyeballed. That is how v0.15.0's convergence floor was shown to leave the eleven pre-existing
 branches untouched.
 
 Each row reports **detail code | CONV | how the gate answered** (`block` / `advisory` / `silent`).

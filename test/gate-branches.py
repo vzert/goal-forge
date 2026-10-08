@@ -13,7 +13,8 @@ rules, stays manual: it drives the Stop gate across every branch it can take, us
     GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py ...      # same suite through the blocking path
 
 The parity mode is the one that matters when editing the gate: copy the pre-edit script somewhere,
-then `--compare` it. Exit code is non-zero if any observed cell differs, so it works in a pipeline.
+then `--compare` it. Exit code is non-zero if any observed cell differs that `--expected` did not
+declare, or if a declared prefix did not change, so it works in a pipeline.
 
 Columns: case | detail code the gate reported | CONV if the convergence floor fired | how the gate
 ANSWERED (`block` under GOAL_GATE_ENFORCE=1, `advisory` otherwise, `silent` when it emitted nothing).

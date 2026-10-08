@@ -82,13 +82,15 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and
-   `test/README.md` matching reality, and that no carrier still claims the project has no CI — the
+   `test/README.md` matching reality, that no carrier still claims the project has no CI, and that
+   every `--compare` suite fails an `--expected` prefix that did not change — the
    silent-failure classes no branch suite can see. Needs PyYAML. `--selftest` breaks each of those
    in a throwaway copy and requires the checker to notice; run it after editing that file).
    **When editing the gate, copy the
    pre-edit script somewhere and `--compare` against it afterwards, in both default and
-   `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed, which turns "no
-   regression" from an eyeball into a measurement. See `test/README.md`. **That parity is blind to
+   `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed that `--expected` did
+   not declare, or if a declared one did not change, which turns "no regression" from an eyeball
+   into a measurement. See `test/README.md`. **That parity is blind to
    `hooks/lib/terminal_actions.py`**: both copies of the gate import the same module, and the
    suites set `CLAUDE_PLUGIN_ROOT` themselves, so for a module change swap the module file in place
    (pre-edit copy, run both modes, restore, run again, diff) — `test/README.md` has the recipe.
