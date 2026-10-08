@@ -19,8 +19,9 @@ version bump are never delivered to already-installed users.
   entrada se vuelven más estrictos. El Stop gate y el precheck de push se aflojan: un Write negado
   ya no los arma. Medido en 9953 transcripts locales: 73 sesiones escribieron el spec al checkpoint;
   en 4 todos esos Write fallaron, y las 4 tenían también el spec en texto visible, así que ninguna
-  sesión real perdió el gate ni el precheck. En 937 resultados de Write/Edit, `is_error` aparece
-  solo en los 24 que fallaron, y siempre como `true`.
+  sesión real perdió el gate ni el precheck. En los resultados de Write/Edit de los transcripts
+  principales, `is_error` aparece solo en los que fallaron, siempre como `true` (adversario: 478
+  con `is_error`, todos con texto de error; 20070 sin él, ninguno con texto de error).
 - Casos nuevos: `spec-brake-branches` 09j (Write negado: freno niega), 09k (Write bien: libera), 09l
   (falla otra llamada: libera) y una mutación; `gate-branches` checkpoint-08 (Write negado, sin spec
   en texto: silencio) y `terminal-precheck-branches` 99 (Write negado, sin entrada: push permitido).
