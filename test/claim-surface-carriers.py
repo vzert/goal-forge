@@ -82,6 +82,18 @@ P = os.path.join(REPO, "plugins", "goalspec")
 SKILL = os.path.join(P, "skills", "goalspec", "SKILL.md")
 AGENT = os.path.join(P, "agents", "goal-adversary.md")
 EXTERNAL = os.path.join(P, "hooks", "external-adversary.sh")
+
+
+def external_env(**extra):
+    """Env for driving EXTERNAL. Drops GOAL_ADVERSARY_ACTIVE: run inside a real external-adversary
+    round (the partner re-running this suite) it is inherited as 1, the hook's recursion guard
+    refuses to run, the stub partner receives nothing, and every emitted-text check goes red for
+    the environment, not the carrier (p-96eb2f2053; external-adversary-branches.py already drops it).
+    GOAL_CONFIG_PATH too, so an operator config cannot reroute the stub."""
+    env = dict(os.environ, **extra)
+    env.pop("GOAL_ADVERSARY_ACTIVE", None)
+    env.pop("GOAL_CONFIG_PATH", None)
+    return env
 DURABLE = os.path.join(P, "references", "durable-artifact.md")
 
 
@@ -388,7 +400,7 @@ def main():
     subprocess.call(["git", "-C", tmp, "-c", "user.name=t", "-c", "user.email=t@t",
                      "commit", "-q", "--allow-empty", "-m", "x"])
     sink = os.path.join(tmp, "..", os.path.basename(tmp) + "-prompt.txt")
-    env = dict(os.environ, GOAL_ADVERSARY_CMD="tee " + sink)
+    env = external_env(GOAL_ADVERSARY_CMD="tee " + sink)
     subprocess.run(["bash", EXTERNAL], input=b"payload\n", cwd=tmp, env=env,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     emitted = read(sink) if os.path.exists(sink) else ""
@@ -454,7 +466,7 @@ def main():
         fh.write("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- checked a thing: fine\n- checked another: fine\n"
                  + hold + "\n")
     r = subprocess.run(["bash", EXTERNAL], input="payload\n", capture_output=True, text=True,
-                       cwd=xrepo, env=dict(os.environ, GOAL_ADVERSARY_CMD="cat " + fixture))
+                       cwd=xrepo, env=external_env(GOAL_ADVERSARY_CMD="cat " + fixture))
     check("visible:external-stderr-emits", "verdict-shaped block was just produced" in r.stderr
           and VIS in r.stderr)
 
