@@ -137,6 +137,14 @@ verdict = sig["verdict"]
 if verdict == "hold":
     allow()
 
+# 0.51.0: a goal-adversary hold that reached this session as a subagent result passes when it is the
+# most recent verdict and no commit or file edit came after it (terminal_actions.relayed_hold_operative
+# has the field case and the rule). The quoted-text path above stays; this one adds to it. The human
+# sees the verdict line in the allow message, in place of the quote the agent did not write.
+relayed = ta.relayed_hold_operative(sig.get("items") or [], command, data.get("tool_use_id"))
+if relayed and relayed["change"] is None:
+    allow(ta.RELAYED_HOLD_ALLOW.format(line=relayed["line"]))
+
 KIND_LABEL = {
     "push": "a git push to a protected branch",
     "merge": "a merge",
@@ -178,13 +186,13 @@ seen_note = (" If you believe you already quoted a hold, two causes are measured
 # built: it would cover the Python false positives only, not the first one observed (a heredoc fed
 # to a bash script, whose stdin no parser can classify); the rule of terminal_actions.py is a canonical form,
 # not a smarter matcher; and the file route costs one Write.
-# p-64783f8057 (0.46.7): a hold that arrived as a subagent result and was never quoted. That is the
-# cause, so it replaces both the spawn-the-adversary step and the list of possible causes, and gives
-# the exact line to quote. The break note goes too: the break in your text is older than this hold.
-relayed = sig.get("relayed_hold")
+# p-64783f8057 (0.46.7), changed in 0.51.0: a relayed hold that reaches this point was outdated by a
+# later change (an operative one passed above). The note names the change and asks for a delta round,
+# in place of both the spawn-the-adversary step and the list of possible causes. The break note goes
+# too: a break in your text older than this hold is not the most recent verdict.
 if relayed:
     verdict_note = ""
-    next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed)
+    next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed["line"], change=relayed["change"])
     seen_note = ""
 
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "

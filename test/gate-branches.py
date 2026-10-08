@@ -605,7 +605,7 @@ CHECKPOINT_GOALSPEC_CASES = [
       {"write": (".goalspec/checkpoint.md", SPEC)},
       {"text": "first parked turn after the disk-only spec."}],
      "completion-review:absent"),
-    # 0.50.1 (p-5b005aba6e): a checkpoint Write whose result is an error wrote no spec, so it no
+    # 0.51.0 (p-5b005aba6e): a checkpoint Write whose result is an error wrote no spec, so it no
     # longer arms the gate. This LOOSENS the gate on purpose (before, a denied Write armed it):
     # measured over 9953 local transcripts, 4 sessions had only failed checkpoint Writes and all 4
     # also had the spec in visible text, so no real session lost the gate. A session that loaded

@@ -8,6 +8,51 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-10-08
+
+### El precheck acepta un hold del adversario que llegó como resultado de subagente
+Sesión de un dev en el VPS (2026-10-08, f8f10a20, goalspec 0.50.0). El `goal-adversary` dio hold 4
+veces, siempre como hand-back de subagente. El ejecutor escribió la cita solo en su thinking. El
+precheck negó 10 `gh pr merge` y un Bash de diagnóstico (11 negaciones contadas en el JSONL). El aviso ya decía qué hacer y que el
+transcript no pierde texto; el modelo no lo siguió ninguna vez. Concluyó que la herramienta borraba
+sus mensajes, y el dev mergeó los 4 PR a mano, fuera del gate. La cadena `parentUuid` del JSONL no
+tiene huecos: la cita nunca se escribió. Un aviso más claro no arregla esto; el cambio es qué acepta
+el hook como prueba.
+
+- `hooks/lib/terminal_actions.py`, `relayed_hold_operative`: un hold que llegó como resultado de un
+  `goal-adversary` de esta sesión cuenta como operativo sin cita, si se cumplen las tres:
+  1. Es un `relayed_verdict`: la misma detección de 0.46.7/0.46.8 (origen del harness, tipo exacto o
+     agent id de un spawn del adversario). Un hold pegado por el usuario, en la salida de un Bash o de
+     otro subagente sigue sin contar.
+  2. Es el veredicto más reciente, contando hand-backs y texto. Un break posterior manda.
+  3. No hubo cambio después: ni Write/Edit fuera de `memory/`, `docs/` o `.goalspec/` (un Write con
+     `is_error` no cuenta), ni un comando git que haga commit o mueva HEAD, el índice o el árbol
+     (`commit`, `rebase`, `reset`, `cherry-pick`, `revert`, `am`, `apply`, `stash`, `restore`,
+     `checkout`, `switch`, `merge` local, `pull`), tampoco en el propio comando que se decide.
+     `git push`, `gh pr merge`, `git fetch` y un mensaje del usuario no son cambio: así pasan los
+     4 merges seguidos del caso real.
+- Cuando deja pasar por esta vía, el hook imprime el veredicto en un `systemMessage`, para que el
+  humano lo vea aunque el agente no lo citó. La cita en texto visible sigue siendo una vía válida y
+  sigue siendo la regla (SKILL.md).
+- Si hubo cambio después del hold, el aviso de negación ya no dice "cita esta línea": nombra el
+  cambio y pide una ronda delta. Citar un hold viejo pasaría el hook sobre un árbol que nadie revisó.
+- Lo que no ve: un Bash que edita sin git (`sed -i`, un script). Para un push o un merge eso solo
+  importa una vez commiteado, y el commit sí se ve; un deploy desde el árbol de trabajo lo llevaría.
+  No se compara HEAD: el caso real mergeó desde 4 worktrees con `gh pr merge --repo` y el cwd del
+  hook no era ninguno.
+- Medido con el JSONL real cortado en cada comando: los 11 comandos que 0.50.0 negó (10 `gh pr merge`
+  y el heredoc de diagnóstico) pasan con 0.51.0, con el veredicto en el mensaje. El heredoc sigue
+  clasificándose como merge: pasa por el hold, no porque se dejara de leer el cuerpo.
+- `terminal-precheck-branches`: los casos 70, 73, 82, 85, 86 y 89 pasan de DENY a ALLOW con la línea
+  en el mensaje; casos nuevos 100-111 para las condiciones. Con el módulo y el hook anteriores en su
+  sitio fallan 16 filas; 110 (break posterior) y 111 (cita solo en thinking) pasan con ambos, porque
+  eso no cambió. Paridad: `gate-branches` (normal y `GOAL_GATE_ENFORCE=1`), `interview-handoff`,
+  `spec-brake`, `decompose-nudge`, `handback-verdict` y `spec-on-entry` salen idénticas a antes.
+- `relayed_hold_line` y la clave `relayed_hold` de `transcript_signals` se quitan; su único uso era
+  el aviso viejo.
+- El arreglo de `is_error` de abajo se iba a publicar como 0.50.1 y sale en esta versión; los
+  comentarios del código dicen 0.51.0.
+
 ### Cambiado
 - `hooks/lib/terminal_actions.py`: un Write/Edit al checkpoint cuyo `tool_result` trae
   `is_error: true` ya no cuenta como spec escrito (p-5b005aba6e). Antes contaba la llamada, no su

@@ -645,7 +645,7 @@ call, interview-only, adversary-only, no goalspec, another event, malformed inpu
 `GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path (or `.goalspec/checkpoint.md` when the
 payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
 silent for no spec, another file, a spec already in text, a subagent, another event, malformed
-input). New with no predecessor, so `--selftest` mutates the components (26 mutations; 0.50.1 added the one that
+input). New with no predecessor, so `--selftest` mutates the components (26 mutations; 0.51.0 added the one that
 lets a failed checkpoint Write count again) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
 
 ```sh
@@ -731,7 +731,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-70 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+112 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -746,7 +746,8 @@ verdict quote only counts as a visible text block, never one written in thinking
 bodies are classified, a string that only mentions a merge included, and the deny text names
 the file route out together with the fact that the hook never reads the contents of a file the
 command runs); and a hold that reached the session as a goal-adversary's report but was never quoted
-(cases 70-85, new in 0.46.7: the decision stays deny, the deny text gives the exact line to quote; a
+(cases 70-85, new in 0.46.7, when the decision was deny with the exact line to quote; since 0.51.0
+70, 73, 82, 85, 86 and 89 allow, and the allow message carries the line; a
 later text verdict wins; a hold in a Bash result, an Explore result, a hand-back from an agent no
 goal-adversary spawn launched, a user message carrying the hand-back tag, a queued_command the human
 typed, a background launch's receipt, or an agent type that only contains `goal-adversary` is not
@@ -756,7 +757,13 @@ harness `origin` with the report in `origin.body` (cases 86-95, new in 0.46.8: 7
 goal-adversary hand-backs on record have this shape and 0.46.7 read none of them — 86 and 89 come
 back `wrong-text` against it, every case below 86 is unchanged; the same origin checks as the
 queued form, plus: an origin of kind `human`, one without the `handback` flag, and a hold present
-only in the message text and not in `origin.body` are not read as relayed).
+only in the message text and not in `origin.body` are not read as relayed); and, new in 0.51.0, the conditions under which a relayed hold
+passes (cases 100-111): a Write/Edit outside memory/, docs/ and .goalspec/, a git command that
+commits or moves HEAD, the index or the working tree, or the command being decided doing so voids it
+(100, 101, 107); a checkpoint or memory note, a push, an earlier merge, a failed Write, a user reply
+or `git merge-base` does not (102-106, 108, 109); a later relayed break wins (110); a quote only in
+thinking is still nothing (111). Against the pre-0.51.0 module and hook, 16 of those rows fail; 110
+and 111 pass on both, because that behavior did not change.
 
 ```sh
 python3 test/terminal-precheck-branches.py

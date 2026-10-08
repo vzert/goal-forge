@@ -134,7 +134,7 @@ CASES = [
     # Release round (codex): another session's checkpoint never releases it, nor a bare heading.
     ("09e-foreign-checkpoint-denies",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-other-session.md", SPEC)}], "09e"), "deny-none"),
-    # 0.50.1 (p-5b005aba6e): a checkpoint Write whose result is an error wrote nothing, so it
+    # 0.51.0 (p-5b005aba6e): a checkpoint Write whose result is an error wrote nothing, so it
     # never releases the brake; a successful result, or another call's error, leaves it counted.
     ("09j-denied-checkpoint-write-denies",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC), "id": "w1"},
