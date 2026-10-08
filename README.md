@@ -418,6 +418,19 @@ guidance in the skill; v0.43.0 gives the agent a line again — a different one 
 "human only" costs on an unattended session. The floor's behavior today is described under "The
 completion gate" below.) The exit-set defect itself stays open.
 
+## Subagent model by task
+
+Every subagent a goalspec run spawns — the explorer that grounds the spec, a per-entity worker, any
+other helper — names a `model` and an `effort` chosen for its task: mechanical work (locate,
+enumerate, read and summarize, extract) on `haiku` at `medium`; judgment (classify a finding, weigh
+evidence, review code, draft a section) on `sonnet` at `high`; the session's own tier only when the
+agent passes it explicitly and says why. The adversary is outside this table: it moves up or across a
+tier for independence, not down for cost. Since v0.50.0 a hook denies, once per session, the first
+spawn that names no `model` (and, separately, the first such adversary spawn), with the table in the
+reason; the agent relaunches with a tier, and the next model-less spawn passes. Measured case behind
+it: a run that split its work into five parallel workers with no `model` ran all five on the
+session's top tier. `GOAL_SUBAGENT_MODEL_CHECK=0` turns it off.
+
 ## The completion gate
 
 The Stop hook enforces only when a session produced a `## Goal-spec`. Since v0.48.0 a session that
@@ -536,6 +549,7 @@ goal-forge/
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
     hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to post it as visible text (PostToolUse Skill)
     hooks/precheck-spec-before-work.sh    # PreToolUse: after the goalspec loop loads, holds Bash/Write/Edit until a ## Goal-spec exists in visible text or in this session's checkpoint (reads stay free; GOAL_SPEC_BRAKE=0 turns it off)
+    hooks/precheck-subagent-model.sh      # PreToolUse Task|Agent: in a goalspec session, denies once the first subagent spawn with no `model` (and the first such adversary spawn), with the model-by-task table (GOAL_SUBAGENT_MODEL_CHECK=0 turns it off)
     hooks/show-checkpoint-spec.sh         # PostToolUse Write|Edit: when the spec reaches the session only through the checkpoint file, shows it to the user
     hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)

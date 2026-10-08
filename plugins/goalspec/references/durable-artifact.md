@@ -347,7 +347,8 @@ this file**, and each worker's brief **points at the path** — it does not carr
 copy. Relaying the facts through your own prose gives every fact two homes (yours and each
 worker's brief) and they diverge round by round. Alongside the pointer, each brief still needs
 its own objective, output format, tool guidance, and boundaries; without those, independent
-workers duplicate each other's work.
+workers duplicate each other's work. The spawn itself names the worker's `model` and `effort` by
+its task (SKILL.md, "Subagent model by task"), never the tier it would inherit.
 
 ## Two adjacent practices, and exactly what is *not* covered
 

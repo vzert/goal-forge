@@ -6,6 +6,35 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.50.0] - 2026-10-08
+
+### Cada subagente nombra su modelo según su tarea
+
+Una corrida de goalspec en otro proyecto (2026-10-08) repartió su trabajo en 5 subagentes
+general-purpose en paralelo y no le pasó `model` a ninguno. Los 5 corrieron en el modelo de la
+sesión (Opus) para leer y clasificar alertas; el más grande leyó unos 18 millones de tokens de caché.
+SKILL.md le daba un modelo más barato al explorador del paso 3 y no decía nada de los workers del
+reparto de ejecución.
+
+- SKILL.md, sección nueva "Subagent model by task": una tabla para todo subagente de la corrida.
+  Trabajo mecánico (buscar, enumerar, leer y resumir, extraer) → `haiku` con `effort: medium`.
+  Criterio (clasificar un hallazgo, pesar evidencia, revisar código, redactar una sección) →
+  `sonnet` con `effort: high`. El modelo propio solo si se pasa explícito y con una línea de por qué.
+  La skill autoriza fijar `effort`. El adversario queda fuera: sube o cambia de modelo por
+  independencia, no baja por costo. El bullet del explorador, "Decompose execution", los pasos 3 y 5,
+  `references/durable-artifact.md` (el brief de workers) y el aviso de `nudge-decompose.sh` citan
+  esa tabla. Cambio de regla: el explorador con criterio pasa de "el modelo de la sesión" a `sonnet`.
+- `hooks/precheck-subagent-model.sh` (PreToolUse Task|Agent, nuevo): en una sesión que entró a
+  goalspec, niega una vez el primer lanzamiento de subagente sin `model`, con la tabla en la razón.
+  El adversario tiene su propio contador y su propia razón (modelo distinto). El siguiente
+  lanzamiento sin `model` del mismo tipo pasa, así que nunca deja trabado al agente. Niega en vez de
+  avisar porque un aviso de PreToolUse llega con el resultado, cuando el subagente ya arrancó: los 5
+  del caso salieron en un solo mensaje. Pasa sin preguntar con `fork`, dentro de un subagente, sin
+  goalspec, o con `GOAL_SUBAGENT_MODEL_CHECK=0`. No ve un modelo fijado en la definición de un tipo
+  de agente, ni juzga si el modelo elegido es el correcto.
+- `test/subagent-model-branches.py`: 29 casos y `--selftest` con 10 mutaciones. Probado también
+  contra el transcript real del caso, cortado antes de los 5 lanzamientos: niega el primero.
+
 ## [0.49.2] - 2026-10-07
 
 ### El aviso de aislamiento dice por qué falló

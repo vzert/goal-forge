@@ -50,6 +50,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/route-external-adversary.sh",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/precheck-subagent-model.sh",
+            "timeout": 10
           }
         ]
       },

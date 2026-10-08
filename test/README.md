@@ -1,6 +1,6 @@
 # test/
 
-**Fourteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Fifteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -642,6 +642,29 @@ a case to catch each. What no suite can show: that an agent then writes the spec
 ```sh
 python3 test/spec-brake-branches.py
 python3 test/spec-brake-branches.py --selftest
+```
+
+## `subagent-model-branches.py` — every subagent spawn names its model (0.50.0)
+
+For `hooks/precheck-subagent-model.sh`. A field run (2026-10-08) split its execution into five
+parallel general-purpose workers with no `model`, so all five ran on the session's top tier. A
+PreToolUse reminder would have arrived with the tool result, after all five had started, so the
+hook denies instead, once per session and per kind (worker / `goal-adversary`), with SKILL.md's
+"Subagent model by task" table in the reason; the next model-less spawn of that kind passes.
+
+29 cases: denied (no `model` after the loop, the interview or a typed command; Task and Agent; no
+`subagent_type`; Explore; a blank `model`; a model-less spawn before the entry does not spend the
+bounce; an earlier spawn that had a `model` does not either; the adversary with its own reason and
+its own counter, bare or namespaced; a lookalike adversary name is a worker;
+`GOAL_SUBAGENT_MODEL_CHECK=1`), and allowed (a `model` of any tier, the second model-less spawn of a
+kind, `fork`, a spawn inside a subagent, no goalspec, adversary-only, another tool or event,
+malformed input, no transcript, `GOAL_SUBAGENT_MODEL_CHECK=0`). New with no predecessor, so
+`--selftest` mutates the component (10 mutations) and requires a case to catch each. What no suite
+can show: that the agent then picks the right tier for the task.
+
+```sh
+python3 test/subagent-model-branches.py
+python3 test/subagent-model-branches.py --selftest
 ```
 
 ## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)
