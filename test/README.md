@@ -85,7 +85,8 @@ the same against the copy, prints `UNMET EXPECTED` and exits 1, never `parity OK
 external-adversary case 38 passed empty in 0.49.2 — `--expected 36,37,38` said parity OK with 38
 unchanged. It is judged per prefix, so a wide prefix (`stale-`) passes when any case under it
 changed and can still hide an empty one beside it: name the cases you mean.
-`test/manifest-checks.py` checks that the shared function flags and that every suite calls it.
+`test/manifest-checks.py` checks that the shared function flags and that every suite's source names
+a call to it — a textual check: it catches a deleted call, not one left in place but disabled.
 
 **Checkpoint-file goal-spec cases (`checkpoint-01`..`05`)** pin a separate real break from
 the same incident chain: the gate's PRIMARY "did this session produce a goal-spec at all"

@@ -35,8 +35,9 @@ version bump are never delivered to already-installed users.
   nombra ningún caso o ninguno de sus casos cambió (p-6dd59b09af). Antes solo fallaba un cambio no
   declarado; un cambio declarado que no ocurría daba `parity OK`, y así pasó vacío el caso 38 de
   0.49.2. El chequeo vive en `test/expected_check.py` y se juzga por prefijo.
-- `test/manifest-checks.py` comprueba que esa función marca un prefijo sin cambio y que cada suite
-  con `--expected` la llama; su `--selftest` rompe las dos cosas y exige que se note.
+- `test/manifest-checks.py` comprueba que esa función marca un prefijo sin cambio y que el código de
+  cada suite con `--expected` nombra una llamada a ella (chequeo de texto: ve una llamada borrada, no
+  una que sigue escrita pero desactivada); su `--selftest` rompe las dos cosas y exige que se note.
 - Solo tests: los hooks no cambian. Sin `--expected`, la salida de las cinco suites es idéntica a la
   de antes, byte a byte, también con `GOAL_GATE_ENFORCE=1`.
 
