@@ -297,8 +297,9 @@ can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 reviews the live repo (fail-open), and now the notice carries the first error line of the step that
 failed. 36 blocks `git worktree add` (`.git/worktrees` is a file); 37 blocks `mktemp` (`.git`
 read-only), a path that printed no notice at all before. Run inside codex's `workspace-write`
-sandbox (2026-10-07), case 09 goes `pass+root` and the dump now shows the cause: `mktemp: ... .git/
-goalspec-review-...: Operation not permitted` — the repo's `.git` is outside codex's writable roots.
+sandbox (2026-10-07) from a linked worktree whose common `.git` lives elsewhere, case 09 goes
+`pass+root` and the dump now shows the cause: `mktemp: ... .git/goalspec-review-...: Operation not
+permitted`. One run, that topology only; not measured from a plain checkout.
 That `pass+root` stays an expected red in that sandbox; 09's `expect` is not weakened. Against 0.49.1
 36 and 37 come back `pass+nocause` and `pass+silent`. 37 needs a non-root user (root ignores the
 `chmod`).

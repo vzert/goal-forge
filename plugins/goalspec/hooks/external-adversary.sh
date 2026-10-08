@@ -490,7 +490,7 @@ if [ -n "$REPO_ROOT" ] && git -C "$REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; th
     # data-loss path directly. A prior run killed before its EXIT trap ran (SIGKILL, a crash)
     # leaves a stale goalspec-review-* registration and directory behind — harmless (nothing under
     # .git/ is visible to `git status`/`ls-files`) and left alone rather than risk this.
-    # The fallback notice names WHY isolation failed (p-e4b53e7c57): until 0.49.2 the stderr of
+    # The fallback notice names WHY isolation failed (p-e4b53e7c57): through 0.49.1 the stderr of
     # `mktemp` and `worktree add` went to /dev/null, so a write-restricted partner sandbox reported
     # case 09 red four times with no cause anyone could read. Only the first line of each — git's
     # `fatal: ...` is one line — so the notice stays one line. A failed mktemp was silent outright.

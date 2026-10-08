@@ -17,9 +17,10 @@ fallaba `mktemp` no salía ningún aviso. Codex reportó 4 veces el caso 09 en r
 
 - El aviso ahora termina en `Cause:` con la primera línea del error de la herramienta que falló.
   Si `mktemp` falla, sale un aviso que antes no existía.
-- Medido en el sandbox `workspace-write` de codex: la causa real del rojo del caso 09 es `mktemp`,
-  no `worktree add`. El `.git` del repo queda fuera de las rutas en las que codex puede escribir
-  (`Operation not permitted`). Ese rojo sigue siendo esperado ahí. El `expect` del caso 09 no cambia.
+- Medido una vez en el sandbox `workspace-write` de codex, con la suite corrida desde un worktree
+  enlazado cuyo `.git` común vive en otro directorio: el rojo del caso 09 viene de `mktemp` sobre ese
+  `.git` (`Operation not permitted`), no de `worktree add`. No se midió desde un checkout normal. Ese
+  rojo sigue siendo esperado ahí. El `expect` del caso 09 no cambia.
 - `test/external-adversary-branches.py`: casos 36 (`worktree add` falla) y 37 (`mktemp` falla).
   Contra 0.49.1 dan `pass+nocause` y `pass+silent`. El 37 necesita un usuario que no sea root.
 
