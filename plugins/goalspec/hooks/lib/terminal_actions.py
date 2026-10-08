@@ -506,15 +506,27 @@ def is_adversary_type(name):
                                       or name.strip().endswith(":goal-adversary"))
 
 
-def _relayed_verdict_item(text, ts):
-    """-> a "relayed_verdict" item for the LAST verdict line in an adversary's report, or None."""
+def _relayed_verdict_item(text, ts, spawn=None):
+    """-> a "relayed_verdict" item for the LAST verdict line in an adversary's report, or None.
+    `spawn` is the tool_use id of the spawn that launched this adversary, when it is known (0.51.0:
+    relayed_hold_operative looks for changes from the spawn on, not from the delivery)."""
     last = None
     for m in re.finditer(VERDICT_RE, text, re.I):
         last = m
     if last is None:
         return None
     return {"kind": "relayed_verdict", "timestamp": ts, "text": "",
-            "verdict": last.group(1).lower(), "line": last.group(0)}
+            "verdict": last.group(1).lower(), "line": last.group(0), "spawn": spawn}
+
+
+def _relay_spawn(origin, prompt, state):
+    """The spawn tool_use id behind a hand-back, from its agent id; None when unknown."""
+    m = RELAY_FROM_RE.match(prompt or "")
+    for i in (origin.get("from") if isinstance(origin, dict) else None,
+              (m.group(1) or m.group(2) or "").strip() if m else None):
+        if isinstance(i, str) and i in state.setdefault("agent_spawn", {}):
+            return state["agent_spawn"][i]
+    return None
 
 
 def _relay_from_adversary(att, prompt, state):
@@ -559,7 +571,8 @@ def _collect_event(ev, items, state=None):
         if att.get("type") == "queued_command" and isinstance(prompt, str) \
                 and prompt.lstrip().startswith(RELAY_PREFIXES) \
                 and _relay_from_adversary(att, prompt, state):
-            rv = _relayed_verdict_item(prompt, ev.get("timestamp"))
+            rv = _relayed_verdict_item(prompt, ev.get("timestamp"),
+                                       _relay_spawn(att.get("origin"), prompt, state))
             if rv:
                 items.append(rv)
         return
@@ -573,7 +586,7 @@ def _collect_event(ev, items, state=None):
         uorigin = ev.get("origin")
         ubody = uorigin.get("body") if isinstance(uorigin, dict) else None
         if isinstance(ubody, str) and _relay_from_adversary(ev, ubody, state):
-            rv = _relayed_verdict_item(ubody, ev.get("timestamp"))
+            rv = _relayed_verdict_item(ubody, ev.get("timestamp"), _relay_spawn(uorigin, ubody, state))
             if rv:
                 items.append(rv)
         ucontent0 = (ev.get("message") or {}).get("content")
@@ -595,9 +608,11 @@ def _collect_event(ev, items, state=None):
                     aid = am.group(1) if am else None
                 if aid:
                     state["adversary_agents"].add(aid)
+                    state.setdefault("agent_spawn", {})[aid] = blk.get("tool_use_id")
                 is_async = (isinstance(tur, dict) and tur.get("isAsync") is True) \
                     or blk.get("tool_use_id") in state["background_spawns"]
-                rv = None if is_async else _relayed_verdict_item(rtext, ev.get("timestamp"))
+                rv = None if is_async else _relayed_verdict_item(rtext, ev.get("timestamp"),
+                                                                 blk.get("tool_use_id"))
                 if rv:
                     items.append(rv)
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
@@ -639,6 +654,8 @@ def _collect_event(ev, items, state=None):
             st = (blk.get("input") or {}).get("subagent_type")
             if blk.get("id") and is_adversary_type(st):
                 state["adversary_spawns"].add(blk["id"])
+                # 0.51.0: where relayed_hold_operative starts looking for changes.
+                items.append({"kind": "adversary_spawn", "timestamp": ts, "text": "", "id": blk["id"]})
                 if (blk.get("input") or {}).get("run_in_background") is True:
                     state["background_spawns"].add(blk["id"])
         elif blk.get("type") == "tool_use" and blk.get("name") == "Skill":
@@ -651,6 +668,13 @@ def _collect_event(ev, items, state=None):
             cmd = (blk.get("input") or {}).get("command")
             if isinstance(cmd, str) and cmd:
                 items.append({"kind": "bash", "timestamp": ts, "command": cmd, "id": blk.get("id")})
+        elif blk.get("type") == "tool_use" and blk.get("name") in ("MultiEdit", "NotebookEdit"):
+            # 0.51.0: file edits that are not Write/Edit, for relayed_hold_operative only (a kind of
+            # their own, so no other reader of "edit" items changes).
+            ti = blk.get("input") or {}
+            fp1 = ti.get("file_path") or ti.get("notebook_path")
+            items.append({"kind": "other_edit", "timestamp": ts, "text": "", "id": blk.get("id"),
+                          "path": fp1.replace("\\", "/") if isinstance(fp1, str) else None})
         elif blk.get("type") == "tool_use" and blk.get("name") in ("Write", "Edit"):
             # Every Write/Edit leaves a text-free "edit" item (0.46.0), so interview_handoff_pending
             # can tell work done after an interview from a conversation that simply went on.
@@ -742,7 +766,7 @@ def read_transcript_items(transcript_path):
     for it in items:
         # 0.51.0: a Write/Edit whose result is an error changed nothing. Marked, not dropped:
         # interview_handoff_pending still counts the attempt as work started.
-        if it["kind"] == "edit" and it.get("id") is not None and it["id"] in failed:
+        if it["kind"] in ("edit", "other_edit") and it.get("id") is not None and it["id"] in failed:
             it["failed"] = True
     return [it for it in items
             if not (it["kind"] == "goal_spec_file" and it.get("id") is not None and it["id"] in failed)]
@@ -1029,26 +1053,47 @@ def transcript_signals(transcript_path):
 
 
 # 0.51.0 — what counts as "the work changed after the hold" for relayed_hold_operative: a git command
-# that makes a commit or moves HEAD, the index or the working tree. `git push`, `gh pr merge` and
-# `git fetch` are not on it: they publish or read what the hold reviewed. A local `git merge` is,
-# because it makes a tree no round saw. `merge-base` and `merge-file` are excluded by the lookahead.
-GIT_MUTATE_RE = re.compile(_GIT_PREFIX + r"(?:commit|rebase|reset|cherry-pick|revert|am|apply|stash|"
-                           r"restore|checkout|switch|merge|pull)(?![\w-])")
+# that makes a commit or moves HEAD, a branch, the index or the working tree. `git push`, `gh pr
+# merge` and `git fetch` are not on it: they publish or read what the hold reviewed. A local `git
+# merge` is, because it makes a tree no round saw. The lookahead keeps `merge-base`/`merge-file` out;
+# `stash list` and `stash show` only read.
+GIT_MUTATE_RE = re.compile(_GIT_PREFIX + r"(?:commit|rebase|reset|cherry-pick|revert|am|apply|"
+                           r"stash(?!\s+(?:list|show)\b)|restore|checkout|switch|merge|pull|add|rm|mv|"
+                           r"update-index|update-ref|branch\s+(?:-f|--force|-D|-M))(?![\w-])")
+
+# The kinds the relayed path covers. A push or a merge carries committed work only, and every commit
+# made through a git command is seen; a deploy or a destructive command acts on whatever is on disk,
+# and a Bash edit without git (`sed -i`, a script) is not seen, so those keep needing the quote.
+RELAYED_KINDS = ("push", "merge")
 
 
-def _edit_path_exempt(path):
-    """A Write/Edit path that is not a change to the work: under a memory/, docs/ or .goalspec/
-    directory, at any depth (transcript paths are absolute, so the repo-relative is_path_exempt
-    cannot be used as is). EXEMPT_PREFIXES is the one list; this only anchors it on a component."""
-    if not isinstance(path, str) or not path:
+def _edit_path_exempt(path, cwd=None):
+    """A Write/Edit path that is not a change to the work: anything under a `.goalspec/` directory
+    (the run state, at any depth, as CHECKPOINT_PATH_RE), or a path that is_path_exempt accepts
+    once made relative to the working directory or the git top level above it (memory/, docs/, a
+    root *.md). Transcript paths are absolute and is_path_exempt is repo-relative, so the path is
+    resolved first; `src/docs/x.py` and `docs/../src/x.py` are changes."""
+    if not isinstance(path, str) or not path.strip():
         return False
-    return any(re.search(r"(^|/)" + re.escape(p), path) for p in EXEMPT_PREFIXES)
+    base = cwd if isinstance(cwd, str) and cwd else os.getcwd()
+    full = os.path.normpath(path if os.path.isabs(path) else os.path.join(base, path))
+    if re.search(r"(^|/)\.goalspec/", full):
+        return True
+    try:
+        full = os.path.realpath(full)  # own_checkpoint_roots resolves symlinks (macOS /var), so match
+    except Exception:
+        return False
+    for root in own_checkpoint_roots(base):
+        rel = os.path.relpath(full, root)
+        if not rel.startswith(".."):
+            return is_path_exempt(rel)
+    return False
 
 
-def relayed_hold_operative(items, command=None, tool_use_id=None):
+def relayed_hold_operative(items, command=None, tool_use_id=None, cwd=None):
     """0.51.0 — the terminal-push precheck accepts a goal-adversary hold that reached this session as
     a subagent result (a relayed_verdict item, see RELAY_PREFIXES for how it is told from look-alike
-    text), without the executor quoting it, when nothing changed after it.
+    text), without the executor quoting it, for a push or a merge, when nothing changed after it.
 
     Field case (2026-10-08, VPS session f8f10a20, 0.50.0): four holds arrived as hand-backs, the
     executor wrote the quote only in its thinking, the precheck denied ten `gh pr merge` calls,
@@ -1058,19 +1103,23 @@ def relayed_hold_operative(items, command=None, tool_use_id=None):
 
     -> None when the most recent verdict on record (relayed or quoted in text) is not a relayed hold.
     A later break, relayed or quoted, wins; a later quoted hold is the ordinary text path. Otherwise
-    -> {"line": the verdict line, "change": None or what changed after it}. A change is a Write/Edit
-    whose result was not an error, outside memory/, docs/ and .goalspec/ (_edit_path_exempt), or a
-    Bash call that GIT_MUTATE_RE matches, including the command being decided (`git commit -am x &&
-    git push` commits work no round saw). A mutating Bash call counts even if it failed: `git commit
-    && git push` that fails on the push still committed. The call being decided is dropped from the
+    -> {"line": the verdict line, "change": None or what voids it}. Changes are looked for from the
+    spawn that launched that adversary (a commit made while it was still reading is not in what it
+    read), or from the first goal-adversary spawn when the spawn is unknown, or from the hold itself
+    when there is no spawn at all. A change is a Write/Edit/MultiEdit/NotebookEdit whose result was
+    not an error, outside .goalspec/ and the memory/, docs/ and root *.md that is_path_exempt allows
+    (_edit_path_exempt), or a Bash call that GIT_MUTATE_RE matches, even if it failed (`git commit
+    && git push` that fails on the push still committed). The call being decided is dropped from the
     record first, as in waiver_covers_command.
 
-    What it cannot see: a Bash call that edits a file without git (`sed -i`, a script). For a push or
-    a merge that edit only matters once it is committed, and the commit is seen. A deploy from the
-    working tree would carry it. That gap is accepted, and the quoted path has it too: a quoted hold
-    is never checked for later changes at all. Comparing HEAD is not used: the field case merged four
-    PRs from four worktrees through `gh pr merge --repo`, and the hook's cwd was none of them.
-    Counters are not read, as on the quoted path (operative_verdict)."""
+    Not covered, by the caller (RELAYED_KINDS): a deploy or a destructive command, because a Bash
+    call that edits without git is not seen and those act on the disk. Not covered either: a command
+    that itself matches GIT_MUTATE_RE (`git commit -am x && git push`, a local `git merge`), which
+    "self" in the result reports; no round can cover a change the command has not made yet.
+    What it cannot see: a commit made inside a script the command runs, and which PR or branch the
+    hold was about (it is session-wide, like a quoted hold). Comparing HEAD is not used: the field
+    case merged four PRs from four worktrees through `gh pr merge --repo`, and the hook's cwd was
+    none of them. Counters are not read, as on the quoted path (operative_verdict)."""
     seq = list(items)
     if tool_use_id:
         seq = [it for it in seq if not (it["kind"] == "bash" and it.get("id") == tool_use_id)]
@@ -1083,18 +1132,37 @@ def relayed_hold_operative(items, command=None, tool_use_id=None):
             last = i
     if last is None or seq[last]["kind"] != "relayed_verdict" or seq[last]["verdict"] != "hold":
         return None
-    change = None
-    for it in seq[last + 1:]:
-        if it["kind"] == "edit" and not it.get("failed") and not _edit_path_exempt(it.get("path")):
-            change = "a Write/Edit to %s came after it" % (it.get("path") or "a file")[:120]
+    out = {"line": seq[last]["line"], "change": None, "self": False}
+    spawns = [i for i, it in enumerate(seq[:last]) if it["kind"] == "adversary_spawn"]
+    own = [i for i in spawns if seq[i].get("id") and seq[i]["id"] == seq[last].get("spawn")]
+    start = own[0] if own else (spawns[0] if spawns else last)
+    for it in seq[start + 1:]:
+        if it["kind"] in ("edit", "other_edit") and not it.get("failed") \
+                and not _edit_path_exempt(it.get("path"), cwd):
+            out["change"] = "a file edit to %s came after the adversary was launched" % (
+                it.get("path") or "a file")[:120]
             break
         if it["kind"] == "bash" and GIT_MUTATE_RE.search(it["command"]):
-            change = "the command `%s` came after it" % " ".join(it["command"].split())[:120]
+            out["change"] = "the command `%s` came after the adversary was launched" % (
+                " ".join(it["command"].split())[:120])
             break
-    m = GIT_MUTATE_RE.search(command) if change is None and isinstance(command, str) else None
+    m = GIT_MUTATE_RE.search(command) if out["change"] is None and isinstance(command, str) else None
     if m:
-        change = "this command itself also changes the repository (`%s`)" % m.group(0).strip()
-    return {"line": seq[last]["line"], "change": change}
+        out["self"] = True
+        out["change"] = "this command itself also changes the repository (`%s`)" % m.group(0).strip()
+    return out
+
+
+def relayed_break_after_text_hold(items):
+    """0.51.0 — True when the most recent verdict on record is a break that came back as a
+    goal-adversary's report, after a hold the executor quoted. Before, the quoted hold passed the
+    precheck over it (external adversary round on 0.51.0)."""
+    last = None
+    for it in items:
+        if it["kind"] == "relayed_verdict" or (it["kind"] == "text"
+                                               and re.search(VERDICT_RE, it["text"], re.I)):
+            last = it
+    return bool(last and last["kind"] == "relayed_verdict" and last["verdict"] == "break")
 
 
 # What the human sees when the precheck passes on a relayed hold (systemMessage). The verdict line is
@@ -1102,16 +1170,32 @@ def relayed_hold_operative(items, command=None, tool_use_id=None):
 RELAYED_HOLD_ALLOW = (
     "goalspec terminal-push precheck: proceeding on a goal-adversary hold that reached this session "
     "as a subagent result, not quoted by the agent: {line} -- no commit and no file edit outside "
-    "memory/, docs/ or .goalspec/ is on record after it."
+    "memory/, docs/ or .goalspec/ is on record since that adversary was launched."
 )
 
-# Agent-facing deny text for a relayed hold that a later change outdated. Kept here, not in the hook,
-# for the same apostrophe reason as INTERVIEW_HANDOFF_NUDGE. Before 0.51.0 it told the executor to
-# quote the hold; a quote would now pass the hook over a change no round saw, so it does not.
+# Agent-facing deny text for a relayed hold that does not cover the command. Kept here, not in the
+# hook, for the same apostrophe reason as INTERVIEW_HANDOFF_NUDGE. Three cases, three ways out, so an
+# executor that follows it does not loop (delta round on 0.51.0: one version sent a self-mutating
+# command back to a delta round that could never cover it).
 RELAYED_HOLD_NOTE = (
     "A goal-adversary hold reached this session as a subagent result: {line} -- but it does not "
-    "cover this command: {change}. Spawn goal-adversary for a delta round on what "
-    "changed since that hold, then retry. Quoting the old hold is not the way past this: it reviewed "
+    "cover this command: {change}. Spawn goal-adversary for a delta round on what changed since that "
+    "adversary was launched, then retry. Quoting the old hold is not the way past this: it reviewed "
     "a tree that no longer exists. If you believe you already quoted a newer verdict: thinking is "
     "not read, even when your screen shows it like a message. The transcript is not losing your text."
+)
+RELAYED_HOLD_SELF_NOTE = (
+    "A goal-adversary hold reached this session as a subagent result: {line} -- but {change}, and "
+    "an unquoted hold never covers a command that changes the repository itself. If that change is "
+    "new work (a commit), run it as its own command first, get a delta round on it, then run the "
+    "push or merge alone. If the command only merges what the adversary reviewed, write that exact "
+    "line as visible text in one message and run the command in a later message. Thinking does not "
+    "count: thinking is not read, even when your screen shows it like a message."
+)
+RELAYED_HOLD_KIND_NOTE = (
+    "A goal-adversary hold reached this session as a subagent result: {line} -- an unquoted hold "
+    "covers only a push or a merge, because an edit made through Bash without git is not seen and a "
+    "deploy or a delete acts on the disk. Write that exact line as visible text in one message, then "
+    "run this command in a later message. Thinking does not count: thinking is not read, even when "
+    "your screen shows it like a message. The transcript is not losing your text."
 )

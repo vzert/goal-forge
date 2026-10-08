@@ -786,7 +786,7 @@ case("99-denied-checkpoint-write-is-no-spec-ALLOW", lambda: run_hook(
 
 
 # 0.51.0 — the conditions on the relayed path. Field case: VPS session f8f10a20 (2026-10-08), four
-# hand-back holds, the quote only in thinking, nine `gh pr merge` denied, the PRs merged by hand
+# hand-back holds, the quote only in thinking, ten `gh pr merge` denied, the PRs merged by hand
 # outside the gate. A change after the hold voids it (100, 101, 107); a checkpoint or memory note, a
 # push, an earlier merge, a failed Write, a user reply or a read-only git call does not (102-106,
 # 108, 109); a later relayed break wins (110); a quote only in thinking is still nothing (111).
@@ -794,18 +794,18 @@ REL = [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user()]
 
 case("100-relayed-hold-then-code-write-DENY", _relay_case(
     "100", REL + [{"write": ("src/app.js", "changed"), "write_id": "w100"}],
-    "does not cover this command: a Write/Edit to src/app.js came after it", absent="proceeding on"))
+    "does not cover this command: a file edit to src/app.js came after the adversary was launched", absent="proceeding on"))
 
 case("101-relayed-hold-then-commit-DENY", _relay_case(
     "101", REL + [{"bash": "git commit -am 'fix after review'", "bash_id": "b101"}],
-    "does not cover this command: the command `git commit -am 'fix after review'` came after it"))
+    "does not cover this command: the command `git commit -am 'fix after review'` came after the adversary was launched"))
 
 case("102-relayed-hold-then-checkpoint-write-ALLOW", _relay_allow(
     "102", REL + [{"write": ("/home/u/w/.goalspec/checkpoint-abc.md", SPEC_TEXT + "Rounds: 2\n"),
                    "write_id": "w102"}]))
 
 case("103-relayed-hold-then-memory-note-ALLOW", _relay_allow(
-    "103", REL + [{"write": ("/home/u/w/memory/sessions/2026-10-08-x.md", "notes"), "write_id": "w103"}]))
+    "103", REL + [{"write": ("memory/sessions/2026-10-08-x.md", "notes"), "write_id": "w103"}]))
 
 case("104-relayed-hold-then-push-and-earlier-merge-ALLOW", _relay_allow(
     "104", REL + [{"bash": "git push -u origin feature/x", "bash_id": "b104a"},
@@ -840,6 +840,69 @@ case("111-hold-quoted-only-in-thinking-DENY", _relay_case(
     "111", [{"text": SPEC_TEXT}, {"raw": {"type": "assistant", "message": {"content": [
         {"type": "thinking", "thinking": "cito el veredicto: " + HOLD_TEXT}]}}}],
     "Spawn goal-adversary", absent="as a subagent result"))
+
+
+# 0.51.0 adversary rounds (subagent and external) on the first cut of the relayed path. 112: a deploy
+# is not covered (a Bash edit without git is not seen). 113: a commit made while the adversary was
+# still reading voids it. 114-116: MultiEdit, NotebookEdit and a nested docs/ directory are edits.
+# 117: a relayed break after a quoted hold wins. 118-119: `git add` is a change, `git stash list` is
+# not. 120-121: a command that itself changes the repository gets a way out that is not a delta round,
+# and following it passes.
+def _raw_tool(name, tid, inp):
+    return {"raw": {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": name, "id": tid, "input": inp}]}}}
+
+
+case("112-relayed-hold-deploy-not-covered-DENY", lambda: _deny_reason_has(
+    "112", "an unquoted hold covers only a push or a merge", lambda: run_hook(
+        make_repo("112", None, None), "npm publish", transcript(REL, "112"))))
+
+case("113-commit-between-spawn-and-handback-DENY", _relay_case(
+    "113", [{"text": SPEC_TEXT}] + ADV_BG + [{"bash": "git commit -am mid", "bash_id": "b113"},
+                                             _handback_user()],
+    "the command `git commit -am mid` came after the adversary was launched"))
+
+case("114-relayed-hold-then-multiedit-DENY", _relay_case(
+    "114", REL + [_raw_tool("MultiEdit", "m114", {"file_path": "src/app.py", "edits": []})],
+    "a file edit to src/app.py came after the adversary was launched"))
+
+case("115-relayed-hold-then-notebookedit-DENY", _relay_case(
+    "115", REL + [_raw_tool("NotebookEdit", "n115", {"notebook_path": "nb/a.ipynb", "new_source": "x"})],
+    "a file edit to nb/a.ipynb came after the adversary was launched"))
+
+case("116-relayed-hold-then-nested-docs-write-DENY", _relay_case(
+    "116", REL + [{"write": ("src/docs/app.py", "code"), "write_id": "w116"}],
+    "a file edit to src/docs/app.py came after the adversary was launched"))
+
+case("117-quoted-hold-then-relayed-break-DENY", _relay_case(
+    "117", [{"text": SPEC_TEXT}] + ADV_BG + [{"text": HOLD_TEXT},
+                                             _handback_user(body=HB_BODY.replace(HOLD_LINE, BREAK_TEXT))],
+    "most recent adversary verdict on record is break"))
+
+case("118-relayed-hold-then-git-add-DENY", _relay_case(
+    "118", REL + [{"bash": "git add src/x.js", "bash_id": "b118"}],
+    "the command `git add src/x.js` came after the adversary was launched"))
+
+case("119-relayed-hold-then-stash-list-ALLOW", _relay_allow(
+    "119", REL + [{"bash": "git stash list", "bash_id": "b119"}]))
+
+REL2 = REL + _spawn(ADV, "tbg9", agent_id="a644fedd9b711caf9") + [_handback_user()]
+LOCAL_MERGE = "git " + "merge feature"
+
+def _no_loop_120():
+    decision, detail = _deny_reason_has(
+        "120", "write that exact line as visible text in one message", lambda: run_hook(
+            make_repo("120", None, None), LOCAL_MERGE, transcript(REL2, "120")))
+    if decision == "deny" and "Quoting the old hold is not the way" in LAST_REASON[0]:
+        return "wrong-text", "still sends a self-mutating command to a delta round"
+    return decision, detail
+
+
+case("120-self-mutating-command-gets-a-way-out-DENY", _no_loop_120)
+
+case("121-self-mutating-command-after-quote-ALLOW", lambda: run_hook(
+    make_repo("121", None, None), LOCAL_MERGE,
+    transcript(REL2 + [{"text": HOLD_TEXT}], "121")))
 
 
 def run_hook_raw(payload):
