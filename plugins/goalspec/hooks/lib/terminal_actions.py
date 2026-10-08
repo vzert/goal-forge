@@ -1053,34 +1053,95 @@ def transcript_signals(transcript_path):
 
 
 # 0.51.0 — what counts as "the work changed after the hold" for relayed_hold_operative: a git command
-# that makes a commit or moves HEAD, a branch, the index or the working tree. `git push`, `gh pr
-# merge` and `git fetch` are not on it: they publish or read what the hold reviewed. A local `git
-# merge` is, because it makes a tree no round saw. The lookahead keeps `merge-base`/`merge-file` out;
-# `stash list` and `stash show` only read.
-GIT_MUTATE_RE = re.compile(_GIT_PREFIX + r"(?:commit|rebase|reset|cherry-pick|revert|am|apply|"
-                           r"stash(?!\s+(?:list|show)\b)|restore|checkout|switch|merge|pull|add|rm|mv|"
-                           r"update-index|update-ref|branch\s+(?:-f|--force|-D|-M))(?![\w-])")
+# that makes a commit or moves HEAD, a ref, the index or the working tree. `git push`, `gh pr merge`
+# and `git fetch` are not on it: they publish or read what the hold reviewed. A local `git merge` is,
+# because it makes a tree no round saw. The lookahead keeps `merge-base`/`merge-file` out; `stash
+# list` and `stash show` only read. It matches text, so a git word inside a quoted string counts too:
+# the strict direction, costing a quote.
+GIT_MUTATE_RE = re.compile(
+    _GIT_PREFIX + r"(?:commit|commit-tree|rebase|reset|cherry-pick|revert|am|apply|"
+    r"stash(?!\s+(?:list|show)\b)|restore|checkout|checkout-index|switch|merge|pull|add|rm|mv|clean|"
+    r"update-index|update-ref|read-tree|filter-branch|filter-repo|fast-import|"
+    r"replace(?!\s+(?:-l|--list)\b)|worktree\s+(?:add|remove|move|prune|repair)|"
+    r"submodule\s+(?:add|update|deinit|sync|foreach|init|absorbgitdirs)|branch\s+(?:-f|--force|-d|-D|-m|-M|--delete|--move)|tag\s+(?:-f|--force|-d|--delete))"
+    r"(?![\w-])")
 
-# The kinds the relayed path covers. A push or a merge carries committed work only, and every commit
-# made through a git command is seen; a deploy or a destructive command acts on whatever is on disk,
-# and a Bash edit without git (`sed -i`, a script) is not seen, so those keep needing the quote.
-RELAYED_KINDS = ("push", "merge")
+# 0.51.0, after the adversary rounds — the command shapes an unquoted relayed hold can cover: the
+# whole command is one or more `gh pr merge` / `git push` invocations, joined by `&&`, `||` or `;`,
+# each with optional leading VAR=value assignments and fd redirections (`2>&1`, `>/dev/null`), and
+# optionally piped into `tail`/`head`. Anything else in the command (a deploy, a delete, a commit, a
+# local merge, `$(...)`, a heredoc, a subshell) and the quote is needed. The first cut checked the
+# command's first terminal kind only, and `gh pr merge 5 && npm publish` passed (both adversaries).
+_PIPE_READERS = ("tail", "head")
+_SHAPE_REJECT_RE = re.compile(r"\$\(|`|<<|\n|\(|\)|\{|\}")
+_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def _covered_invocation(words):
+    while words and _ASSIGN_RE.match(words[0]):
+        words = words[1:]
+    if len(words) >= 3 and words[0] == "gh" and words[1] == "pr" and words[2] == "merge":
+        return True
+    if not words or words[0] != "git":
+        return False
+    i = 1
+    while i < len(words) and words[i] in ("-C", "-c", "--no-pager"):
+        i += 1 if words[i] == "--no-pager" else 2
+    return i < len(words) and words[i] == "push"
+
+
+def relayed_shape_ok(command):
+    """True when every part of `command` is a `gh pr merge` or a `git push` (see _PIPE_READERS and
+    the comment above for what may surround them). Any parse doubt -> False (quote needed)."""
+    import shlex
+    if not isinstance(command, str) or not command.strip() or _SHAPE_REJECT_RE.search(command):
+        return False
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        toks = list(lex)
+    except Exception:
+        return False
+    segs, cur, pipe_in = [], [], []
+    i = 0
+    while i < len(toks):
+        t = toks[i]
+        if t in ("&&", "||", ";"):
+            segs.append((cur, pipe_in)); cur, pipe_in = [], []
+        elif t == "|":
+            pipe_in.append(cur); cur = []
+        elif t in (">", ">>", ">&", "<", "&>", ">|"):
+            if cur and cur[-1].isdigit():
+                cur.pop()
+            i += 1  # skip the redirection target
+        elif set(t) <= set("&|;<>"):
+            return False  # `&` (background) or any operator not handled above
+        else:
+            cur.append(t)
+        i += 1
+    segs.append((cur, pipe_in))
+    for last, before in segs:
+        parts = before + [last]
+        if not parts[0] or not _covered_invocation(parts[0]):
+            return False
+        for reader in parts[1:]:
+            if not reader or reader[0] not in _PIPE_READERS \
+                    or any(not (w.startswith("-") or w.isdigit()) for w in reader[1:]):
+                return False
+    return True
 
 
 def _edit_path_exempt(path, cwd=None):
-    """A Write/Edit path that is not a change to the work: anything under a `.goalspec/` directory
-    (the run state, at any depth, as CHECKPOINT_PATH_RE), or a path that is_path_exempt accepts
-    once made relative to the working directory or the git top level above it (memory/, docs/, a
-    root *.md). Transcript paths are absolute and is_path_exempt is repo-relative, so the path is
-    resolved first; `src/docs/x.py` and `docs/../src/x.py` are changes."""
+    """A file-edit path that is not a change to the work: one that is_path_exempt accepts once made
+    relative to the working directory or the git top level above it (memory/, docs/, .goalspec/, a
+    root *.md; EXEMPT_PREFIXES is the one list). Transcript paths are absolute and is_path_exempt is
+    repo-relative, so the path is resolved first, symlinks included; `src/docs/x.py`,
+    `src/.goalspec/x.py` and `docs/../src/x.py` are changes, and so is a path outside both roots."""
     if not isinstance(path, str) or not path.strip():
         return False
     base = cwd if isinstance(cwd, str) and cwd else os.getcwd()
-    full = os.path.normpath(path if os.path.isabs(path) else os.path.join(base, path))
-    if re.search(r"(^|/)\.goalspec/", full):
-        return True
     try:
-        full = os.path.realpath(full)  # own_checkpoint_roots resolves symlinks (macOS /var), so match
+        full = os.path.realpath(path if os.path.isabs(path) else os.path.join(base, path))
     except Exception:
         return False
     for root in own_checkpoint_roots(base):
@@ -1093,7 +1154,8 @@ def _edit_path_exempt(path, cwd=None):
 def relayed_hold_operative(items, command=None, tool_use_id=None, cwd=None):
     """0.51.0 — the terminal-push precheck accepts a goal-adversary hold that reached this session as
     a subagent result (a relayed_verdict item, see RELAY_PREFIXES for how it is told from look-alike
-    text), without the executor quoting it, for a push or a merge, when nothing changed after it.
+    text), without the executor quoting it, when nothing changed after it and the command is only
+    `gh pr merge` / `git push` (relayed_shape_ok; the caller checks it).
 
     Field case (2026-10-08, VPS session f8f10a20, 0.50.0): four holds arrived as hand-backs, the
     executor wrote the quote only in its thinking, the precheck denied ten `gh pr merge` calls,
@@ -1107,19 +1169,15 @@ def relayed_hold_operative(items, command=None, tool_use_id=None, cwd=None):
     spawn that launched that adversary (a commit made while it was still reading is not in what it
     read), or from the first goal-adversary spawn when the spawn is unknown, or from the hold itself
     when there is no spawn at all. A change is a Write/Edit/MultiEdit/NotebookEdit whose result was
-    not an error, outside .goalspec/ and the memory/, docs/ and root *.md that is_path_exempt allows
-    (_edit_path_exempt), or a Bash call that GIT_MUTATE_RE matches, even if it failed (`git commit
-    && git push` that fails on the push still committed). The call being decided is dropped from the
-    record first, as in waiver_covers_command.
+    not an error and whose path _edit_path_exempt does not accept, or a Bash call that GIT_MUTATE_RE
+    matches, even if it failed (`git commit && git push` that fails on the push still committed).
+    The call being decided is dropped from the record first, as in waiver_covers_command.
 
-    Not covered, by the caller (RELAYED_KINDS): a deploy or a destructive command, because a Bash
-    call that edits without git is not seen and those act on the disk. Not covered either: a command
-    that itself matches GIT_MUTATE_RE (`git commit -am x && git push`, a local `git merge`), which
-    "self" in the result reports; no round can cover a change the command has not made yet.
-    What it cannot see: a commit made inside a script the command runs, and which PR or branch the
-    hold was about (it is session-wide, like a quoted hold). Comparing HEAD is not used: the field
-    case merged four PRs from four worktrees through `gh pr merge --repo`, and the hook's cwd was
-    none of them. Counters are not read, as on the quoted path (operative_verdict)."""
+    What it cannot see: a change made inside a script a Bash call runs, git plumbing not on
+    GIT_MUTATE_RE, edits made by another subagent (only this transcript is read), and which PR or
+    branch the hold was about (it is session-wide, like a quoted hold). Comparing HEAD is not used:
+    the field case merged four PRs from four worktrees through `gh pr merge --repo`, and the hook's
+    cwd was none of them. Counters are not read, as on the quoted path (operative_verdict)."""
     seq = list(items)
     if tool_use_id:
         seq = [it for it in seq if not (it["kind"] == "bash" and it.get("id") == tool_use_id)]
@@ -1132,7 +1190,7 @@ def relayed_hold_operative(items, command=None, tool_use_id=None, cwd=None):
             last = i
     if last is None or seq[last]["kind"] != "relayed_verdict" or seq[last]["verdict"] != "hold":
         return None
-    out = {"line": seq[last]["line"], "change": None, "self": False}
+    out = {"line": seq[last]["line"], "change": None}
     spawns = [i for i, it in enumerate(seq[:last]) if it["kind"] == "adversary_spawn"]
     own = [i for i in spawns if seq[i].get("id") and seq[i]["id"] == seq[last].get("spawn")]
     start = own[0] if own else (spawns[0] if spawns else last)
@@ -1146,10 +1204,6 @@ def relayed_hold_operative(items, command=None, tool_use_id=None, cwd=None):
             out["change"] = "the command `%s` came after the adversary was launched" % (
                 " ".join(it["command"].split())[:120])
             break
-    m = GIT_MUTATE_RE.search(command) if out["change"] is None and isinstance(command, str) else None
-    if m:
-        out["self"] = True
-        out["change"] = "this command itself also changes the repository (`%s`)" % m.group(0).strip()
     return out
 
 
@@ -1169,14 +1223,15 @@ def relayed_break_after_text_hold(items):
 # in it on purpose: the quote the executor did not write is the one way the human would have seen it.
 RELAYED_HOLD_ALLOW = (
     "goalspec terminal-push precheck: proceeding on a goal-adversary hold that reached this session "
-    "as a subagent result, not quoted by the agent: {line} -- no commit and no file edit outside "
-    "memory/, docs/ or .goalspec/ is on record since that adversary was launched."
+    "as a subagent result, not quoted by the agent: {line} -- this command is only a gh pr merge or "
+    "git push, and no commit and no file edit outside memory/, docs/, .goalspec/ or a root *.md is "
+    "on record since that adversary was launched."
 )
 
 # Agent-facing deny text for a relayed hold that does not cover the command. Kept here, not in the
-# hook, for the same apostrophe reason as INTERVIEW_HANDOFF_NUDGE. Three cases, three ways out, so an
-# executor that follows it does not loop (delta round on 0.51.0: one version sent a self-mutating
-# command back to a delta round that could never cover it).
+# hook, for the same apostrophe reason as INTERVIEW_HANDOFF_NUDGE. Two cases, two ways out, so an
+# executor that follows it does not loop (a delta round on the first cut sent a command that itself
+# changed the repository back to a delta round that could never cover it).
 RELAYED_HOLD_NOTE = (
     "A goal-adversary hold reached this session as a subagent result: {line} -- but it does not "
     "cover this command: {change}. Spawn goal-adversary for a delta round on what changed since that "
@@ -1184,18 +1239,12 @@ RELAYED_HOLD_NOTE = (
     "a tree that no longer exists. If you believe you already quoted a newer verdict: thinking is "
     "not read, even when your screen shows it like a message. The transcript is not losing your text."
 )
-RELAYED_HOLD_SELF_NOTE = (
-    "A goal-adversary hold reached this session as a subagent result: {line} -- but {change}, and "
-    "an unquoted hold never covers a command that changes the repository itself. If that change is "
-    "new work (a commit), run it as its own command first, get a delta round on it, then run the "
-    "push or merge alone. If the command only merges what the adversary reviewed, write that exact "
-    "line as visible text in one message and run the command in a later message. Thinking does not "
-    "count: thinking is not read, even when your screen shows it like a message."
-)
-RELAYED_HOLD_KIND_NOTE = (
+RELAYED_HOLD_SHAPE_NOTE = (
     "A goal-adversary hold reached this session as a subagent result: {line} -- an unquoted hold "
-    "covers only a push or a merge, because an edit made through Bash without git is not seen and a "
-    "deploy or a delete acts on the disk. Write that exact line as visible text in one message, then "
-    "run this command in a later message. Thinking does not count: thinking is not read, even when "
-    "your screen shows it like a message. The transcript is not losing your text."
+    "covers only a command made of gh pr merge or git push alone (env assignments, 2>&1 and a pipe "
+    "into tail or head allowed), and this command has more in it. Either run the push or merge as a "
+    "command of its own (a commit first, as its own command, needs a delta round), or write that "
+    "exact line as visible text in one message and run this command in a later message. Thinking "
+    "does not count: thinking is not read, even when your screen shows it like a message. The "
+    "transcript is not losing your text."
 )

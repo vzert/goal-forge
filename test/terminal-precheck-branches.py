@@ -801,7 +801,7 @@ case("101-relayed-hold-then-commit-DENY", _relay_case(
     "does not cover this command: the command `git commit -am 'fix after review'` came after the adversary was launched"))
 
 case("102-relayed-hold-then-checkpoint-write-ALLOW", _relay_allow(
-    "102", REL + [{"write": ("/home/u/w/.goalspec/checkpoint-abc.md", SPEC_TEXT + "Rounds: 2\n"),
+    "102", REL + [{"write": (".goalspec/checkpoint-abc.md", SPEC_TEXT + "Rounds: 2\n"),
                    "write_id": "w102"}]))
 
 case("103-relayed-hold-then-memory-note-ALLOW", _relay_allow(
@@ -821,7 +821,7 @@ case("106-relayed-hold-then-user-reply-ALLOW", _relay_allow(
     "106", REL + [{"user": "dale, mergea los 4"}]))
 
 case("107-relayed-hold-command-itself-commits-DENY", lambda: _deny_reason_has(
-    "107", "this command itself also changes the repository (`git commit`)", lambda: run_hook(
+    "107", "and this command has more in it", lambda: run_hook(
         make_repo("107", None, {"src/app.js": "code"}), "git commit -am x && git push origin main",
         transcript(REL, "107"))))
 
@@ -854,7 +854,7 @@ def _raw_tool(name, tid, inp):
 
 
 case("112-relayed-hold-deploy-not-covered-DENY", lambda: _deny_reason_has(
-    "112", "an unquoted hold covers only a push or a merge", lambda: run_hook(
+    "112", "covers only a command made of gh pr merge or git push alone", lambda: run_hook(
         make_repo("112", None, None), "npm publish", transcript(REL, "112"))))
 
 case("113-commit-between-spawn-and-handback-DENY", _relay_case(
@@ -903,6 +903,47 @@ case("120-self-mutating-command-gets-a-way-out-DENY", _no_loop_120)
 case("121-self-mutating-command-after-quote-ALLOW", lambda: run_hook(
     make_repo("121", None, None), LOCAL_MERGE,
     transcript(REL2 + [{"text": HOLD_TEXT}], "121")))
+
+
+# 0.51.0, the narrow redesign the human chose after the delta rounds (both adversaries: the first
+# kind of the command decided, so `gh pr merge 5 && npm publish` passed). 122: a merge chained to a
+# deploy is not covered. 123: a root *.md edit is not a change, and the allow message says so. 124,
+# 127: `git clean` and `git tag -f` are changes. 125: `.goalspec/` counts only at the repo root.
+# 126: the field case's own shape (env prefix, 2>&1, `||` between two merges) is covered.
+case("122-merge-chained-to-deploy-not-covered-DENY", lambda: _deny_reason_has(
+    "122", "and this command has more in it", lambda: run_hook(
+        make_repo("122", None, None), "gh pr merge 5 && npm publish", transcript(REL, "122"))))
+
+case("123-relayed-hold-then-root-md-edit-ALLOW", _relay_allow(
+    "123", REL + [{"write": ("CHANGELOG.md", "notes"), "write_id": "w123"}],
+    needle="outside memory/, docs/, .goalspec/ or a root *.md"))
+
+case("124-relayed-hold-then-git-clean-DENY", _relay_case(
+    "124", REL + [{"bash": "git clean -fd", "bash_id": "b124"}],
+    "the command `git clean -fd` came after the adversary was launched"))
+
+case("125-relayed-hold-then-nested-goalspec-write-DENY", _relay_case(
+    "125", REL + [{"write": ("src/.goalspec/app.py", "code"), "write_id": "w125"}],
+    "a file edit to src/.goalspec/app.py came after the adversary was launched"))
+
+case("126-field-case-command-shape-ALLOW", _relay_allow(
+    "126", REL, command="SKILL_AUTHORIZED=1 gh pr merge 951 --repo o/app --merge --auto 2>&1 || "
+                        "SKILL_AUTHORIZED=1 gh pr merge 951 --repo o/app --merge 2>&1"))
+
+case("127-relayed-hold-then-tag-force-DENY", _relay_case(
+    "127", REL + [{"bash": "git tag -f v1", "bash_id": "b127"}],
+    "the command `git tag -f v1` came after the adversary was launched"))
+
+
+# The field transcript runs `git worktree list` between the hold and the merges; a first version of
+# the wider git list matched `worktree` alone and denied all ten merges again. Read-only subcommands
+# of worktree, submodule and replace are not changes; `worktree add` is.
+case("128-relayed-hold-then-worktree-list-ALLOW", _relay_allow(
+    "128", REL + [{"bash": "git -C /w/app worktree list | grep 9073", "bash_id": "b128"}]))
+
+case("129-relayed-hold-then-worktree-add-DENY", _relay_case(
+    "129", REL + [{"bash": "git worktree add ../wt feature", "bash_id": "b129"}],
+    "the command `git worktree add ../wt feature` came after the adversary was launched"))
 
 
 def run_hook_raw(payload):

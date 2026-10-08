@@ -140,13 +140,13 @@ items = sig.get("items") or []
 if verdict == "hold" and not ta.relayed_break_after_text_hold(items):
     allow()
 
-# 0.51.0: a goal-adversary hold that reached this session as a subagent result passes a push or a
-# merge when it is the most recent verdict and no commit or file edit is on record since that
-# adversary was launched (terminal_actions.relayed_hold_operative has the field case and the rule).
+# 0.51.0: a goal-adversary hold that reached this session as a subagent result passes a command made
+# only of gh pr merge / git push (terminal_actions.relayed_shape_ok) when it is the most recent
+# verdict and no commit or file edit is on record since that adversary was launched (terminal_actions.relayed_hold_operative has the field case and the rule).
 # The quoted-text path above stays; this one adds to it. The human sees the verdict line in the
 # allow message, in place of the quote the agent did not write.
 relayed = ta.relayed_hold_operative(items, command, data.get("tool_use_id"), cwd)
-if relayed and relayed["change"] is None and kind in ta.RELAYED_KINDS:
+if relayed and relayed["change"] is None and ta.relayed_shape_ok(command):
     allow(ta.RELAYED_HOLD_ALLOW.format(line=relayed["line"]))
 
 KIND_LABEL = {
@@ -191,19 +191,16 @@ seen_note = (" If you believe you already quoted a hold, two causes are measured
 # to a bash script, whose stdin no parser can classify); the rule of terminal_actions.py is a canonical form,
 # not a smarter matcher; and the file route costs one Write.
 # p-64783f8057 (0.46.7), changed in 0.51.0: a relayed hold that reaches this point does not cover
-# the command, for one of three reasons, each with its own way out: a change since the adversary was
-# launched (delta round), the command itself changes the repository (split it, or quote), or the
-# command is a deploy or a delete (quote). It replaces both the spawn-the-adversary step and the list
-# of possible causes. The break note goes too: a break in your text older than this hold is not the
-# most recent verdict.
+# the command, for one of two reasons, each with its own way out: a change since the adversary was
+# launched (delta round), or a command with more in it than gh pr merge / git push (split it, or
+# quote). It replaces both the spawn-the-adversary step and the list of possible causes. The break
+# note goes too: a break in your text older than this hold is not the most recent verdict.
 if relayed:
     verdict_note = ""
-    if relayed["self"]:
-        next_step = ta.RELAYED_HOLD_SELF_NOTE.format(line=relayed["line"], change=relayed["change"])
-    elif relayed["change"]:
+    if relayed["change"]:
         next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed["line"], change=relayed["change"])
     else:
-        next_step = ta.RELAYED_HOLD_KIND_NOTE.format(line=relayed["line"])
+        next_step = ta.RELAYED_HOLD_SHAPE_NOTE.format(line=relayed["line"])
     seen_note = ""
 
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
