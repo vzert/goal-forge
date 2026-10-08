@@ -19,6 +19,8 @@ it. 01 is the control that keeps this from being a mere dirty-tree detector.
     python3 test/adversary-writes-branches.py --compare <pre-edit.sh> --expected 02
 """
 import argparse, json, os, subprocess, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "watch-adversary-writes.sh")
@@ -214,7 +216,9 @@ def main():
         if unexpected:
             print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
             rc = 1
-        elif not failures:
+        if expected_check.report(expected, [r[0] for r in rows], diffs):
+            rc = 1
+        elif not unexpected and not failures:
             print("\nparity OK — %d branches, %d intended change(s)" % (len(rows), len(diffs)))
     return rc
 

@@ -79,6 +79,14 @@ comparison: the point is to separate a designed change from a regression *in adv
 reading a non-zero exit afterwards and deciding it was fine. Don't persist the list in the file — a
 standing expected-diff list is a muted alarm.
 
+A declared change that did not happen fails as well, in every suite that takes `--expected`
+(`test/expected_check.py`, since p-6dd59b09af): a prefix that names no case, or whose cases all read
+the same against the copy, prints `UNMET EXPECTED` and exits 1, never `parity OK`. That is how
+external-adversary case 38 passed empty in 0.49.2 — `--expected 36,37,38` said parity OK with 38
+unchanged. It is judged per prefix, so a wide prefix (`stale-`) passes when any case under it
+changed and can still hide an empty one beside it: name the cases you mean.
+`test/manifest-checks.py` checks that the shared function flags and that every suite calls it.
+
 **Checkpoint-file goal-spec cases (`checkpoint-01`..`05`)** pin a separate real break from
 the same incident chain: the gate's PRIMARY "did this session produce a goal-spec at all"
 precondition — a different, older check than the staleness backstop below — is also a text-only

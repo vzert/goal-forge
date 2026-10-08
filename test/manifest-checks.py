@@ -86,6 +86,14 @@ def selftest():
         ("the plugin renamed", "plugin name is still",
          lambda d: _json_set(os.path.join(d, "plugins/goalspec/.claude-plugin/plugin.json"),
                              ["name"], "goalspec-renamed")),
+        ("expected_check stops flagging a prefix with no diff", "expected_check flags",
+         lambda d: _sub(os.path.join(d, "test/expected_check.py"),
+                        "        elif not any(d.startswith(p) for d in diffs):",
+                        "        elif False:")),
+        ("a --compare suite stops checking --expected",
+         "verdict-nudge-branches.py checks its --expected",
+         lambda d: _sub(os.path.join(d, "test/verdict-nudge-branches.py"),
+                        "expected_check.report(", "expected_check.unmet(")),
     ]
 
     # The control runs FIRST, and every mutation is judged against what it failed. Requiring only
@@ -397,6 +405,28 @@ for root, dirs, files in os.walk(REPO):
             no_ci.append("%s: %s" % (os.path.relpath(fp, REPO), line[:70]))
 check("no carrier still claims this project has no CI", not no_ci,
       " | ".join(no_ci[:3]))
+
+# --- 5. Every --compare suite fails a declared change that did not happen -----------------------
+# Until p-6dd59b09af, `--expected 36,37,38` printed "parity OK" with case 38 empty: a declared diff
+# that never happened was checked by nothing. test/expected_check.py now judges it for every suite
+# with --expected. Two silent ways to lose that: the shared function stops flagging, or a suite stops
+# calling it. Both are read here without running a suite — the function on synthetic rows, the
+# suites by their source — so this file stays hermetic.
+sys.path.insert(0, os.path.join(REPO, "test"))
+try:
+    import expected_check
+    names = ["01-a", "02-b", "stale-01", "stale-02"]
+    got = [p for p, _ in expected_check.unmet(["01", "zz", "stale-", "02"], names, ["01-a", "stale-02"])]
+    ok, detail = got == ["zz", "02"], "flagged %s, wanted ['zz', '02']" % got
+except Exception as e:
+    ok, detail = False, "%s: %s" % (type(e).__name__, e)
+check("expected_check flags an --expected prefix with no diff", ok, detail)
+for s_name in suites:
+    body = open(os.path.join(REPO, "test", s_name), encoding="utf-8").read()
+    if '"--expected"' in body:
+        check("%s checks its --expected prefixes" % s_name,
+              "expected_check.report(" in body,
+              "a declared change that does not happen would print parity OK")
 
 print()
 if failures:

@@ -28,6 +28,17 @@ version bump are never delivered to already-installed users.
   `GOAL_GATE_ENFORCE=1`, dan salida idéntica a la de antes salvo esas filas, y los tres casos que
   distinguen (09j, checkpoint-08, 99) fallan con la librería anterior.
 
+### `--compare` falla cuando un cambio declarado no ocurrió
+- Las cinco suites con `--compare` (gate, verdict-nudge, external-adversary, adversary-writes,
+  adversary-report) salen con código 1 y `UNMET EXPECTED` cuando un prefijo de `--expected` no
+  nombra ningún caso o ninguno de sus casos cambió (p-6dd59b09af). Antes solo fallaba un cambio no
+  declarado; un cambio declarado que no ocurría daba `parity OK`, y así pasó vacío el caso 38 de
+  0.49.2. El chequeo vive en `test/expected_check.py` y se juzga por prefijo.
+- `test/manifest-checks.py` comprueba que esa función marca un prefijo sin cambio y que cada suite
+  con `--expected` la llama; su `--selftest` rompe las dos cosas y exige que se note.
+- Solo tests: los hooks no cambian. Sin `--expected`, la salida de las cinco suites es idéntica a la
+  de antes, byte a byte, también con `GOAL_GATE_ENFORCE=1`.
+
 ## [0.50.0] - 2026-10-08
 
 ### Cada subagente nombra su modelo según su tarea

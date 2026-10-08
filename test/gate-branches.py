@@ -32,9 +32,15 @@ failed before the fix, and that is the shape of it.
 `--expected` is the pre-commitment channel: name the cases you INTEND to change before you run the
 comparison, and the run separates them from regressions instead of leaving you to rationalize a
 non-zero exit after the fact. It takes case-name prefixes, is never persisted in this file (a stale
-expected-diff list is just a muted alarm), and unexpected diffs still exit non-zero.
+expected-diff list is just a muted alarm), and unexpected diffs still exit non-zero. The other
+direction exits non-zero too (p-6dd59b09af): a prefix that names no case, or whose cases did not
+change, is a declared change that did not happen — a muted alarm of its own, and how
+external-adversary case 38 once passed empty. test/expected_check.py holds that check for every
+suite with --expected; it is judged per prefix, so `stale-` passes when any stale case changed.
 """
 import argparse, json, os, re, subprocess, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_GATE = os.path.join(REPO, "plugins", "goalspec", "hooks", "gate-goal-close.sh")
@@ -968,6 +974,7 @@ def main():
             print("\n%d branch(es) changed: %s" % (len(diffs), ", ".join(diffs)))
         if unexpected:
             print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
+        if expected_check.report(expected, [r[0] for r in rows], diffs) or unexpected:
             return 1
         print("\nparity OK — %d branches, %d intended change(s), 0 unexpected (vs %s)"
               % (len(rows), len(diffs), a.compare))

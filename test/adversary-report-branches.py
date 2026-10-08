@@ -35,6 +35,8 @@ it to fail. A check that has never been seen to fail is not yet a check.
     python3 test/adversary-report-branches.py --selftest
 """
 import argparse, json, os, subprocess, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "report-adversary-writes.sh")
@@ -317,7 +319,9 @@ def main():
         if unexpected:
             print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
             rc = 1
-        elif not failures:
+        if expected_check.report(expected, [r[0] for r in rows], diffs):
+            rc = 1
+        elif not unexpected and not failures:
             print("\nparity OK — %d branches, %d intended change(s)" % (len(rows), len(diffs)))
     return rc
 

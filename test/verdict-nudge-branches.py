@@ -17,6 +17,8 @@ that field as output that "came back" (case 04 pins exactly that).
 Columns: case | branch the hook took (verdict / malformed / launched / silent).
 """
 import argparse, json, os, re, subprocess, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "remind-quote-verdict.sh")
@@ -104,6 +106,7 @@ def main():
             print("\n%d branch(es) changed: %s" % (len(diffs), ", ".join(diffs)))
         if unexpected:
             print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
+        if expected_check.report(expected, [r[0] for r in rows], diffs) or unexpected:
             return 1
         print("\nparity OK — %d branches, %d intended change(s)" % (len(rows), len(diffs)))
     return 0

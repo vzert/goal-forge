@@ -51,6 +51,8 @@ The two 0.21.1 fixes are the point of this file:
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
 """
 import argparse, os, re, subprocess, sys, tempfile
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "external-adversary.sh")
@@ -748,7 +750,9 @@ def main():
         if unexpected:
             print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
             rc = 1
-        elif not failures:
+        if expected_check.report(expected, [r[0] for r in rows], diffs):
+            rc = 1
+        elif not unexpected and not failures:
             print("\nparity OK — %d branches, %d intended change(s)" % (len(rows), len(diffs)))
     return rc
 
