@@ -573,6 +573,32 @@ def main():
         check("sev2:%s-threat-model-only-grows-vs-ask" % name,
               "fixed when the spec is written and only grows" in t and "against what" in t)
 
+    # --- CLOSE SHAPE (0.53.0): the plain-language close is two tables between bold lines ---
+    # Text only: no hook reads the close, so these pin the written rule across its carriers and
+    # cannot show that an agent then copies the shape (that stays a live observation).
+    sec = skill.split("## The plain-language close", 1)
+    sec = sec[1].split("## Ending a run that did not finish", 1)[0] if len(sec) == 2 else ""
+    for lab, needle in (("where-we-are", "**Where we are:**"),
+                        ("done-table-blank-line-before", "**What's done**\n\n| Step | Status |"),
+                        ("left-table-blank-line-before", "**What's left**\n\n| # | What | Who | When |"),
+                        ("hard-to-undo", "**Hard to undo:**"), ("you-decide", "**You decide:**"),
+                        ("closed", "**Closed?**"), ("icons", "✅" in sec and "❌" in sec and "⏳" in sec),
+                        ("es-labels", "Dónde quedamos" in sec and "Qué está hecho" in sec and "Qué falta" in sec
+                         and "Quién" in sec and "Cuándo" in sec and "Difícil de deshacer" in sec
+                         and "Decides tú" in sec and "¿Cerrado?" in sec),
+                        ("q-mapping", "Q0" in sec and all("← Q%d" % i in sec for i in range(1, 7))),
+                        ("bounded", "≤6 rows per table" in sec),
+                        ("empty-table-row", "| — | Nothing |" in sec)):
+        check("shape:skill-%s" % lab, needle if isinstance(needle, bool) else needle in sec)
+    check("shape:skill-old-template-gone",
+          "CAN THIS BE CONSIDERED CLOSED?" not in skill and "eighteen lines total" not in skill)
+    plain = read(os.path.join(P, "references", "plain-close.md"))
+    check("shape:plain-close-section", "## v0.53.0 — one fixed shape: two tables between bold lines" in plain
+          and "`Hard to undo`" in plain and "Who / When" in plain)
+    check("shape:plain-close-no-seven-headings", "seven headings" not in plain)
+    check("shape:readme", "**v0.53.0** gives the plain-language close one fixed shape" in readme_
+          and "`What's left` table with **Who** and **When**" in readme_)
+
     width = max(len(label) for label, _, _ in checks)
     failures = [c for c in checks if not c[1]]
     for label, ok, detail in checks:

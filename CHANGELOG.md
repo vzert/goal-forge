@@ -8,6 +8,43 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-10-09
+
+### El cierre en lenguaje llano tiene una forma fija: dos tablas entre líneas en negrita
+
+En la terminal, el cierre se veía igual que el resto de la sesión, y cuando se quedaba arriba había
+que buscarlo. Medido el 2026-10-09 en los 215 transcripts de claude-vzert (solo bloques `text` del
+asistente, sin thinking): 64 sesiones tienen cierre, 0 usan una tabla, los cierres miden de 27 a 91
+líneas, y los encabezados cambiaron sin que nadie lo decidiera: preguntas en inglés en septiembre,
+en español el 1 de octubre, y desde entonces casi siempre solo el marcador con prosa libre. Otro dev
+del equipo le pide a su agente "una tabla de lo que llevamos y lo que falta" y recibe tablas
+encuadradas con ✅/⏳ y columnas Quién / Cuándo (capturas que compartió; sus transcripts no se
+leyeron).
+
+- `skills/goalspec/SKILL.md`, "The plain-language close": las mismas siete preguntas (Q0–Q6) van
+  ahora en una forma fija, copiada línea por línea: `Where we are` (Q0), tabla `What's done`
+  (✅ hecho = Q1, ❌ no hecho con su razón = Q2), tabla `What's left` con `#`, `What`, `Who`, `When`
+  (⏳, Q4), y tres líneas en negrita: `Hard to undo` (Q3), `You decide` (Q5) y `Closed?` (Q6). Las
+  etiquetas van en el idioma del usuario y la versión en español queda escrita junto a la plantilla.
+  Límites: hasta 6 filas por tabla, una línea por celda, y las líneas en blanco se conservan, porque
+  sin ellas la tabla no se dibuja y las líneas en negrita se juntan. Una tabla vacía lleva una fila
+  `Nothing` y nunca falta. Se quitó el límite de "dos líneas por pregunta, 18 en total".
+- La sección pesa lo mismo (5,882 tokens antes y 5,881 después, `cl100k_base`, hasta el fin de
+  "Ending a run that did not finish"). La plantilla se pagó compactando los bullets de la misma
+  sección, sin quitar ninguna regla.
+- `references/plain-close.md`: sección nueva con la evidencia, y la tabla de tokens re-medida. Sus
+  cifras de v0.41.1 tenían entre 495 y 525 tokens de atraso, porque se agregó texto arriba de la
+  sección sin medirlo. La región termina 881 tokens por encima de la ventana de 5,000.
+- `test/claim-surface-carriers.py`: chequeos nuevos de que la forma (las dos tablas, sus columnas,
+  las tres líneas y la equivalencia con Q0–Q6) está en SKILL.md, en la referencia y en el README, y
+  de que ningún carrier conserva la plantilla vieja de siete encabezados en mayúsculas. Cada chequeo
+  tiene una mutación que debe detectar.
+- Fuera de alcance, por decisión del operador: la posición del cierre. En esos mismos logs, el
+  cierre casi nunca es lo último del turno, porque después vienen la narración del checkpoint y una
+  auto-revisión. Eso lo resuelve otro trabajo, un banner en la terminal.
+- Sin verificar en vivo: ninguna suite puede mostrar que un agente copie la forma. Queda como
+  pendiente observarlo en una sesión real.
+
 ## [0.52.0] - 2026-10-09
 
 ### El grounding amplio va a un subagente barato

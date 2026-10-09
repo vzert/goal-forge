@@ -51,62 +51,75 @@ The adversary verdict grammar (emitted by the adversary, not by you):
 The marker above is for the gate; **this is for the human**. Mandatory on **every** close — after
 whichever marker closed it, `[COMPLETION-REVIEW: ...]` or `[GOAL-CLOSE-WAIVED ...]` — **and on a
 stop that is not a close**: when you hand an unconverged loop back (convergence guard, option (a))
-it stands alone and is the entire report. Seven fixed
-questions, in the user's language, **two lines each, eighteen lines total maximum**:
+it stands alone and is the entire report. Seven fixed questions (Q0–Q6), in the user's language
+(labels too), in **one fixed shape: two tables between bold lines** — a terminal draws a table as a
+boxed grid, so the close is found by scrolling, not reading (2026-10-09: 64 closes by one heavy
+user, 0 tables, headings drifted to none):
 
 ```
-WHAT WERE WE WORKING ON?              <line 1: the project or system, plainly, then the ask that opened
-                                       the session in the user's words; line 2: this part if different, and what it became>
-WHAT GOT DONE?                        <what is actually finished>
-WHAT DIDN'T I DO, AND WHY?            <what you skipped, and the reason>
-WHAT CHANGED THAT IS HARD TO UNDO?    <pushed, deleted, sent, published — or "nothing, I only read">
-WHAT COMES NEXT, AND WHEN?            <action, owner, date>
-DO YOU NEED TO DECIDE ANYTHING?       <each decision written AS A QUESTION they can answer>
-CAN THIS BE CONSIDERED CLOSED?        <Yes | No + the one reason>
+**Where we are:** <Q0, 1–3 lines>
+
+**What's done**
+
+| Step | Status |
+|---|---|
+| <finished> | ✅ <result> |                      ← Q1
+| <skipped> | ❌ <the reason> |                   ← Q2
+
+**What's left**
+
+| # | What | Who | When |
+|---|---|---|---|
+| 1 | ⏳ <action> | <owner> | <date or trigger> |  ← Q4
+
+**Hard to undo:** <pushed, deleted, sent — or "nothing, I only read">   ← Q3
+
+**You decide:** <each decision AS A QUESTION>                           ← Q5
+
+**Closed?** <Yes | No + the one reason>                                 ← Q6
 ```
 
-- **Q0 orients first — fixed order, no conditions.** Line 1: the project or
-  system in plain words (among ten agents, "the push" names nothing), then the ask that **opened the
-  session**, in the user's own words. Line 2: this part, if the close is one part of the session, and
-  what it became — the spec's objective — so a reframe is visible. Copy from the `## Goal-spec`'s
-  `Asked` line, never recall at hour six; that line carries the opening ask through every later cycle,
-  so copying cannot lose it — the first live close under v0.41.0 lost it exactly that way (a
-  re-entered cycle's `Asked: "hagamos el push"`, copied, project unnamed; `references/plain-close.md`).
+Spanish labels: Dónde quedamos · Qué está hecho (Paso, Estado) · Qué falta (#, Qué, Quién, Cuándo) ·
+Difícil de deshacer · Decides tú · ¿Cerrado?
+
+- **Fixed shape, bounded size, nothing dropped.** Copy the shape line for line — ≤6 rows per table,
+  one line per cell, the blank lines kept (without them a table does not render and the bold lines
+  merge into one). Nothing to report is `Nothing` — an empty
+  table is one row `| — | Nothing |`, never absent; an absent line reads as an oversight.
+- **Q0 orients first — fixed order, no conditions:** the project or system in plain words (among ten
+  agents, "the push" names nothing), the ask that **opened the session** in the user's own words,
+  then this part if different and what it became (the spec's objective, so a reframe shows). Copy
+  from the `## Goal-spec`'s `Asked` line, never recall at hour six — it carries the opening ask
+  through every later cycle (v0.41.0 lost it by copying a re-entered cycle's `Asked: "hagamos el
+  push"`; `references/plain-close.md`).
 - **Words a 12-year-old reads without stopping.** No `break`/`hold`/waiver, no bracket markers, no
   paths, line numbers, commit hashes, tool or gate names, round counts. Say *"nadie de fuera lo
   revisó"*, not *"cero `hold`"*.
-- **Plain is not vague — name who did what.** The ban above is on *jargon*, not on *information*:
-  "nadie de fuera lo revisó" is plain and says almost nothing; "un revisor independiente intentó
-  romperlo dos veces: la primera encontró un fallo real que corregí, la segunda no encontró nada" is
-  just as plain and actually reports. The test is **could the reader say, in their own words, what
-  was done and by whom?** Vague verifiers ("alguien", "se revisó") are the tell: say *who or what*
-  checked, *what they did*, *what came of it*. Plain counts (how many passes, how many things
-  checked) are information; the "no round counts" ban is about the method's internal bookkeeping only.
-- **Never drop a heading.** Nothing to report is the one-word answer `Nothing` — an absent heading
-  reads as an oversight, an explicit "nothing" is information — on a 5-minute lookup too.
-- **The last answer must agree with the marker you just emitted.** No adversary held → `No`. If
+- **Plain is not vague — name who did what.** The ban is on *jargon*, not *information*: "nadie de
+  fuera lo revisó" says almost nothing; "un revisor independiente intentó romperlo dos veces: la
+  primera encontró un fallo real que corregí, la segunda nada" is as plain and reports. Test: **could
+  the reader say what was done and by whom?** Plain counts are information; the round-count ban is
+  about the method's own bookkeeping.
+- **`Closed?` must agree with the marker you just emitted.** No adversary held → `No`. If
   they disagree, the marker is right and your summary is wrong. If the work fought back, say so
   plainly — that tells the reader how much to trust it.
-- **Question 5 asks, it does not report — and on any turn that ends the run, it asks in a modal.**
+- **`You decide` (Q5) asks, it does not report — and on any turn that ends the run, it asks in a modal.**
   "Yes, there are decisions pending" is a dead handoff, the exact failure principle 4 exists to
   prevent. Name each decision here in one line, then **raise them in an `AskUserQuestion` below the
   block** — the text names them, the modal is where they can answer. The trigger is every ending,
   not only a completion-review; see "Ending a run that did not finish".
-- **It crowns the detail, never replaces it.** Everything technical stays above, in full; the
-  block only makes the summary findable.
-- **Position follows the reader — and the modal is the one thing that may follow the block.** In a
-  **conversation turn** it is the last thing on screen, so: marker, then block, then nothing
-  *except* the `AskUserQuestion` that ending owes (next section); the continuation block that ending
-  may owe is detail and goes **above**. A modal
-  under the block is what tells the reader the turn is a handoff and not a finish — nothing else
-  goes there. In a **written artifact** (session log, report, checkpoint) it leads at the top (a
-  file is read from line 1) and carries no marker and no modal. Same seven questions,
-  opposite end.
+- **It crowns the detail, never replaces it.** Everything technical stays above, in full.
+- **Position follows the reader — the modal is the one thing that may follow the block.** In a
+  **conversation turn**: marker, then block, then nothing *except* the `AskUserQuestion` that ending
+  owes (next section) — it marks a handoff, not a finish; a continuation block goes **above**. In a
+  **written artifact** (session log, report, checkpoint) it leads at the top (a
+  file is read from line 1) and carries no marker and no modal. Same seven questions and same
+  tables, opposite end.
 
 It is a human summary, **not** a second constitution audit — grounding and falsification stay with
 the spec, the adversary and the marker; this carries orientation (Q0), no-harm (Q3), autonomy (Q5)
-and completeness (Q2/Q4/Q6) in a form a non-specialist can act on. Why, and the audited sessions
-that produced it: `references/plain-close.md`.
+and completeness (Q2/Q4/Q6) for a non-specialist. Why, with the audited sessions:
+`references/plain-close.md`.
 
 ## Ending a run that did not finish — ask, don't leave a summary that reads like a finish
 

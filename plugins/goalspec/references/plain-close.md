@@ -106,6 +106,32 @@ report, not theirs):
   construction. The main `SKILL.md`'s
   "Ending a run that did not finish" is the home of that test; this note records why it exists.
 
+## v0.53.0 — one fixed shape: two tables between bold lines
+
+The seven questions did not change; their **shape** did. The operator's report: in the terminal the
+close looks like every other paragraph of the session, so when it scrolls up it has to be hunted
+for. Measured 2026-10-09 on that operator's own agent logs (215 transcripts; assistant `text`
+blocks only, thinking excluded): **64 sessions carry a close, 0 use a markdown table**, closes run
+27–91 lines, and the headings drifted without anyone deciding it — English all-caps questions in
+September, Spanish ones on 2026-10-01, and from then on mostly the marker followed by free prose.
+Another developer on the same team gets a different result by asking his agent for "a summary of
+the plan and a table of what we've done and what's left": a bold lead line, then boxed tables with
+✅/⏳ states and **Who / When** columns on the pending work (screenshots he shared; his transcripts
+were not read). Claude Code draws a markdown table as a boxed grid — the one element that does not
+look like the prose around it.
+
+So the block is now: `Where we are` (Q0), a `What's done` table (✅ done = Q1, ❌ not done with its
+reason = Q2), a `What's left` table with Who and When (Q4), and three bold lines — `Hard to undo`
+(Q3), `You decide` (Q5), `Closed?` (Q6). Q3 keeps a line of its own on purpose: folded into a table
+row it is the easiest answer to drop, and it is the no-harm one. Labels follow the user's language
+(this also settles the drift above: the shape, not the language, is what is fixed). The question
+numbers are kept because the rest of `SKILL.md` refers to Q5 and Q6 by number.
+
+What this does **not** fix: in the same logs the close is usually **not the last thing in its
+turn** — checkpoint narration and a separate self-review often follow it. That is a position
+problem, deliberately left out of this release (the operator is solving it with a terminal banner
+that reopens the close on click). A better-looking close that is still buried is still buried.
+
 ## What this block is not
 
 - **Not a second constitution audit.** Grounding and falsification are carried by the `## Goal-spec`,
@@ -121,7 +147,7 @@ report, not theirs):
   carries no marker and no modal, so nothing there for the block to follow, and it leads instead.
 - **Not a replacement for the detail.** Everything technical stays above, in full.
 - **Not optional on small runs.** A block that appears only on "big" closes is a block nobody
-  learns to trust. A five-minute read-only lookup gets all seven headings, most answered `Nothing`.
+  learns to trust. A five-minute read-only lookup gets the whole shape, most answered `Nothing`.
 
 ## Known limits (do not read this rule as more than it is)
 
@@ -131,7 +157,7 @@ report, not theirs):
   caught a sibling change contradicting its own consuming gate — both were shipped-shaped mistakes
   a static check cannot see, which is the reason to keep the block's claims small.
 - **Nothing enforces it.** No hook checks for the block. It is prose discipline, like most of this
-  skill — a gate that greps for seven headings would be gameable in exactly the way the audited
+  skill — a gate that greps for the headings or the tables would be gameable in exactly the way the audited
   markers already were, which is the failure this rule exists to undo.
 - **Compaction survival: now measured, and the margin is the thing to watch.** Auto-compaction
   retains roughly the first 5,000 tokens of the skill, and this rule must survive it because closes
@@ -142,10 +168,16 @@ report, not theirs):
 
   | Boundary | Cumulative tokens |
   | --- | --- |
-  | start of `## The plain-language close` (line 49) | 2787 |
-  | end of that section (= start of `## Ending a run that did not finish`) | 4029 |
-  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5023 |
-  | end of the whole section, waiver paragraph included | 5357 |
+  | start of `## The plain-language close` (line 49) | 3282 |
+  | end of that section (= start of `## Ending a run that did not finish`) | 4523 |
+  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5517 |
+  | end of the whole section, waiver paragraph included | 5881 |
+
+  **Re-measured at v0.53.0 (2026-10-09)**: the rows above are current. The figures this table
+  carried until then (2787 / 4029 / 5023 / 5357, v0.41.1) had gone stale by 495–525 tokens through
+  text added *above* the section, unmeasured — the region now ends **881** over the window. v0.53.0
+  itself is net −1 (5882 before, 5881 after): the table template was paid for by compressing the
+  section's own bullets. The history paragraph below keeps its v0.41.1 numbers as history.
 
   Method: the file's text from line 1 up to each boundary, encoded **as one string**. A per-line
   sum overcounts by roughly 28 tokens here and was the instrument behind an earlier draft of this
@@ -178,6 +210,6 @@ report, not theirs):
   the prose rather than move a rule out of the window — v0.39.0's new section was written at 1167
   tokens, measured at 22 tokens of margin, and compressed to 536 with no rule dropped.
 
-- **Proportionality is a judgment, not a measurement.** Seven mandatory headings on a trivial run is
+- **Proportionality is a judgment, not a measurement.** Two tables and four lines on a trivial run is
   a real cost. The bet is that a fixed shape the reader never has to hunt through beats a shape
   that adapts; if usage shows otherwise, shrink the set — do not make it conditional.
