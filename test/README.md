@@ -731,7 +731,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-113 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+116 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -746,8 +746,7 @@ verdict quote only counts as a visible text block, never one written in thinking
 bodies are classified, a string that only mentions a merge included, and the deny text names
 the file route out together with the fact that the hook never reads the contents of a file the
 command runs); and a hold that reached the session as a goal-adversary's report but was never quoted
-(cases 70-85, new in 0.46.7, when the decision was deny with the exact line to quote; since 0.51.0
-70, 73, 82, 85, 86 and 89 allow, and the allow message carries the line; a
+(cases 70-85, new in 0.46.7: the decision stays deny, the deny text gives the exact line to quote; a
 later text verdict wins; a hold in a Bash result, an Explore result, a hand-back from an agent no
 goal-adversary spawn launched, a user message carrying the hand-back tag, a queued_command the human
 typed, a background launch's receipt, or an agent type that only contains `goal-adversary` is not
@@ -762,10 +761,12 @@ session's own checkpoint in place of visible text (cases 100-112): it allows, wi
 allow message, when its last verdict line is the latest hand-back verdict and that is a hold (100,
 101), and still does after a further hand-back hold (112); it does not with no adversary behind it
 (102), in another session's checkpoint, another file or another root (103, 104, 109), when the Write
-failed (105), under a later break (106) or as an old hold left in the file's history after a break
-(107); a hand-back break after a hold quoted in text now wins (108); the deny names the checkpoint to
-write (110); a quote only in thinking is still nothing (111). Rows 01-99 are byte-identical to
-0.50.0's; against 0.50.0, 100, 101, 108, 110 and 112 fail.
+failed (105), under a later break (106), after a break quoted in text between the hand-back and the
+Write (114; a newer hand-back hold after it can be quoted, 115) or as an old hold left in the file's
+history after a break (107); a failed adversary spawn result is no report (113); a hand-back break
+after a hold quoted in text now wins (108); the deny names the checkpoint to write (110); a quote only
+in thinking is still nothing (111). Rows 01-99 are byte-identical to 0.50.0's; against 0.50.0, 100,
+101, 108, 110, 112, 113 and 115 fail.
 
 ```sh
 python3 test/terminal-precheck-branches.py

@@ -858,7 +858,7 @@ case("109-checkpoint-in-another-root-DENY", _fq(
 
 case("110-deny-text-names-the-checkpoint-to-write-DENY", _fq(
     "110", HB_REL, False, needle="use the Write or Edit tool to put that exact line, on a line of its "
-                                 "own, at the end of " + CKPT))
+                                 "own, in " + CKPT))
 
 case("111-hold-quoted-only-in-thinking-DENY", _relay_case(
     "111", [{"text": SPEC_TEXT}, {"raw": {"type": "assistant", "message": {"content": [
@@ -869,6 +869,26 @@ case("111-hold-quoted-only-in-thinking-DENY", _relay_case(
 # 112: a later hand-back HOLD after the file quote does not undo it (as with a visible-text quote).
 case("112-write-quote-then-another-handback-hold-ALLOW", _fq(
     "112", HB_REL + [{"write": (CKPT, HOLD_LINE), "write_id": "w112"}, _handback_user()], True))
+
+
+# Round on the Write quote (external adversary): a failed adversary spawn result is no report (113);
+# a break quoted in text between the hand-back hold and the Write stops it, as it stops the
+# visible-text path (114), and a newer hand-back hold after that break can be quoted again (115).
+case("113-failed-adversary-spawn-result-is-no-report-DENY", _fq(
+    "113", [{"text": SPEC_TEXT}, {"raw": {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Agent", "id": "tf113",
+         "input": {"subagent_type": ADV, "prompt": "verify", "run_in_background": False}}]}}},
+        {"user": [{"type": "tool_result", "tool_use_id": "tf113", "is_error": True,
+                   "content": [{"type": "text", "text": "Error: agent crashed\n" + HOLD_TEXT}]}]},
+        {"write": (CKPT, HOLD_LINE), "write_id": "w113"}], False, needle="Spawn goal-adversary"))
+
+case("114-text-break-between-handback-and-write-DENY", _fq(
+    "114", HB_REL + [{"text": BREAK_TEXT}, {"write": (CKPT, HOLD_LINE), "write_id": "w114"}], False,
+    needle="most recent adversary verdict on record is break"))
+
+case("115-newer-handback-hold-after-text-break-ALLOW", _fq(
+    "115", HB_REL + [{"text": BREAK_TEXT}, _handback_user(),
+                     {"write": (CKPT, HOLD_LINE), "write_id": "w115"}], True))
 
 
 def run_hook_raw(payload):

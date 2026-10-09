@@ -597,7 +597,10 @@ def _collect_event(ev, items, state=None):
                     state["adversary_agents"].add(aid)
                 is_async = (isinstance(tur, dict) and tur.get("isAsync") is True) \
                     or blk.get("tool_use_id") in state["background_spawns"]
-                rv = None if is_async else _relayed_verdict_item(rtext, ev.get("timestamp"))
+                # 0.51.0: a spawn whose result is an error delivered no report, whatever text it
+                # carries (external adversary round on the Write quote, which this now gates).
+                failed = blk.get("is_error") is True
+                rv = None if (is_async or failed) else _relayed_verdict_item(rtext, ev.get("timestamp"))
                 if rv:
                     items.append(rv)
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
@@ -1087,7 +1090,9 @@ def file_quoted_hold(items, session_id=None, cwd=None):
         verdict is a hold: a hold written with no adversary behind it, or an old hold left in the
         file's history after a later break, does not count. Two all-zero holds are the same string,
         so this ties the quote to "the latest report was this hold", not to one report;
-      * no verdict after it (hand-back, visible text, or another such Write) is a break."""
+      * no verdict after that hand-back hold (hand-back, visible text, or another such Write) is a
+        break -- including a break quoted in text between the hold and the Write, which the
+        visible-text path would also stop at (external adversary round on this design)."""
     own = own_checkpoint_re(session_id)
     roots = own_checkpoint_roots(cwd)
     seq = [it for it in items if _is_verdict_item(it) and (
@@ -1098,12 +1103,12 @@ def file_quoted_hold(items, session_id=None, cwd=None):
     for i, it in enumerate(seq):
         if it["kind"] != "verdict_file" or it["verdict"] != "hold":
             continue
-        relays = [r for r in seq[:i] if r["kind"] == "relayed_verdict"]
-        if relays and relays[-1]["verdict"] == "hold" and relays[-1]["line"] == it["line"]:
-            quote = i
-    if quote is None or any(verdict_of(it) == "break" for it in seq[quote + 1:]):
+        relays = [j for j in range(i) if seq[j]["kind"] == "relayed_verdict"]
+        if relays and seq[relays[-1]]["verdict"] == "hold" and seq[relays[-1]]["line"] == it["line"]:
+            quote = (relays[-1], i)
+    if quote is None or any(verdict_of(it) == "break" for it in seq[quote[0] + 1:]):
         return None
-    return seq[quote]["line"]
+    return seq[quote[1]]["line"]
 
 
 def relayed_break_after_text_hold(items):
@@ -1134,7 +1139,8 @@ RELAYED_HOLD_NOTE = (
     "text: {line} -- a subagent result is not a quote. Thinking does not count either: thinking is "
     "not read, even when your screen shows it like a message. Your own visible text has no hold "
     "after it. Do ONE of these, then run this command again in a LATER message: (1) use the Write or "
-    "Edit tool to put that exact line, on a line of its own, at the end of {path} -- a tool call is "
+    "Edit tool to put that exact line, on a line of its own, in {path}, after any older verdict "
+    "line in it -- a tool call is "
     "on record even when a quote you believe you wrote is not; or (2) write that exact line as visible "
     "text in one message. The next message is enough, the turn does not need to end. You do not need "
     "a new adversary round, unless the change moved after that hold. The transcript is not losing "

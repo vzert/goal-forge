@@ -8,7 +8,7 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
-## [0.51.0] - 2026-10-08
+## [0.51.0] - 2026-10-09
 
 ### Un hold que llegó por hand-back se puede citar con un Write al checkpoint
 Sesión de un dev en el VPS (2026-10-08, f8f10a20, goalspec 0.50.0). El `goal-adversary` dio hold 4
@@ -28,7 +28,11 @@ La cadena `parentUuid` del JSONL no tiene huecos: la cita nunca se escribió.
      antes del `Write`, y ese veredicto es hold (la misma detección de 0.46.7/0.46.8). Un hold
      escrito sin adversario detrás, o un hold viejo que quedó en el historial del archivo después de
      un break, no cuenta.
-  3. Ningún veredicto posterior (hand-back, texto o otro `Write`) es un break.
+  3. Ningún veredicto posterior a ese hand-back (hand-back, texto u otro `Write`) es un break,
+     tampoco un break citado en texto entre el hold y el `Write`: la cita en texto también se
+     detendría ahí.
+- Un spawn del adversario cuyo resultado vuelve con `is_error` ya no cuenta como reporte, aunque su
+  texto traiga una línea de veredicto (antes solo cambiaba el texto del aviso; ahora decidiría).
 - El aviso de negación para un hold no citado ofrece ahora dos salidas, con la ruta exacta: (1) un
   `Write`/`Edit` de esa línea al final del checkpoint, o (2) la cita en texto visible. Precedente de
   (1): el freno del spec (0.49.0 v3) dejó de atrapar a los agentes que creían haber publicado el spec
@@ -44,9 +48,11 @@ La cadena `parentUuid` del JSONL no tiene huecos: la cita nunca se escribió.
   nombra el checkpoint (`.goalspec/checkpoint-f8f10a20-….md`) y la línea. Con un `Edit` sintético de
   esa línea al checkpoint insertado antes, la misma llamada pasa con la línea en el mensaje. Si el
   agente toma la salida (1) en una sesión real no está observado.
-- `terminal-precheck-branches` (113 casos): las filas 01-99 salen idénticas a antes, byte a byte;
-  los casos 100-112 son nuevos. Con 0.50.0 en su sitio fallan 100, 101, 108, 110 y 112; los demás
-  nuevos son guardas que 0.50.0 ya negaba. Paridad: `gate-branches` (normal y `GOAL_GATE_ENFORCE=1`),
+- `terminal-precheck-branches` (116 casos): las filas 01-99 salen idénticas a antes, byte a byte;
+  los casos 100-115 son nuevos. Con 0.50.0 en su sitio fallan 100, 101, 108, 110, 112, 113 y 115; los
+  demás nuevos son guardas que 0.50.0 ya negaba. 113-115 vienen de la ronda de adversario sobre este
+  diseño (subagente y externo, los dos break): un spawn fallido que contaba, un break en texto entre
+  el hold y el `Write` que no frenaba, y una frase vieja de `test/README.md`. Paridad: `gate-branches` (normal y `GOAL_GATE_ENFORCE=1`),
   `interview-handoff`, `spec-brake`, `decompose-nudge`, `handback-verdict` y `spec-on-entry` salen
   idénticas a antes, byte a byte.
 - Lo que se descartó: un primer diseño aceptaba el hold de hand-back sin ninguna cita, decidiendo por
