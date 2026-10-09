@@ -731,7 +731,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-130 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+113 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -757,20 +757,15 @@ harness `origin` with the report in `origin.body` (cases 86-95, new in 0.46.8: 7
 goal-adversary hand-backs on record have this shape and 0.46.7 read none of them — 86 and 89 come
 back `wrong-text` against it, every case below 86 is unchanged; the same origin checks as the
 queued form, plus: an origin of kind `human`, one without the `handback` flag, and a hold present
-only in the message text and not in `origin.body` are not read as relayed); and, new in 0.51.0, the conditions under which a relayed hold
-passes without a quote (cases 100-129): the command must be only `gh pr merge` / `git push` (env
-assignments, redirections, `||`/`&&`/`;` between them and a final `| tail`/`| head` allowed; the
-field case's own shape is 126), so a deploy (112), a merge chained to a deploy (122) or a command that
-itself commits (107) or merges locally (120) is not covered, and the deny gives a way out that is not
-a delta-round loop, which quoting then takes (121); a file edit (Write, Edit, MultiEdit, NotebookEdit)
-outside the cwd- or git-root-relative memory/, docs/, .goalspec/ and root *.md, or a git command that
-commits or moves HEAD, a ref, the index or the working tree, made since the adversary was launched
-(not since its hand-back), voids it (100, 101, 113-116, 118, 124, 125, 127, 129); a checkpoint, memory
-or root *.md note, a push, an earlier merge, a failed Write, a user reply, `git merge-base`, `git
-stash list` or `git worktree list` does not (102-106, 108, 109, 119, 123, 128); a later relayed break
-wins, over a quoted hold too (110, 117); a quote only in thinking is still nothing (111). Against the
-0.50.0 module and hook 32 rows fail; against the first cut of 0.51.0 (971941d) 18, against the second
-(ea570ca) 8. 112-129 come from the four adversary rounds on those cuts.
+only in the message text and not in `origin.body` are not read as relayed); and, new in 0.51.0, a hand-back hold quoted with a Write/Edit to this
+session's own checkpoint in place of visible text (cases 100-112): it allows, with the line in the
+allow message, when its last verdict line is the latest hand-back verdict and that is a hold (100,
+101), and still does after a further hand-back hold (112); it does not with no adversary behind it
+(102), in another session's checkpoint, another file or another root (103, 104, 109), when the Write
+failed (105), under a later break (106) or as an old hold left in the file's history after a break
+(107); a hand-back break after a hold quoted in text now wins (108); the deny names the checkpoint to
+write (110); a quote only in thinking is still nothing (111). Rows 01-99 are byte-identical to
+0.50.0's; against 0.50.0, 100, 101, 108, 110 and 112 fail.
 
 ```sh
 python3 test/terminal-precheck-branches.py

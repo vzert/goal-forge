@@ -136,18 +136,17 @@ if ta.waiver_covers_command(sig.get("items") or [], command, data.get("tool_use_
 verdict = sig["verdict"]
 items = sig.get("items") or []
 # 0.51.0: a break that came back as an adversary report after the quoted hold is the most recent
-# verdict, and it wins (external adversary round: the quoted hold used to pass over it).
+# verdict, and it wins (before, the quoted hold passed over it).
 if verdict == "hold" and not ta.relayed_break_after_text_hold(items):
     allow()
 
-# 0.51.0: a goal-adversary hold that reached this session as a subagent result passes a command made
-# only of gh pr merge / git push (terminal_actions.relayed_shape_ok) when it is the most recent
-# verdict and no commit or file edit is on record since that adversary was launched (terminal_actions.relayed_hold_operative has the field case and the rule).
-# The quoted-text path above stays; this one adds to it. The human sees the verdict line in the
-# allow message, in place of the quote the agent did not write.
-relayed = ta.relayed_hold_operative(items, command, data.get("tool_use_id"), cwd)
-if relayed and relayed["change"] is None and ta.relayed_shape_ok(command):
-    allow(ta.RELAYED_HOLD_ALLOW.format(line=relayed["line"]))
+# 0.51.0: a hand-back hold the executor quoted with a Write/Edit to its own checkpoint counts as the
+# visible-text quote does (terminal_actions.file_quoted_hold has the field case and the rule). The
+# human sees the line here, since the quote went to a file.
+sid = data.get("session_id")
+fq = ta.file_quoted_hold(items, sid, cwd)
+if fq:
+    allow(ta.FILE_QUOTE_ALLOW.format(line=fq, path=ta.checkpoint_name_for(sid)))
 
 KIND_LABEL = {
     "push": "a git push to a protected branch",
@@ -190,17 +189,13 @@ seen_note = (" If you believe you already quoted a hold, two causes are measured
 # built: it would cover the Python false positives only, not the first one observed (a heredoc fed
 # to a bash script, whose stdin no parser can classify); the rule of terminal_actions.py is a canonical form,
 # not a smarter matcher; and the file route costs one Write.
-# p-64783f8057 (0.46.7), changed in 0.51.0: a relayed hold that reaches this point does not cover
-# the command, for one of two reasons, each with its own way out: a change since the adversary was
-# launched (delta round), or a command with more in it than gh pr merge / git push (split it, or
-# quote). It replaces both the spawn-the-adversary step and the list of possible causes. The break
-# note goes too: a break in your text older than this hold is not the most recent verdict.
+# p-64783f8057 (0.46.7): a hold that arrived as a subagent result and was never quoted. That is the
+# cause, so it replaces both the spawn-the-adversary step and the list of possible causes, and gives
+# the exact line to quote, and since 0.51.0 the checkpoint path to Write it into. The break note goes too: the break in your text is older than this hold.
+relayed = sig.get("relayed_hold")
 if relayed:
     verdict_note = ""
-    if relayed["change"]:
-        next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed["line"], change=relayed["change"])
-    else:
-        next_step = ta.RELAYED_HOLD_SHAPE_NOTE.format(line=relayed["line"])
+    next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed, path=ta.checkpoint_name_for(sid))
     seen_note = ""
 
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "

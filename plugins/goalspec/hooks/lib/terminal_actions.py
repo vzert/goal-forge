@@ -506,27 +506,15 @@ def is_adversary_type(name):
                                       or name.strip().endswith(":goal-adversary"))
 
 
-def _relayed_verdict_item(text, ts, spawn=None):
-    """-> a "relayed_verdict" item for the LAST verdict line in an adversary's report, or None.
-    `spawn` is the tool_use id of the spawn that launched this adversary, when it is known (0.51.0:
-    relayed_hold_operative looks for changes from the spawn on, not from the delivery)."""
+def _relayed_verdict_item(text, ts):
+    """-> a "relayed_verdict" item for the LAST verdict line in an adversary's report, or None."""
     last = None
     for m in re.finditer(VERDICT_RE, text, re.I):
         last = m
     if last is None:
         return None
     return {"kind": "relayed_verdict", "timestamp": ts, "text": "",
-            "verdict": last.group(1).lower(), "line": last.group(0), "spawn": spawn}
-
-
-def _relay_spawn(origin, prompt, state):
-    """The spawn tool_use id behind a hand-back, from its agent id; None when unknown."""
-    m = RELAY_FROM_RE.match(prompt or "")
-    for i in (origin.get("from") if isinstance(origin, dict) else None,
-              (m.group(1) or m.group(2) or "").strip() if m else None):
-        if isinstance(i, str) and i in state.setdefault("agent_spawn", {}):
-            return state["agent_spawn"][i]
-    return None
+            "verdict": last.group(1).lower(), "line": last.group(0)}
 
 
 def _relay_from_adversary(att, prompt, state):
@@ -571,8 +559,7 @@ def _collect_event(ev, items, state=None):
         if att.get("type") == "queued_command" and isinstance(prompt, str) \
                 and prompt.lstrip().startswith(RELAY_PREFIXES) \
                 and _relay_from_adversary(att, prompt, state):
-            rv = _relayed_verdict_item(prompt, ev.get("timestamp"),
-                                       _relay_spawn(att.get("origin"), prompt, state))
+            rv = _relayed_verdict_item(prompt, ev.get("timestamp"))
             if rv:
                 items.append(rv)
         return
@@ -586,7 +573,7 @@ def _collect_event(ev, items, state=None):
         uorigin = ev.get("origin")
         ubody = uorigin.get("body") if isinstance(uorigin, dict) else None
         if isinstance(ubody, str) and _relay_from_adversary(ev, ubody, state):
-            rv = _relayed_verdict_item(ubody, ev.get("timestamp"), _relay_spawn(uorigin, ubody, state))
+            rv = _relayed_verdict_item(ubody, ev.get("timestamp"))
             if rv:
                 items.append(rv)
         ucontent0 = (ev.get("message") or {}).get("content")
@@ -608,11 +595,9 @@ def _collect_event(ev, items, state=None):
                     aid = am.group(1) if am else None
                 if aid:
                     state["adversary_agents"].add(aid)
-                    state.setdefault("agent_spawn", {})[aid] = blk.get("tool_use_id")
                 is_async = (isinstance(tur, dict) and tur.get("isAsync") is True) \
                     or blk.get("tool_use_id") in state["background_spawns"]
-                rv = None if is_async else _relayed_verdict_item(rtext, ev.get("timestamp"),
-                                                                 blk.get("tool_use_id"))
+                rv = None if is_async else _relayed_verdict_item(rtext, ev.get("timestamp"))
                 if rv:
                     items.append(rv)
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
@@ -654,8 +639,6 @@ def _collect_event(ev, items, state=None):
             st = (blk.get("input") or {}).get("subagent_type")
             if blk.get("id") and is_adversary_type(st):
                 state["adversary_spawns"].add(blk["id"])
-                # 0.51.0: where relayed_hold_operative starts looking for changes.
-                items.append({"kind": "adversary_spawn", "timestamp": ts, "text": "", "id": blk["id"]})
                 if (blk.get("input") or {}).get("run_in_background") is True:
                     state["background_spawns"].add(blk["id"])
         elif blk.get("type") == "tool_use" and blk.get("name") == "Skill":
@@ -668,21 +651,10 @@ def _collect_event(ev, items, state=None):
             cmd = (blk.get("input") or {}).get("command")
             if isinstance(cmd, str) and cmd:
                 items.append({"kind": "bash", "timestamp": ts, "command": cmd, "id": blk.get("id")})
-        elif blk.get("type") == "tool_use" and blk.get("name") in ("MultiEdit", "NotebookEdit"):
-            # 0.51.0: file edits that are not Write/Edit, for relayed_hold_operative only (a kind of
-            # their own, so no other reader of "edit" items changes).
-            ti = blk.get("input") or {}
-            fp1 = ti.get("file_path") or ti.get("notebook_path")
-            items.append({"kind": "other_edit", "timestamp": ts, "text": "", "id": blk.get("id"),
-                          "path": fp1.replace("\\", "/") if isinstance(fp1, str) else None})
         elif blk.get("type") == "tool_use" and blk.get("name") in ("Write", "Edit"):
             # Every Write/Edit leaves a text-free "edit" item (0.46.0), so interview_handoff_pending
             # can tell work done after an interview from a conversation that simply went on.
-            # 0.51.0: the item carries its path and id, so relayed_hold_operative can tell a change to
-            # the work from a checkpoint or memory note written after a hold.
-            fp0 = (blk.get("input") or {}).get("file_path")
-            items.append({"kind": "edit", "timestamp": ts, "text": "", "id": blk.get("id"),
-                          "path": fp0.replace("\\", "/") if isinstance(fp0, str) else None})
+            items.append({"kind": "edit", "timestamp": ts, "text": ""})
             # A ## Goal-spec can be written to disk (.goalspec/checkpoint.md, per
             # SKILL.md step 5's own checkpoint pattern for long-running tasks) instead
             # of posted as chat text. Confirmed live (goal-adversary, 2026-07-31): a
@@ -728,6 +700,19 @@ def _collect_event(ev, items, state=None):
                     if isinstance(v, str) and re.search(GOAL_SPEC_RE, v, re.I):
                         items.append({"kind": "goal_spec_file", "timestamp": ts, "text": v,
                                       "path": fp.replace("\\", "/"), "id": blk.get("id")})
+                # 0.51.0: the executor quoting a hand-back verdict with a tool call, into its own
+                # checkpoint (file_quoted_hold). The LAST verdict line of what it wrote is the quote;
+                # earlier lines are history. Never tagged as text: has_waiver, operative_verdict and
+                # the Stop gate still read only visible text.
+                for key in ("content", "new_string"):
+                    v = ti.get(key)
+                    last_v = None
+                    for mv in re.finditer(VERDICT_RE, v if isinstance(v, str) else "", re.I):
+                        last_v = mv
+                    if last_v:
+                        items.append({"kind": "verdict_file", "timestamp": ts, "text": "",
+                                      "path": fp.replace("\\", "/"), "id": blk.get("id"),
+                                      "verdict": last_v.group(1).lower(), "line": last_v.group(0)})
 
 
 def read_transcript_items(transcript_path):
@@ -763,13 +748,9 @@ def read_transcript_items(transcript_path):
     except Exception:
         return []
     failed = state.get("failed_tool_uses") or set()
-    for it in items:
-        # 0.51.0: a Write/Edit whose result is an error changed nothing. Marked, not dropped:
-        # interview_handoff_pending still counts the attempt as work started.
-        if it["kind"] in ("edit", "other_edit") and it.get("id") is not None and it["id"] in failed:
-            it["failed"] = True
     return [it for it in items
-            if not (it["kind"] == "goal_spec_file" and it.get("id") is not None and it["id"] in failed)]
+            if not (it["kind"] in ("goal_spec_file", "verdict_file")
+                    and it.get("id") is not None and it["id"] in failed)]
 
 
 def last_completion_review_index(items):
@@ -1049,202 +1030,113 @@ def transcript_signals(transcript_path):
     # command through waiver_covers_command(items, ...); a transcript-wide flag here would invite
     # the next caller to reintroduce the session-wide waiver. The Stop gate has its own scan.
     return {"goal_spec": goal_spec, "goalspec_entered": entered,
-            "verdict": operative_verdict(text), "text": text, "items": items}
+            "verdict": operative_verdict(text), "text": text, "items": items,
+            "relayed_hold": relayed_hold_line(items)}
 
 
-# 0.51.0 — what counts as "the work changed after the hold" for relayed_hold_operative: a git command
-# that makes a commit or moves HEAD, a ref, the index or the working tree. `git push`, `gh pr merge`
-# and `git fetch` are not on it: they publish or read what the hold reviewed. A local `git merge` is,
-# because it makes a tree no round saw. The lookahead keeps `merge-base`/`merge-file` out; `stash
-# list` and `stash show` only read. It matches text, so a git word inside a quoted string counts too:
-# the strict direction, costing a quote.
-GIT_MUTATE_RE = re.compile(
-    _GIT_PREFIX + r"(?:commit|commit-tree|rebase|reset|cherry-pick|revert|am|apply|"
-    r"stash(?!\s+(?:list|show)\b)|restore|checkout|checkout-index|switch|merge|pull|add|rm|mv|clean|"
-    r"update-index|update-ref|read-tree|filter-branch|filter-repo|fast-import|"
-    r"replace(?!\s+(?:-l|--list)\b)|worktree\s+(?:add|remove|move|prune|repair)|"
-    r"submodule\s+(?:add|update|deinit|sync|foreach|init|absorbgitdirs)|branch\s+(?:-f|--force|-d|-D|-m|-M|--delete|--move)|tag\s+(?:-f|--force|-d|--delete))"
-    r"(?![\w-])")
-
-# 0.51.0, after the adversary rounds — the command shapes an unquoted relayed hold can cover: the
-# whole command is one or more `gh pr merge` / `git push` invocations, joined by `&&`, `||` or `;`,
-# each with optional leading VAR=value assignments and fd redirections (`2>&1`, `>/dev/null`), and
-# optionally piped into `tail`/`head`. Anything else in the command (a deploy, a delete, a commit, a
-# local merge, `$(...)`, a heredoc, a subshell) and the quote is needed. The first cut checked the
-# command's first terminal kind only, and `gh pr merge 5 && npm publish` passed (both adversaries).
-_PIPE_READERS = ("tail", "head")
-_SHAPE_REJECT_RE = re.compile(r"\$\(|`|<<|\n|\(|\)|\{|\}")
-_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
+def relayed_hold_line(items):
+    """0.46.7 (p-64783f8057) — the verdict line of a hold that reached this session as a
+    subagent's report and was never quoted as the executor's own text after it; None otherwise.
+    It never makes `verdict` a hold: per SKILL.md the executor quotes the verdict in its own text,
+    where the user sees it. Its one use is the deny text, which then gives the exact line to quote.
+    Field case (agente-coordinador b30f155f, 2026-10-05): two holds arrived as background hand-backs
+    while an AskUserQuestion was open, the executor quoted them only in its thinking, four pushes
+    were denied, and it told the user the transcript was dropping its quotes."""
+    last_relay = last_text = None
+    for i, it in enumerate(items):
+        if it["kind"] == "relayed_verdict":
+            last_relay = i
+        elif it["kind"] == "text" and re.search(VERDICT_RE, it["text"], re.I):
+            last_text = i
+    if last_relay is None or items[last_relay]["verdict"] != "hold":
+        return None
+    if last_text is not None and last_text > last_relay:
+        return None
+    return items[last_relay]["line"]
 
 
-def _covered_invocation(words):
-    while words and _ASSIGN_RE.match(words[0]):
-        words = words[1:]
-    if len(words) >= 3 and words[0] == "gh" and words[1] == "pr" and words[2] == "merge":
-        return True
-    if not words or words[0] != "git":
-        return False
-    i = 1
-    while i < len(words) and words[i] in ("-C", "-c", "--no-pager"):
-        i += 1 if words[i] == "--no-pager" else 2
-    return i < len(words) and words[i] == "push"
+def _is_verdict_item(it):
+    return it["kind"] in ("relayed_verdict", "verdict_file") or (
+        it["kind"] == "text" and re.search(VERDICT_RE, it["text"], re.I))
 
 
-def relayed_shape_ok(command):
-    """True when every part of `command` is a `gh pr merge` or a `git push` (see _PIPE_READERS and
-    the comment above for what may surround them). Any parse doubt -> False (quote needed)."""
-    import shlex
-    if not isinstance(command, str) or not command.strip() or _SHAPE_REJECT_RE.search(command):
-        return False
-    try:
-        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
-        lex.whitespace_split = True
-        toks = list(lex)
-    except Exception:
-        return False
-    segs, cur, pipe_in = [], [], []
-    i = 0
-    while i < len(toks):
-        t = toks[i]
-        if t in ("&&", "||", ";"):
-            segs.append((cur, pipe_in)); cur, pipe_in = [], []
-        elif t == "|":
-            pipe_in.append(cur); cur = []
-        elif t in (">", ">>", ">&", "<", "&>", ">|"):
-            if cur and cur[-1].isdigit():
-                cur.pop()
-            i += 1  # skip the redirection target
-        elif set(t) <= set("&|;<>"):
-            return False  # `&` (background) or any operator not handled above
-        else:
-            cur.append(t)
-        i += 1
-    segs.append((cur, pipe_in))
-    for last, before in segs:
-        parts = before + [last]
-        if not parts[0] or not _covered_invocation(parts[0]):
-            return False
-        for reader in parts[1:]:
-            if not reader or reader[0] not in _PIPE_READERS \
-                    or any(not (w.startswith("-") or w.isdigit()) for w in reader[1:]):
-                return False
-    return True
-
-
-def _edit_path_exempt(path, cwd=None):
-    """A file-edit path that is not a change to the work: one that is_path_exempt accepts once made
-    relative to the working directory or the git top level above it (memory/, docs/, .goalspec/, a
-    root *.md; EXEMPT_PREFIXES is the one list). Transcript paths are absolute and is_path_exempt is
-    repo-relative, so the path is resolved first, symlinks included; `src/docs/x.py`,
-    `src/.goalspec/x.py` and `docs/../src/x.py` are changes, and so is a path outside both roots."""
-    if not isinstance(path, str) or not path.strip():
-        return False
-    base = cwd if isinstance(cwd, str) and cwd else os.getcwd()
-    try:
-        full = os.path.realpath(path if os.path.isabs(path) else os.path.join(base, path))
-    except Exception:
-        return False
-    for root in own_checkpoint_roots(base):
-        rel = os.path.relpath(full, root)
-        if not rel.startswith(".."):
-            return is_path_exempt(rel)
-    return False
-
-
-def relayed_hold_operative(items, command=None, tool_use_id=None, cwd=None):
-    """0.51.0 — the terminal-push precheck accepts a goal-adversary hold that reached this session as
-    a subagent result (a relayed_verdict item, see RELAY_PREFIXES for how it is told from look-alike
-    text), without the executor quoting it, when nothing changed after it and the command is only
-    `gh pr merge` / `git push` (relayed_shape_ok; the caller checks it).
+def file_quoted_hold(items, session_id=None, cwd=None):
+    """0.51.0 — a goal-adversary hold that reached this session as a subagent result, quoted by the
+    executor with a Write/Edit to its own checkpoint instead of in visible text. -> the verdict line,
+    or None. It counts as the quote does on the visible-text path, no more: any command, no check of
+    later changes (operative_verdict does neither).
 
     Field case (2026-10-08, VPS session f8f10a20, 0.50.0): four holds arrived as hand-backs, the
-    executor wrote the quote only in its thinking, the precheck denied ten `gh pr merge` calls,
-    and the deny text already said everything this module could say. The executor concluded the
-    tool was deleting its messages and asked the developer to merge by hand. A deny that names
-    the cause did not move it; accepting the hold the hook can already see does.
+    executor wrote the quote only in its thinking, the precheck denied ten `gh pr merge` calls with a
+    deny text that already said thinking does not count, and the executor concluded the tool was
+    deleting its messages; the PRs were merged by hand, outside the gate. Precedent for the way out:
+    the spec brake (0.49.0 v3) stopped trapping agents that believed they had posted a spec once a
+    Write to the checkpoint counted -- a tool call is on record, a belief about one's own text is not.
+    Not measured for verdicts; the field case had no such Write.
 
-    -> None when the most recent verdict on record (relayed or quoted in text) is not a relayed hold.
-    A later break, relayed or quoted, wins; a later quoted hold is the ordinary text path. Otherwise
-    -> {"line": the verdict line, "change": None or what voids it}. Changes are looked for from the
-    spawn that launched that adversary (a commit made while it was still reading is not in what it
-    read), or from the first goal-adversary spawn when the spawn is unknown, or from the hold itself
-    when there is no spawn at all. A change is a Write/Edit/MultiEdit/NotebookEdit whose result was
-    not an error and whose path _edit_path_exempt does not accept, or a Bash call that GIT_MUTATE_RE
-    matches, even if it failed (`git commit && git push` that fails on the push still committed).
-    The call being decided is dropped from the record first, as in waiver_covers_command.
+    An earlier cut of 0.51.0 accepted the hand-back with no quote at all, deciding from the command
+    text and the git commands after the hold; four adversary rounds kept finding commands that read
+    one way to it and another to bash. This path reads no command text.
 
-    What it cannot see: a change made inside a script a Bash call runs, git plumbing not on
-    GIT_MUTATE_RE, edits made by another subagent (only this transcript is read), and which PR or
-    branch the hold was about (it is session-wide, like a quoted hold). Comparing HEAD is not used:
-    the field case merged four PRs from four worktrees through `gh pr merge --repo`, and the hook's
-    cwd was none of them. Counters are not read, as on the quoted path (operative_verdict)."""
-    seq = list(items)
-    if tool_use_id:
-        seq = [it for it in seq if not (it["kind"] == "bash" and it.get("id") == tool_use_id)]
-    elif seq and seq[-1]["kind"] == "bash" and seq[-1]["command"].strip() == (command or "").strip():
-        seq.pop()
-    last = None
+    Counts only when all hold, mirroring the visible-text quote (which passes while the most recent
+    verdict is not a break):
+      * a verdict_file in THIS session's checkpoint (own_checkpoint_re, under the cwd or the git top
+        level -- as the spec brake), from a Write/Edit whose result was not an error
+        (read_transcript_items), whose last verdict line is a hold;
+      * that line is the same line as the most recent hand-back verdict before the Write, and that
+        verdict is a hold: a hold written with no adversary behind it, or an old hold left in the
+        file's history after a later break, does not count. Two all-zero holds are the same string,
+        so this ties the quote to "the latest report was this hold", not to one report;
+      * no verdict after it (hand-back, visible text, or another such Write) is a break."""
+    own = own_checkpoint_re(session_id)
+    roots = own_checkpoint_roots(cwd)
+    seq = [it for it in items if _is_verdict_item(it) and (
+        it["kind"] != "verdict_file"
+        or (own.search(it.get("path") or "") and _in_own_root(it.get("path") or "", cwd, roots)))]
+    verdict_of = lambda it: it["verdict"] if it["kind"] != "text" else operative_verdict(it["text"])
+    quote = None
     for i, it in enumerate(seq):
-        if it["kind"] == "relayed_verdict" or (it["kind"] == "text"
-                                               and re.search(VERDICT_RE, it["text"], re.I)):
-            last = i
-    if last is None or seq[last]["kind"] != "relayed_verdict" or seq[last]["verdict"] != "hold":
+        if it["kind"] != "verdict_file" or it["verdict"] != "hold":
+            continue
+        relays = [r for r in seq[:i] if r["kind"] == "relayed_verdict"]
+        if relays and relays[-1]["verdict"] == "hold" and relays[-1]["line"] == it["line"]:
+            quote = i
+    if quote is None or any(verdict_of(it) == "break" for it in seq[quote + 1:]):
         return None
-    out = {"line": seq[last]["line"], "change": None}
-    spawns = [i for i, it in enumerate(seq[:last]) if it["kind"] == "adversary_spawn"]
-    own = [i for i in spawns if seq[i].get("id") and seq[i]["id"] == seq[last].get("spawn")]
-    start = own[0] if own else (spawns[0] if spawns else last)
-    for it in seq[start + 1:]:
-        if it["kind"] in ("edit", "other_edit") and not it.get("failed") \
-                and not _edit_path_exempt(it.get("path"), cwd):
-            out["change"] = "a file edit to %s came after the adversary was launched" % (
-                it.get("path") or "a file")[:120]
-            break
-        if it["kind"] == "bash" and GIT_MUTATE_RE.search(it["command"]):
-            out["change"] = "the command `%s` came after the adversary was launched" % (
-                " ".join(it["command"].split())[:120])
-            break
-    return out
+    return seq[quote]["line"]
 
 
 def relayed_break_after_text_hold(items):
     """0.51.0 — True when the most recent verdict on record is a break that came back as a
     goal-adversary's report, after a hold the executor quoted. Before, the quoted hold passed the
-    precheck over it (external adversary round on 0.51.0)."""
-    last = None
-    for it in items:
-        if it["kind"] == "relayed_verdict" or (it["kind"] == "text"
-                                               and re.search(VERDICT_RE, it["text"], re.I)):
-            last = it
-    return bool(last and last["kind"] == "relayed_verdict" and last["verdict"] == "break")
+    precheck over it (external adversary round on the first cut of 0.51.0)."""
+    seq = [it for it in items if _is_verdict_item(it) and it["kind"] != "verdict_file"]
+    return bool(seq and seq[-1]["kind"] == "relayed_verdict" and seq[-1]["verdict"] == "break")
 
 
-# What the human sees when the precheck passes on a relayed hold (systemMessage). The verdict line is
-# in it on purpose: the quote the executor did not write is the one way the human would have seen it.
-RELAYED_HOLD_ALLOW = (
+def checkpoint_name_for(session_id):
+    sid = session_id if isinstance(session_id, str) and SESSION_ID_RE.fullmatch(session_id) else None
+    return ".goalspec/checkpoint-%s.md" % sid if sid else ".goalspec/checkpoint.md"
+
+
+# What the human sees when the precheck passes on a file-quoted hold (systemMessage): the quote went
+# to a file, so the hook puts the line in front of them.
+FILE_QUOTE_ALLOW = (
     "goalspec terminal-push precheck: proceeding on a goal-adversary hold that reached this session "
-    "as a subagent result, not quoted by the agent: {line} -- this command is only a gh pr merge or "
-    "git push, and no commit and no file edit outside memory/, docs/, .goalspec/ or a root *.md is "
-    "on record since that adversary was launched."
+    "as a subagent result and that the agent quoted into its checkpoint ({path}): {line}"
 )
 
-# Agent-facing deny text for a relayed hold that does not cover the command. Kept here, not in the
-# hook, for the same apostrophe reason as INTERVIEW_HANDOFF_NUDGE. Two cases, two ways out, so an
-# executor that follows it does not loop (a delta round on the first cut sent a command that itself
-# changed the repository back to a delta round that could never cover it).
+# Agent-facing deny text for an unquoted hand-back hold. Kept here, not in the hook, for the same
+# apostrophe reason as INTERVIEW_HANDOFF_NUDGE. 0.51.0 adds way (1): the field executor read the
+# visible-text way ten times and never took it.
 RELAYED_HOLD_NOTE = (
-    "A goal-adversary hold reached this session as a subagent result: {line} -- but it does not "
-    "cover this command: {change}. Spawn goal-adversary for a delta round on what changed since that "
-    "adversary was launched, then retry. Quoting the old hold is not the way past this: it reviewed "
-    "a tree that no longer exists. If you believe you already quoted a newer verdict: thinking is "
-    "not read, even when your screen shows it like a message. The transcript is not losing your text."
-)
-RELAYED_HOLD_SHAPE_NOTE = (
-    "A goal-adversary hold reached this session as a subagent result: {line} -- an unquoted hold "
-    "covers only a command made of gh pr merge or git push alone (env assignments, 2>&1 and a pipe "
-    "into tail or head allowed), and this command has more in it. Either run the push or merge as a "
-    "command of its own (a commit first, as its own command, needs a delta round), or write that "
-    "exact line as visible text in one message and run this command in a later message. Thinking "
-    "does not count: thinking is not read, even when your screen shows it like a message. The "
-    "transcript is not losing your text."
+    "A goal-adversary hold DID reach this session, but as a subagent result, not as your own "
+    "text: {line} -- a subagent result is not a quote. Thinking does not count either: thinking is "
+    "not read, even when your screen shows it like a message. Your own visible text has no hold "
+    "after it. Do ONE of these, then run this command again in a LATER message: (1) use the Write or "
+    "Edit tool to put that exact line, on a line of its own, at the end of {path} -- a tool call is "
+    "on record even when a quote you believe you wrote is not; or (2) write that exact line as visible "
+    "text in one message. The next message is enough, the turn does not need to end. You do not need "
+    "a new adversary round, unless the change moved after that hold. The transcript is not losing "
+    "your text."
 )

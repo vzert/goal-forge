@@ -10,72 +10,52 @@ version bump are never delivered to already-installed users.
 
 ## [0.51.0] - 2026-10-08
 
-### El precheck acepta un hold del adversario que llegó como resultado de subagente
+### Un hold que llegó por hand-back se puede citar con un Write al checkpoint
 Sesión de un dev en el VPS (2026-10-08, f8f10a20, goalspec 0.50.0). El `goal-adversary` dio hold 4
 veces, siempre como hand-back de subagente. El ejecutor escribió la cita solo en su thinking. El
 precheck negó 10 `gh pr merge` y un Bash de diagnóstico (11 negaciones contadas en el JSONL). El
 aviso ya decía qué hacer y que el transcript no pierde texto; el modelo no lo siguió ninguna vez.
 Concluyó que la herramienta borraba sus mensajes, y el dev mergeó los 4 PR a mano, fuera del gate.
-La cadena `parentUuid` del JSONL no tiene huecos: la cita nunca se escribió. Un aviso más claro no
-arregla esto; el cambio es qué acepta el hook como prueba.
+La cadena `parentUuid` del JSONL no tiene huecos: la cita nunca se escribió.
 
-- `hooks/lib/terminal_actions.py`, `relayed_hold_operative` + `relayed_shape_ok`: un hold que llegó
-  como resultado de un `goal-adversary` de esta sesión deja pasar el comando sin cita si se cumplen
-  las cuatro:
-  1. Es un `relayed_verdict`: la misma detección de 0.46.7/0.46.8 (origen del harness, tipo exacto o
-     agent id de un spawn del adversario). Un hold pegado por el usuario, en la salida de un Bash o de
-     otro subagente sigue sin contar.
-  2. Es el veredicto más reciente, contando hand-backs y texto. Un break posterior manda.
-  3. No hubo cambio desde que se lanzó ese adversario (no desde que llegó su hand-back: un commit
-     hecho mientras leía no está en lo que leyó). Cambio es un Write, Edit, MultiEdit o NotebookEdit
-     cuyo resultado no es error, a una ruta que `is_path_exempt` no acepta relativa al cwd o a la raíz
-     de git (exentos: `memory/`, `docs/`, `.goalspec/` y un `*.md` de la raíz; `src/docs/x.py` y
-     `src/.goalspec/x.py` sí son cambio). También es cambio un comando git que hace commit o mueve
-     HEAD, una ref, el índice o el árbol: `commit`, `commit-tree`, `rebase`, `reset`, `cherry-pick`,
-     `revert`, `am`, `apply`, `stash` (salvo `list`/`show`), `restore`, `checkout`,
-     `checkout-index`, `switch`, `merge` local, `pull`, `add`, `rm`, `mv`, `clean`, `update-index`,
-     `update-ref`, `read-tree`, `filter-branch`, `filter-repo`, `fast-import`, `replace`,
-     `worktree add/remove/move/prune/repair`, `submodule update/add/…`, `branch -f/-d/-D/-m/-M` y
-     `tag -f/-d`. `git push`, `gh pr merge`, `git fetch`, `git worktree list` y un mensaje del
-     usuario no son cambio: así pasan los 4 merges seguidos del caso real.
-  4. El comando entero es solo `gh pr merge` o `git push`: una o más invocaciones unidas por `&&`,
-     `||` o `;`, cada una con prefijos `VAR=valor` y redirecciones (`2>&1`, `>/dev/null`) opcionales,
-     y un `| tail` o `| head` al final. Cualquier otra cosa pide la cita: un deploy, un `rm`, un
-     `git commit`, un merge local, `$(…)`, un heredoc o un subshell. Es el diseño estrecho que eligió
-     Víctor después de las rondas: el primer corte decidía por el primer tipo terminal del comando, y
-     `gh pr merge 5 && npm publish` pasaba.
-- Cuando deja pasar por esta vía, el hook imprime el veredicto en un `systemMessage`, para que el
-  humano lo vea aunque el agente no lo citó. La cita en texto visible sigue siendo una vía válida y
-  sigue siendo la regla (SKILL.md).
-- Si no pasa, el aviso dice por qué y da una salida sin bucle. Si hubo un cambio, lo nombra y pide
-  una ronda delta; citar el hold viejo no sirve, porque revisó un árbol que ya no existe. Si el
-  comando lleva más que un push o un merge, hay que correr el push o el merge solos (un commit previo,
-  como comando propio, pide ronda delta) o citar el hold.
-- Un break que llega como hand-back después de un hold citado ahora gana también en la vía de cita.
-  Antes el hold citado lo pasaba por encima.
-- Lo que no ve: un cambio hecho dentro de un script que corre un Bash, plumbing de git fuera de la
-  lista, las ediciones de otro subagente (solo se lee este transcript) y de qué PR o rama hablaba el
-  hold (vale para la sesión, igual que un hold citado). No se compara HEAD: el caso real mergeó
-  desde 4 worktrees con `gh pr merge --repo` y el cwd del hook no era ninguno. Los contadores del
-  hold no se leen, igual que en la vía de cita.
-- Medido con el JSONL real cortado en cada comando (cwd `/home/vzert/workspace`): de los 11 que
-  0.50.0 negó, los 10 `gh pr merge` pasan con 0.51.0, con el veredicto en el mensaje. El heredoc de
-  diagnóstico se sigue negando: no es un push ni un merge, y el aviso ahora nombra la salida.
-- `terminal-precheck-branches` (130 casos): 70, 73, 82, 85, 86 y 89 pasan de DENY a ALLOW con la
-  línea en el mensaje; los casos 100-129 fijan las condiciones. Con el módulo y el hook de 0.50.0 en
-  su sitio fallan 32 filas. Paridad: `gate-branches` (normal y `GOAL_GATE_ENFORCE=1`),
+- `hooks/lib/terminal_actions.py`, `file_quoted_hold`: el ejecutor puede citar el hold con un
+  `Write` o `Edit` a su propio checkpoint (`.goalspec/checkpoint-<session_id>.md`, bajo el cwd o la
+  raíz de git, como el freno del spec), en lugar de texto visible. Cuenta igual que la cita en texto
+  y nada más: vale para cualquier comando y no revisa cambios posteriores (la cita en texto tampoco).
+  Cuenta solo si:
+  1. El `Write`/`Edit` no volvió con `is_error`, y la última línea de veredicto que escribió es un hold.
+  2. Esa línea es idéntica al veredicto más reciente que llegó por hand-back de un `goal-adversary`
+     antes del `Write`, y ese veredicto es hold (la misma detección de 0.46.7/0.46.8). Un hold
+     escrito sin adversario detrás, o un hold viejo que quedó en el historial del archivo después de
+     un break, no cuenta.
+  3. Ningún veredicto posterior (hand-back, texto o otro `Write`) es un break.
+- El aviso de negación para un hold no citado ofrece ahora dos salidas, con la ruta exacta: (1) un
+  `Write`/`Edit` de esa línea al final del checkpoint, o (2) la cita en texto visible. Precedente de
+  (1): el freno del spec (0.49.0 v3) dejó de atrapar a los agentes que creían haber publicado el spec
+  cuando un `Write` al checkpoint empezó a contar; una llamada a herramienta queda registrada, una
+  creencia sobre el propio texto no. Para veredictos no está medido: el caso real no tuvo ese `Write`.
+- Cuando deja pasar por esta vía, el hook imprime la línea en un `systemMessage`, para que el humano
+  la vea aunque la cita fue a un archivo.
+- Un break que llega como hand-back después de un hold citado en texto ahora gana también. Antes el
+  hold citado lo pasaba por encima.
+- `remind-handback-verdict.sh` dice ahora que el precheck acepta también la línea escrita en el
+  checkpoint; el Stop gate sigue leyendo solo texto visible.
+- Medido con el JSONL real: tal como pasó, la llamada de la línea 712 se sigue negando, y el aviso
+  nombra el checkpoint (`.goalspec/checkpoint-f8f10a20-….md`) y la línea. Con un `Edit` sintético de
+  esa línea al checkpoint insertado antes, la misma llamada pasa con la línea en el mensaje. Si el
+  agente toma la salida (1) en una sesión real no está observado.
+- `terminal-precheck-branches` (113 casos): las filas 01-99 salen idénticas a antes, byte a byte;
+  los casos 100-112 son nuevos. Con 0.50.0 en su sitio fallan 100, 101, 108, 110 y 112; los demás
+  nuevos son guardas que 0.50.0 ya negaba. Paridad: `gate-branches` (normal y `GOAL_GATE_ENFORCE=1`),
   `interview-handoff`, `spec-brake`, `decompose-nudge`, `handback-verdict` y `spec-on-entry` salen
   idénticas a antes, byte a byte.
-- Rondas de adversario: dos sobre el primer corte (subagente Sonnet y externo codex) y dos delta
-  sobre el segundo, todas break. Sus hallazgos son los casos 112-129: deploy cubierto sin ver las
-  ediciones por Bash, `git add` sin contar, MultiEdit/NotebookEdit sin ver, cambios entre el
-  lanzamiento y el hand-back sin contar, un comando que muta git mandado a una ronda delta que nunca
-  lo cubría, `docs/` exento a cualquier profundidad, un break por hand-back que no ganaba sobre un
-  hold citado y, en el segundo corte, un merge encadenado a un deploy que pasaba. El gate llegó a su
-  límite de convergencia y Víctor eligió el diseño estrecho; el diseño final no tuvo otra ronda.
-  Contra el primer corte fallan 18 filas; contra el segundo, 8 (122 entre ellas).
-- `relayed_hold_line` y la clave `relayed_hold` de `transcript_signals` se quitan; su único uso era
-  el aviso viejo.
+- Lo que se descartó: un primer diseño aceptaba el hold de hand-back sin ninguna cita, decidiendo por
+  el texto del comando (solo `gh pr merge`/`git push`) y por los comandos git posteriores. Cuatro
+  rondas de adversario (subagente Sonnet y externo codex) dieron break, y cada una encontró un comando
+  que ese lector leía de una forma y bash de otra: un deploy encadenado, `#` a mitad de palabra,
+  comillas `$'…'`, una redirección a un archivo del repo, plumbing de git fuera de la lista. El gate
+  llegó a su límite de convergencia y Víctor eligió este enfoque, que no lee el texto del comando.
+  Esos commits siguen en el historial (971941d, ea570ca, 3e77b50).
 - El arreglo de `is_error` de abajo se iba a publicar como 0.50.1 y sale en esta versión; los
   comentarios del código dicen 0.51.0.
 
