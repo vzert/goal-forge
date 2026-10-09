@@ -46,7 +46,7 @@ for any scope/terminal fork):
   grounding step sizes acquisitions (targeted → inline; broad → delegate a bounded subagent
   exploration — `goalspec:explorer`, `haiku` pinned, for locate/read/summarize; a type with
   `model: sonnet`, `effort: high` for judgment). An interview is where this slips: measured over
-  the 14 interview sessions of one heavy user that reached a spec, 3 read inline 20+ times
+  the 12 interview sessions of one heavy user that reached a spec, 3 read inline 20+ times
   before it with no subagent, and `hooks/precheck-inline-grounding.sh` now denies once the 16th such read. Launch
   the explorers early, in one message, and run the next modal round while they read. Asking the user for a lookable fact violates Autonomy. A fact lookup still in
   flight makes its downstream questions *unsettled prerequisites* — hold those for a later

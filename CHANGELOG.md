@@ -12,11 +12,13 @@ version bump are never delivered to already-installed users.
 
 ### El grounding amplio va a un subagente barato
 
-Medido sobre 219 transcripts locales de un usuario (2026-09-08 a 2026-10-06), en las sesiones que
-llegaron a un spec, desde que entra goalspec hasta ese spec: 5 de 14 entrevistas y 2 de 67 corridas
-del loop lanzaron algún subagente para explorar. 3 entrevistas y 13 corridas hicieron 20 o más
-lecturas en línea sin ninguno (las tres entrevistas, 27, 28 y 33), en el modelo del ejecutor. De los
-13 subagentes de grounding en las 90 sesiones con goalspec, ninguno llevó `model`, y 2 eran `fork`.
+Medido el 2026-10-09 sobre los 217 transcripts locales de un usuario que había en disco (los más
+viejos se borran solos: un primer escaneo ese mismo día vio 3 más, del 8 y 9 de septiembre), en las
+sesiones que llegaron a un spec, desde que entra goalspec hasta ese spec: 4 de 12 entrevistas y 2 de
+67 corridas del loop lanzaron algún subagente para explorar. 3 entrevistas y 13 corridas hicieron 20
+o más lecturas en línea sin ninguno (las tres entrevistas, 27, 28 y 33), en el modelo del ejecutor.
+De los 12 subagentes de grounding en las 88 sesiones con goalspec, ninguno llevó `model`, y 2 eran
+`fork`.
 La regla "broad → delegate" del paso 3 existía; nadie medía el tamaño.
 
 - `agents/explorer.md` (nuevo): `goalspec:explorer`, de solo lectura, con `model: haiku` fijado en
@@ -24,15 +26,15 @@ La regla "broad → delegate" del paso 3 existía; nadie medía el tamaño.
 - `hooks/precheck-inline-grounding.sh` (PreToolUse Bash|Read|Grep|Glob|WebFetch|WebSearch, nuevo):
   antes del spec, después de 15 lecturas en línea desde la entrada sin ningún subagente, niega una
   vez la siguiente y pide delegar el resto al explorer o a un tipo con `sonnet`/`high`. Una lectura
-  que otro hook negó no cuenta. Su propia negación queda en el transcript y después calla. Pasa sin
+  que otro hook negó no cuenta, ni un subagente que un hook negó (nunca corrió). Su propia negación queda en el transcript y después calla. Pasa sin
   preguntar dentro de un subagente, sin goalspec, con spec, o con `GOAL_GROUNDING_CHECK=0`; el umbral
-  cambia con `GOAL_GROUNDING_INLINE_MAX`. Probado sobre una entrevista real: niega en su lectura 16
-  (18 contando 2 WebFetch y 1 WebSearch), con 10 llamadas más todavía antes de su spec.
+  cambia con `GOAL_GROUNDING_INLINE_MAX`. Probado sobre una entrevista real: niega su lectura 16 (un
+  WebFetch) con 15 en registro; esa entrevista hizo 33 lecturas en línea antes de su spec.
 - `hooks/precheck-subagent-model.sh`: `goalspec:explorer` pasa sin `model`. Un `fork` se niega una
   vez aunque traiga `model`, con razón propia, porque siempre corre en el modelo del padre.
 - SKILL.md (paso 3, "Broad → delegate", la tabla, el respaldo mecánico) y la skill de la entrevista
   nombran el explorer y el freno.
-- `test/inline-grounding-branches.py`: 30 casos y `--selftest` con 13 mutaciones.
+- `test/inline-grounding-branches.py`: 32 casos y `--selftest` con 14 mutaciones.
   `test/subagent-model-branches.py`: 36 casos (7 nuevos) y 13 mutaciones.
 - Sin observar en vivo: que el harness respete el `model: haiku` del frontmatter de un agente de
   plugin. Si no lo respeta, el explorer corre en el modelo del padre y nada lo avisa.

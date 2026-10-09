@@ -678,21 +678,22 @@ no suite can show: that the agent then picks the right tier for the task.
 
 ## `inline-grounding-branches.py` — broad grounding goes to a subagent (0.52.0)
 
-For `hooks/precheck-inline-grounding.sh`. In one heavy user's 219 transcripts, among sessions that
-reached a spec, 3 of 14 interviews and 13 of 67 loop runs made 20+ inline reading calls before it
-with no subagent. The hook denies once the next inline read (Bash, Read, Grep, Glob, WebFetch,
+For `hooks/precheck-inline-grounding.sh`. In the 217 transcripts of one heavy user on disk on
+2026-10-09, among sessions that reached a spec, 3 of 12 interviews and 13 of 67 loop runs made 20+
+inline reading calls before it with no subagent. The hook denies once the next inline read (Bash, Read, Grep, Glob, WebFetch,
 WebSearch) after 15 of them since the goalspec entry, with no non-adversary spawn after the entry
-and no spec with a body yet. Replayed on one real interview transcript, it denies at its 16th
-Bash/Read call, when 18 inline reads (with 2 WebFetch and 1 WebSearch) were on record.
+that ran (a spawn a hook denied does not count) and no spec with a body yet. Replayed call by call
+on one real interview transcript, it denies its 16th inline read, a WebFetch, with 15 on record;
+that interview made 33 inline reads before its spec.
 
-30 cases: denied (interview, loop, typed entry, reads over several turns, every read tool counted,
-the adversary is not delegation, a spawn before the entry is not either, a bare heading or another
+32 cases: denied (interview, loop, typed entry, reads over several turns, every read tool counted,
+the adversary is not delegation, a spawn a hook denied is not either, a spawn before the entry is not either, a bare heading or another
 session's checkpoint does not end the window, a read another hook denied does not count but the
 next one does, `GOAL_GROUNDING_CHECK=1`, a lower or a garbage threshold), and allowed (14 reads,
-reads before the entry, a subagent or the explorer after it, a spec in text or in this session's
+reads before the entry, a subagent or the explorer after it, a denied spawn relaunched, a spec in text or in this session's
 checkpoint, its own deny on record, a subagent call, no goalspec, adversary-only, another tool or
 event, malformed input, no transcript, `GOAL_GROUNDING_CHECK=0`, a higher threshold). New with no
-predecessor, so `--selftest` mutates the component (13 mutations; the equivalent "ignore the entry
+predecessor, so `--selftest` mutates the component (14 mutations; the equivalent "ignore the entry
 in the final test" mutant is left out and the reason written beside the list). What no suite can
 show: that the agent then delegates well, or that a pinned `model` in an agent definition is honored.
 

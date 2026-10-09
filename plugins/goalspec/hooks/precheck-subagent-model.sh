@@ -20,7 +20,7 @@
 # reaches the transcript only after its tool calls run.
 #
 # 0.52.0: a `fork` is its own kind and is denied once WHATEVER `model` it carries, because a fork
-# always runs on the parent's model (2 of 13 grounding spawns in claude-vzert were forks); and
+# always runs on the parent's model (2 of 12 grounding spawns in claude-vzert were forks); and
 # `goalspec:explorer` is exempt, because its definition (agents/explorer.md) pins model: haiku.
 #
 # Silent (allows) on: a spawn that carries `model` (forks excepted); goalspec:explorer; a spawn

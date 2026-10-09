@@ -437,8 +437,8 @@ denied once even when it names a `model`, because a fork always runs on the sess
 And a second hook backs the "broad → delegate" rule of the grounding step: before the spec exists,
 after 15 inline reading calls (Bash, Read, Grep, Glob, WebFetch, WebSearch) with no subagent, it
 denies the next one once and asks for the rest to go to an explorer. Measured case behind it: in
-one heavy user's sessions that reached a spec, 3 of 14 interviews and 13 of 67 loop runs read 20+
-times inline before it with no subagent, and none of the 13 grounding subagents across 90 goalspec
+one heavy user's sessions that reached a spec, 3 of 12 interviews and 13 of 67 loop runs read 20+
+times inline before it with no subagent, and none of the 12 grounding subagents across 88 goalspec
 sessions named a `model`. `GOAL_GROUNDING_CHECK=0` turns it off; `GOAL_GROUNDING_INLINE_MAX`
 changes the threshold.
 

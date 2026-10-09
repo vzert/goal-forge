@@ -25,6 +25,7 @@ SPEC = ("## Goal-spec\nAsked (your words): whatever.\n1. Real objective: make th
 BARE = "## Goal-spec\nAsked (your words): x\n"
 MARK_RESULT = "PreToolUse:Bash hook error: goalspec: broad grounding in your own context -- 15 ..."
 BRAKE_RESULT = "PreToolUse:Bash hook error: goalspec: the loop is loaded and this session has no ## Goal-spec yet"
+MODEL_DENY = "PreToolUse:Agent hook error: goalspec: this subagent spawn carries no `model`"
 
 
 def transcript(events, name):
@@ -115,6 +116,13 @@ CASES = [
     ("10-adversary-is-not-delegation",
      lambda: pre([IV, {"spawn": {"subagent_type": "goalspec:goal-adversary", "model": "sonnet"}},
                   {"reads": 15}], "10"), "deny-15"),
+    # Release round 1 (subagent adversary): a spawn a hook denied never ran, so it is not delegation.
+    ("10b-denied-spawn-is-not-delegation",
+     lambda: pre([IV, {"spawn": {"subagent_type": "general-purpose"}}, {"result": MODEL_DENY}, {"reads": 15}], "10b"),
+     "deny-15"),
+    ("10c-relaunched-spawn-is-delegation",
+     lambda: pre([IV, {"spawn": {"subagent_type": "general-purpose"}}, {"result": MODEL_DENY},
+                  {"spawn": GP}, {"reads": 15}], "10c"), "allow"),
     ("11-spawn-before-entry-is-not-delegation", lambda: pre([{"spawn": GP}, IV, {"reads": 15}], "11"), "deny-15"),
     # A spec ends the grounding window.
     ("12-spec-in-text-allowed", lambda: pre([LOAD, {"reads": 5, "text": SPEC}, {"reads": 20}], "12"), "allow"),
@@ -180,6 +188,7 @@ MUTATIONS = [
     ("adversary-delegates", 'if not ta.is_adversary_type(st if isinstance(st, str) else ""):', "if True:"),
     ("denied-reads-count", "count = sum(1 for k in reads if k not in denied)", "count = len(reads)"),
     ("off-by-one", "count < limit", "count <= limit"),
+    ("denied-spawn-delegates", "spawned = any(k not in denied for k in spawns)", "spawned = bool(spawns)"),
     ("subagent-not-exempt", 'if data.get("agent_id"):', 'if data.get("__never__"):'),
     ("opt-out-ignored", '[ "${GOAL_GROUNDING_CHECK:-}" = "0" ] && exit 0', ":"),
     ("threshold-env-ignored", 'int(os.environ.get("MAXR") or "15")', "15"),

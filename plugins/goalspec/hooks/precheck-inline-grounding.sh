@@ -4,11 +4,12 @@
 #
 # Why: SKILL.md's grounding step sizes the acquisition (targeted -> inline; broad -> delegate a
 # bounded exploration to a subagent on a cheap tier), and nothing measured the size. Measured over
-# 219 local claude-vzert transcripts (2026-09-08..10-06), sessions that reached a `## Goal-spec`,
-# from the goalspec entry to that spec: 5 of 14 /goalspec:interview sessions and 2 of 67 loop
-# sessions spawned any grounding subagent; 3 and 13 made 20+ inline reading calls with none (the
-# three interviews made 27-33: memory sweeps, old session logs, VPS checks) on the executor's
-# tier. None of the 13 grounding spawns across all 90 goalspec sessions carried `model`.
+# the 217 local claude-vzert transcripts on disk on 2026-10-09 (older ones age out), sessions that
+# reached a `## Goal-spec`, from the goalspec entry to that spec: 4 of 12 /goalspec:interview
+# sessions and 2 of 67 loop sessions spawned any grounding subagent; 3 and 13 made 20+ inline
+# reading calls with none (the three interviews made 27-33: memory sweeps, old session logs, VPS
+# checks) on the executor's tier. None of the 12 grounding spawns across all 88 goalspec sessions
+# carried `model`.
 #
 # What it does: in a session that entered goalspec (the loop or the interview) and has no
 # `## Goal-spec` with a body yet, once GOAL_GROUNDING_INLINE_MAX (default 15) inline reading calls
@@ -20,7 +21,7 @@
 # never traps the agent. A call this or another hook denied does not count as a read.
 #
 # Silent (allows) on: a spec with a body in visible text or this session's checkpoint; any
-# non-adversary Task/Agent spawn after the entry; a call made inside a subagent (agent_id); a
+# non-adversary Task/Agent spawn after the entry that a hook did not deny; a call made inside a subagent (agent_id); a
 # session that never entered goalspec; GOAL_GROUNDING_CHECK=0.
 # Threat model: catches a broad exploration FORGOTTEN in the executor's own context. It does not
 # catch a deliberate evasion, a broad exploration that fits under the threshold, or tell a read
@@ -73,7 +74,7 @@ def result_text(c):
 entered = False
 reads = {}      # tool_use id -> True, inline reads after the entry
 denied = set()  # tool_use ids whose result is a hook denial
-spawned = False
+spawns = set()  # tool_use ids of non-adversary spawns after the entry
 bounced = False
 spec = False
 sid = str(data.get("session_id") or "").strip()
@@ -120,11 +121,12 @@ try:
                 elif blk.get("name") in ("Task", "Agent"):
                     st = (blk.get("input") or {}).get("subagent_type")
                     if not ta.is_adversary_type(st if isinstance(st, str) else ""):
-                        spawned = True
+                        spawns.add(blk.get("id"))
 except Exception:
     sys.exit(0)
 
 count = sum(1 for k in reads if k not in denied)
+spawned = any(k not in denied for k in spawns)  # a spawn a hook denied never ran
 if not entered or spec or spawned or bounced or count < limit:
     sys.exit(0)
 
