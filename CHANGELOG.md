@@ -21,11 +21,14 @@ De los 12 subagentes de grounding en las 88 sesiones con goalspec, ninguno llev�
 `fork`.
 La regla "broad → delegate" del paso 3 existía; nadie medía el tamaño.
 
-- `agents/explorer.md` (nuevo): `goalspec:explorer`, de solo lectura, con `model: haiku` fijado en
-  su definición. Devuelve una síntesis corta con citas, no volcados.
+- `agents/explorer.md` (nuevo): `goalspec:explorer`, con `model: haiku` fijado en su definición.
+  Devuelve una síntesis corta con citas, no volcados. Es de solo lectura por instrucción, no por
+  herramientas: conserva `Bash` para lecturas como `ssh host cat`, y nada más que su regla impide
+  que un comando escriba. Observado una vez en una corrida headless con el plugin del worktree:
+  lanzado sin `model`, corrió en `claude-haiku-5-5` (campo `model` de su JSONL y su propio reporte).
 - `hooks/precheck-inline-grounding.sh` (PreToolUse Bash|Read|Grep|Glob|WebFetch|WebSearch, nuevo):
   antes del spec, después de 15 lecturas en línea desde la entrada sin ningún subagente, niega una
-  vez la siguiente y pide delegar el resto al explorer o a un tipo con `sonnet`/`high`. Una lectura
+  vez la siguiente (y las que vayan en paralelo en ese mismo mensaje) y pide delegar el resto al explorer o a un tipo con `sonnet`/`high`. Una lectura
   que otro hook negó no cuenta, ni un subagente que un hook negó (nunca corrió). Su propia negación queda en el transcript y después calla. Pasa sin
   preguntar dentro de un subagente, sin goalspec, con spec, o con `GOAL_GROUNDING_CHECK=0`; el umbral
   cambia con `GOAL_GROUNDING_INLINE_MAX`. Probado sobre una entrevista real: niega su lectura 16 (un
@@ -36,8 +39,9 @@ La regla "broad → delegate" del paso 3 existía; nadie medía el tamaño.
   nombran el explorer y el freno.
 - `test/inline-grounding-branches.py`: 32 casos y `--selftest` con 14 mutaciones.
   `test/subagent-model-branches.py`: 36 casos (7 nuevos) y 13 mutaciones.
-- Sin observar en vivo: que el harness respete el `model: haiku` del frontmatter de un agente de
-  plugin. Si no lo respeta, el explorer corre en el modelo del padre y nada lo avisa.
+- Sin observar en vivo: los dos frenos en una sesión real con goalspec. Que un `fork` corre en el
+  modelo del padre lo dice la propia definición de la herramienta Agent ("always runs on your model —
+  a `model` override is ignored"); no se midió aparte.
 
 ## [0.51.0] - 2026-10-09
 

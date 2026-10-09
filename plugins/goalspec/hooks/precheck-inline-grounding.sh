@@ -14,7 +14,8 @@
 # What it does: in a session that entered goalspec (the loop or the interview) and has no
 # `## Goal-spec` with a body yet, once GOAL_GROUNDING_INLINE_MAX (default 15) inline reading calls
 # (Bash, Read, Grep, Glob, WebFetch, WebSearch) are on record after the entry with no subagent
-# spawned after it, the next one is denied ONCE, with a reason that asks for the rest of the
+# spawned after it, the next one is denied ONCE (a message's parallel reads are all denied together:
+# a message reaches the transcript only after its tool calls run, so each call sees the same count), with a reason that asks for the rest of the
 # exploration to go to a subagent (goalspec:explorer, haiku, or another type with model + effort
 # from SKILL.md's "Subagent model by task"). The deny is recorded as a tool_result carrying
 # GROUNDING_MARK; once one is on record the hook is silent for the rest of the session, so it
@@ -134,11 +135,12 @@ reason = ("goalspec: broad grounding in your own context -- %d inline reading ca
           "started and no subagent yet, with no ## Goal-spec written. SKILL.md step 3 sizes this: "
           "targeted -> inline, broad -> delegate a BOUNDED exploration and keep only its synthesis. "
           "Hand the rest to a subagent now, asking for a synthesis with citations, not file dumps: "
-          "subagent_type goalspec:explorer (read-only, haiku pinned) for locate / enumerate / read "
+          "subagent_type goalspec:explorer (read-only by instruction, haiku pinned) for locate / enumerate / read "
           "and summarize; or a type with model: sonnet, effort: high for judgment-heavy work "
           "(SKILL.md, \"Subagent model by task\"). Several independent questions -> several "
           "explorers in one message. If what is left is genuinely a couple of targeted reads, retry "
-          "this call: this is denied once per session.") % count
+          "this call: this is denied once per session (every parallel read in this one message is "
+          "denied together).") % count
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                          "permissionDecision": "deny",
                                          "permissionDecisionReason": reason}}))

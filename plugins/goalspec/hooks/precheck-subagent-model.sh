@@ -134,7 +134,7 @@ elif kind == "fork":
     reason = ("goalspec: a fork always runs on YOUR model and context, whatever `model` you pass, so "
               "it never follows SKILL.md \"Subagent model by task\". Unless this task needs your full "
               "context, relaunch it as a subagent with a fresh brief: subagent_type goalspec:explorer "
-              "(read-only, haiku pinned) for locate / enumerate / read and summarize; or a type with "
+              "(read-only by instruction, haiku pinned) for locate / enumerate / read and summarize; or a type with "
               "model: sonnet, effort: high for judgment. Denied once per session: the next fork passes.")
 else:
     reason = ("goalspec: this subagent spawn carries no `model`, so unless its agent type pins one it "

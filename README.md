@@ -431,12 +431,14 @@ reason; the agent relaunches with a tier, and the next model-less spawn passes. 
 it: a run that split its work into five parallel workers with no `model` ran all five on the
 session's top tier. `GOAL_SUBAGENT_MODEL_CHECK=0` turns it off.
 
-Since v0.52.0 the cheap path is one word: `goalspec:explorer`, a read-only agent shipped with the
-plugin with `haiku` pinned in its definition, returns a short synthesis with citations. A `fork` is
+Since v0.52.0 the cheap path is one word: `goalspec:explorer`, an agent shipped with the plugin
+with `haiku` pinned in its definition (observed once, headless: it ran on Haiku 5.5 with no
+`model` passed), returns a short synthesis with citations. It is read-only by instruction, not by
+tools: it keeps `Bash` for reads such as `ssh host cat`. A `fork` is
 denied once even when it names a `model`, because a fork always runs on the session's own model.
 And a second hook backs the "broad → delegate" rule of the grounding step: before the spec exists,
 after 15 inline reading calls (Bash, Read, Grep, Glob, WebFetch, WebSearch) with no subagent, it
-denies the next one once and asks for the rest to go to an explorer. Measured case behind it: in
+denies the next one once (with any reads sent in parallel in that same message) and asks for the rest to go to an explorer. Measured case behind it: in
 one heavy user's sessions that reached a spec, 3 of 12 interviews and 13 of 67 loop runs read 20+
 times inline before it with no subagent, and none of the 12 grounding subagents across 88 goalspec
 sessions named a `model`. `GOAL_GROUNDING_CHECK=0` turns it off; `GOAL_GROUNDING_INLINE_MAX`
@@ -545,7 +547,7 @@ goal-forge/
     skills/interview/SKILL.md             # /goalspec:interview — frontier-round interview that
                                           #   discovers the goal before the spec, for fuzzy intent
     agents/goal-adversary.md              # independent adversarial verifier (verifies, never repairs — measured)
-    agents/explorer.md                    # read-only explorer for grounding and mechanical work, haiku pinned
+    agents/explorer.md                    # explorer for grounding and mechanical work, read-only by instruction, haiku pinned
     hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart/Subagent* hooks below
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop) + terminal-action staleness backstop
     hooks/precheck-terminal-push.sh       # PreToolUse (Bash): hard-denies a push/merge/deploy/destructive command with no operative adversary hold on record
