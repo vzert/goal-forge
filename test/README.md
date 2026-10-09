@@ -1,6 +1,6 @@
 # test/
 
-**Fifteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Sixteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -661,15 +661,45 @@ PreToolUse reminder would have arrived with the tool result, after all five had 
 hook denies instead, once per session and per kind (worker / `goal-adversary`), with SKILL.md's
 "Subagent model by task" table in the reason; the next model-less spawn of that kind passes.
 
-29 cases: denied (no `model` after the loop, the interview or a typed command; Task and Agent; no
+0.52.0 adds `fork` (its own kind, denied once even with a `model`, because a fork runs on the
+parent model) and `goalspec:explorer` (exempt: its definition pins `haiku`).
+
+36 cases. The 29 of 0.50.0: denied (no `model` after the loop, the interview or a typed command; Task and Agent; no
 `subagent_type`; Explore; a blank `model`; a model-less spawn before the entry does not spend the
 bounce; an earlier spawn that had a `model` does not either; the adversary with its own reason and
 its own counter, bare or namespaced; a lookalike adversary name is a worker;
 `GOAL_SUBAGENT_MODEL_CHECK=1`), and allowed (a `model` of any tier, the second model-less spawn of a
 kind, `fork`, a spawn inside a subagent, no goalspec, adversary-only, another tool or event,
 malformed input, no transcript, `GOAL_SUBAGENT_MODEL_CHECK=0`). New with no predecessor, so
-`--selftest` mutates the component (10 mutations) and requires a case to catch each. What no suite
-can show: that the agent then picks the right tier for the task.
+Plus 7 for 0.52.0: a fork denied with and without `model`, a second fork allowed, fork and worker
+counters independent, the explorer allowed and spending no bounce, a bare `explorer` treated as a
+worker. `--selftest` mutates the component (13 mutations) and requires a case to catch each. What
+no suite can show: that the agent then picks the right tier for the task.
+
+## `inline-grounding-branches.py` — broad grounding goes to a subagent (0.52.0)
+
+For `hooks/precheck-inline-grounding.sh`. In one heavy user's 219 transcripts, among sessions that
+reached a spec, 3 of 14 interviews and 13 of 67 loop runs made 20+ inline reading calls before it
+with no subagent. The hook denies once the next inline read (Bash, Read, Grep, Glob, WebFetch,
+WebSearch) after 15 of them since the goalspec entry, with no non-adversary spawn after the entry
+and no spec with a body yet. Replayed on one real interview transcript, it denies at its 16th
+Bash/Read call, when 18 inline reads (with 2 WebFetch and 1 WebSearch) were on record.
+
+30 cases: denied (interview, loop, typed entry, reads over several turns, every read tool counted,
+the adversary is not delegation, a spawn before the entry is not either, a bare heading or another
+session's checkpoint does not end the window, a read another hook denied does not count but the
+next one does, `GOAL_GROUNDING_CHECK=1`, a lower or a garbage threshold), and allowed (14 reads,
+reads before the entry, a subagent or the explorer after it, a spec in text or in this session's
+checkpoint, its own deny on record, a subagent call, no goalspec, adversary-only, another tool or
+event, malformed input, no transcript, `GOAL_GROUNDING_CHECK=0`, a higher threshold). New with no
+predecessor, so `--selftest` mutates the component (13 mutations; the equivalent "ignore the entry
+in the final test" mutant is left out and the reason written beside the list). What no suite can
+show: that the agent then delegates well, or that a pinned `model` in an agent definition is honored.
+
+```sh
+python3 test/inline-grounding-branches.py
+python3 test/inline-grounding-branches.py --selftest
+```
 
 ```sh
 python3 test/subagent-model-branches.py

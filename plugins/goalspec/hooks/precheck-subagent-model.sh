@@ -19,12 +19,16 @@
 # reached none of them. Parallel spawns in one message are each denied here, because a message
 # reaches the transcript only after its tool calls run.
 #
-# Silent (allows) on: a spawn that carries `model`; subagent_type "fork" (the tool ignores
-# `model` for it); a spawn made inside a subagent (agent_id in the payload: transcript_path is
-# the parent's); a session that never entered goalspec; GOAL_SUBAGENT_MODEL_CHECK=0.
+# 0.52.0: a `fork` is its own kind and is denied once WHATEVER `model` it carries, because a fork
+# always runs on the parent's model (2 of 13 grounding spawns in claude-vzert were forks); and
+# `goalspec:explorer` is exempt, because its definition (agents/explorer.md) pins model: haiku.
+#
+# Silent (allows) on: a spawn that carries `model` (forks excepted); goalspec:explorer; a spawn
+# made inside a subagent (agent_id in the payload: transcript_path is the parent's); a session
+# that never entered goalspec; GOAL_SUBAGENT_MODEL_CHECK=0.
 # Threat model: catches a FORGOTTEN model on a spawn. It does not catch a deliberate evasion, a
-# wrong tier chosen on purpose, or an agent type whose definition pins its own model (it cannot
-# see agent frontmatter, so its reason says "unless its agent type pins one").
+# wrong tier chosen on purpose, or another agent type whose definition pins its own model (it
+# does not read agent frontmatter, so its reason says "unless its agent type pins one").
 #
 # Fail-open, like every hook here: an unreadable payload, a missing module or transcript allows.
 # Registered by hooks/hooks.json.
@@ -63,14 +67,20 @@ def has_model(inp):
 def kind_of(inp):
     st = inp.get("subagent_type")
     st = st.strip() if isinstance(st, str) else ""
+    if st == "goalspec:explorer":
+        return None  # its definition pins model: haiku
     if st == "fork":
-        return None
+        return "fork"  # a fork always runs on the parent model, `model` or not
     return "adversary" if ta.is_adversary_type(st) else "worker"
 
+def unpinned(inp):
+    k = kind_of(inp)
+    return k if k is not None and (k == "fork" or not has_model(inp)) else None
+
 inp = data.get("tool_input") or {}
-if not isinstance(inp, dict) or has_model(inp):
+if not isinstance(inp, dict):
     sys.exit(0)
-kind = kind_of(inp)
+kind = unpinned(inp)
 if kind is None:
     sys.exit(0)
 
@@ -104,7 +114,7 @@ try:
                 if (isinstance(blk, dict) and blk.get("type") == "tool_use"
                         and blk.get("name") in ("Task", "Agent")):
                     bi = blk.get("input") or {}
-                    if isinstance(bi, dict) and not has_model(bi) and kind_of(bi) == kind:
+                    if isinstance(bi, dict) and unpinned(bi) == kind:
                         bounced = True
 except Exception:
     sys.exit(0)
@@ -120,11 +130,18 @@ if kind == "adversary":
               "below -> model: opus. Then check its [ADVERSARY-MODEL: ...] self-report, not the "
               "parameter. This is denied once per session; a second model-less adversary spawn passes "
               "(then close with model=same).")
+elif kind == "fork":
+    reason = ("goalspec: a fork always runs on YOUR model and context, whatever `model` you pass, so "
+              "it never follows SKILL.md \"Subagent model by task\". Unless this task needs your full "
+              "context, relaunch it as a subagent with a fresh brief: subagent_type goalspec:explorer "
+              "(read-only, haiku pinned) for locate / enumerate / read and summarize; or a type with "
+              "model: sonnet, effort: high for judgment. Denied once per session: the next fork passes.")
 else:
     reason = ("goalspec: this subagent spawn carries no `model`, so unless its agent type pins one it "
               "runs on your own model, whatever its task. Choose the tier by the task (SKILL.md, "
               "\"Subagent model by task\") and relaunch, the same prompt, with `model` and `effort`: "
-              "locate / enumerate / read and summarize / extract -> model: haiku, effort: medium; "
+              "locate / enumerate / read and summarize / extract -> subagent_type goalspec:explorer (haiku "
+              "pinned) or model: haiku, effort: medium; "
               "judgment (classify a finding, weigh evidence, review code, draft a section) -> "
               "model: sonnet, effort: high; your own tier only for work a cheaper tier would get "
               "wrong in a way your re-derivation would not catch, and then pass it explicitly and say "

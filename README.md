@@ -431,6 +431,17 @@ reason; the agent relaunches with a tier, and the next model-less spawn passes. 
 it: a run that split its work into five parallel workers with no `model` ran all five on the
 session's top tier. `GOAL_SUBAGENT_MODEL_CHECK=0` turns it off.
 
+Since v0.52.0 the cheap path is one word: `goalspec:explorer`, a read-only agent shipped with the
+plugin with `haiku` pinned in its definition, returns a short synthesis with citations. A `fork` is
+denied once even when it names a `model`, because a fork always runs on the session's own model.
+And a second hook backs the "broad → delegate" rule of the grounding step: before the spec exists,
+after 15 inline reading calls (Bash, Read, Grep, Glob, WebFetch, WebSearch) with no subagent, it
+denies the next one once and asks for the rest to go to an explorer. Measured case behind it: in
+one heavy user's sessions that reached a spec, 3 of 14 interviews and 13 of 67 loop runs read 20+
+times inline before it with no subagent, and none of the 13 grounding subagents across 90 goalspec
+sessions named a `model`. `GOAL_GROUNDING_CHECK=0` turns it off; `GOAL_GROUNDING_INLINE_MAX`
+changes the threshold.
+
 ## The completion gate
 
 The Stop hook enforces only when a session produced a `## Goal-spec`. Since v0.48.0 a session that
@@ -534,6 +545,7 @@ goal-forge/
     skills/interview/SKILL.md             # /goalspec:interview — frontier-round interview that
                                           #   discovers the goal before the spec, for fuzzy intent
     agents/goal-adversary.md              # independent adversarial verifier (verifies, never repairs — measured)
+    agents/explorer.md                    # read-only explorer for grounding and mechanical work, haiku pinned
     hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart/Subagent* hooks below
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop) + terminal-action staleness backstop
     hooks/precheck-terminal-push.sh       # PreToolUse (Bash): hard-denies a push/merge/deploy/destructive command with no operative adversary hold on record
@@ -550,6 +562,7 @@ goal-forge/
     hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to post it as visible text (PostToolUse Skill)
     hooks/precheck-spec-before-work.sh    # PreToolUse: after the goalspec loop loads, holds Bash/Write/Edit until a ## Goal-spec exists in visible text or in this session's checkpoint (reads stay free; GOAL_SPEC_BRAKE=0 turns it off)
     hooks/precheck-subagent-model.sh      # PreToolUse Task|Agent: in a goalspec session, denies once the first subagent spawn with no `model` (and the first such adversary spawn), with the model-by-task table (GOAL_SUBAGENT_MODEL_CHECK=0 turns it off)
+    hooks/precheck-inline-grounding.sh    # PreToolUse Bash|Read|Grep|Glob|WebFetch|WebSearch: before the spec, denies once the 16th inline read with no subagent (GOAL_GROUNDING_CHECK=0 turns it off)
     hooks/show-checkpoint-spec.sh         # PostToolUse Write|Edit: when the spec reaches the session only through the checkpoint file, shows it to the user
     hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)

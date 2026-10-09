@@ -58,8 +58,11 @@ def run(plugin, payload_text, env_extra=None):
     if hso.get("hookEventName") == "PreToolUse" and hso.get("permissionDecision") == "deny":
         # Which reason: the cost table for workers, the independence rule for the adversary.
         if "Subagent model by task" in reason and "model: haiku" in reason and "model: sonnet" in reason \
-                and "effort" in reason and "unless its agent type pins one" in reason:
+                and "effort" in reason and "unless its agent type pins one" in reason \
+                and "goalspec:explorer" in reason:
             return "deny-worker"
+        if "a fork always runs on YOUR model" in reason and "goalspec:explorer" in reason:
+            return "deny-fork"
         if "Different model on every run" in reason and "ADVERSARY-MODEL" in reason \
                 and "unless its agent type pins one" in reason:
             return "deny-adversary"
@@ -113,7 +116,24 @@ CASES = [
     ("19-lookalike-adversary-is-worker",
      lambda: pre([LOAD], "19", tool_input={**ADV, "subagent_type": "not-goal-adversary-x"}), "deny-worker"),
     # Silent branches.
-    ("20-fork-allowed", lambda: pre([LOAD], "20", tool_input={**GP, "subagent_type": "fork"}), "allow"),
+    # 0.52.0: a fork always runs on the parent model -> its own kind, denied once even with `model`.
+    ("20-fork-denied", lambda: pre([LOAD], "20", tool_input={**GP, "subagent_type": "fork"}), "deny-fork"),
+    ("20b-fork-with-model-denied",
+     lambda: pre([LOAD], "20b", tool_input={**GP, "subagent_type": "fork", "model": "haiku"}), "deny-fork"),
+    ("20c-second-fork-allowed",
+     lambda: pre([LOAD, {"spawn": {**GP, "subagent_type": "fork", "model": "haiku"}}], "20c",
+                 tool_input={**GP, "subagent_type": "fork"}), "allow"),
+    ("20d-fork-bounce-does-not-spend-worker",
+     lambda: pre([LOAD, {"spawn": {**GP, "subagent_type": "fork"}}], "20d"), "deny-worker"),
+    ("20e-worker-bounce-does-not-spend-fork",
+     lambda: pre([LOAD, {"spawn": GP}], "20e", tool_input={**GP, "subagent_type": "fork"}), "deny-fork"),
+    # 0.52.0: goalspec:explorer pins model: haiku in its definition -> no bounce, and spends nothing.
+    ("20f-explorer-allowed",
+     lambda: pre([LOAD], "20f", tool_input={**GP, "subagent_type": "goalspec:explorer"}), "allow"),
+    ("20g-explorer-does-not-spend-worker",
+     lambda: pre([LOAD, {"spawn": {**GP, "subagent_type": "goalspec:explorer"}}], "20g"), "deny-worker"),
+    ("20h-bare-explorer-is-a-worker",
+     lambda: pre([LOAD], "20h", tool_input={**GP, "subagent_type": "explorer"}), "deny-worker"),
     ("21-inside-subagent-allowed", lambda: pre([LOAD], "21", agent_id="a1"), "allow"),
     ("22-no-goalspec-allowed", lambda: pre([{"text": "hello"}], "22"), "allow"),
     ("23-adversary-skill-only-allowed", lambda: pre([{"skill": "goalspec:adversary"}], "23"), "allow"),
@@ -155,10 +175,13 @@ def run_cases(plugin, quiet=False):
 MUTATIONS = [
     ("no-deny-once", 'if not entered or bounced:', 'if not entered:'),
     ("ignore-entry", 'if not entered or bounced:', 'if bounced:'),
-    ("model-ignored", 'if not isinstance(inp, dict) or has_model(inp):', 'if not isinstance(inp, dict):'),
-    ("fork-not-exempt", 'if st == "fork":', 'if st == "__never__":'),
+    ("model-ignored", 'k == "fork" or not has_model(inp)', 'True'),
+    ("fork-model-honored", 'k == "fork" or not has_model(inp)', 'not has_model(inp)'),
+    ("fork-as-worker", 'return "fork"  #', 'return "worker"  #'),
+    ("explorer-not-exempt", 'if st == "goalspec:explorer":', 'if st == "__never__":'),
+    ("explorer-prefix-exempt", 'if st == "goalspec:explorer":', 'if st.endswith("explorer"):'),
     ("subagent-not-exempt", 'if data.get("agent_id"):', 'if data.get("__never__"):'),
-    ("shared-counter", 'kind_of(bi) == kind:', 'kind_of(bi) is not None:'),
+    ("shared-counter", 'unpinned(bi) == kind:', 'unpinned(bi) is not None:'),
     ("adversary-as-worker", '"adversary" if ta.is_adversary_type(st) else "worker"', '"worker"'),
     ("count-before-entry", 'if not entered or ev.get("type") != "assistant":',
      'if ev.get("type") != "assistant":'),
