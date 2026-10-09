@@ -53,8 +53,8 @@ whichever marker closed it, `[COMPLETION-REVIEW: ...]` or `[GOAL-CLOSE-WAIVED ..
 stop that is not a close**: when you hand an unconverged loop back (convergence guard, option (a))
 it stands alone and is the entire report. Seven fixed questions (Q0–Q6), in the user's language
 (labels too), in **one fixed shape: two tables between bold lines** — a terminal draws a table as a
-boxed grid, so the close is found by scrolling, not reading (2026-10-09: 64 closes by one heavy
-user, 0 tables, headings drifted to none):
+boxed grid, so the close is found by scrolling, not reading (2026-10-09: 5 of 136 marker-carrying
+messages in one user's logs held a table):
 
 ```
 **Where we are:** <Q0, 1–3 lines>

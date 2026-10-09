@@ -111,9 +111,10 @@ report, not theirs):
 The seven questions did not change; their **shape** did. The operator's report: in the terminal the
 close looks like every other paragraph of the session, so when it scrolls up it has to be hunted
 for. Measured 2026-10-09 on that operator's own agent logs (215 transcripts; assistant `text`
-blocks only, thinking excluded): **64 sessions carry a close, 0 use a markdown table**, closes run
-27–91 lines, and the headings drifted without anyone deciding it — English all-caps questions in
-September, Spanish ones on 2026-10-01, and from then on mostly the marker followed by free prose.
+blocks only, thinking excluded): **136 messages in 75 sessions carry the marker, and 5 of them hold
+any markdown table**; those messages run 1–114 lines (median 32.5). The headings were there — English
+in 29 of the 120 before 2026-10-01, Spanish in 51, neither in 40; Spanish in all 16 since — but as
+bold or all-caps lines of plain text, often inside a code fence, so they look like everything else.
 Another developer on the same team gets a different result by asking his agent for "a summary of
 the plan and a table of what we've done and what's left": a bold lead line, then boxed tables with
 ✅/⏳ states and **Who / When** columns on the pending work (screenshots he shared; his transcripts
@@ -124,7 +125,7 @@ So the block is now: `Where we are` (Q0), a `What's done` table (✅ done = Q1, 
 reason = Q2), a `What's left` table with Who and When (Q4), and three bold lines — `Hard to undo`
 (Q3), `You decide` (Q5), `Closed?` (Q6). Q3 keeps a line of its own on purpose: folded into a table
 row it is the easiest answer to drop, and it is the no-harm one. Labels follow the user's language
-(this also settles the drift above: the shape, not the language, is what is fixed). The question
+(the shape, not the language, is what is fixed). The question
 numbers are kept because the rest of `SKILL.md` refers to Q5 and Q6 by number.
 
 What this does **not** fix: in the same logs the close is usually **not the last thing in its
@@ -169,14 +170,14 @@ that reopens the close on click). A better-looking close that is still buried is
   | Boundary | Cumulative tokens |
   | --- | --- |
   | start of `## The plain-language close` (line 49) | 3282 |
-  | end of that section (= start of `## Ending a run that did not finish`) | 4523 |
-  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5517 |
-  | end of the whole section, waiver paragraph included | 5881 |
+  | end of that section (= start of `## Ending a run that did not finish`) | 4525 |
+  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5519 |
+  | end of the whole section, waiver paragraph included | 5883 |
 
   **Re-measured at v0.53.0 (2026-10-09)**: the rows above are current. The figures this table
   carried until then (2787 / 4029 / 5023 / 5357, v0.41.1) had gone stale by 495–525 tokens through
-  text added *above* the section, unmeasured — the region now ends **881** over the window. v0.53.0
-  itself is net −1 (5882 before, 5881 after): the table template was paid for by compressing the
+  text added *above* the section, unmeasured — the region now ends **883** over the window. v0.53.0
+  itself is net +1 (5882 before, 5883 after): the table template was paid for by compressing the
   section's own bullets. The history paragraph below keeps its v0.41.1 numbers as history.
 
   Method: the file's text from line 1 up to each boundary, encoded **as one string**. A per-line

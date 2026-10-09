@@ -14,9 +14,11 @@ version bump are never delivered to already-installed users.
 
 En la terminal, el cierre se veía igual que el resto de la sesión, y cuando se quedaba arriba había
 que buscarlo. Medido el 2026-10-09 en los 215 transcripts de claude-vzert (solo bloques `text` del
-asistente, sin thinking): 64 sesiones tienen cierre, 0 usan una tabla, los cierres miden de 27 a 91
-líneas, y los encabezados cambiaron sin que nadie lo decidiera: preguntas en inglés en septiembre,
-en español el 1 de octubre, y desde entonces casi siempre solo el marcador con prosa libre. Otro dev
+asistente, sin thinking): 136 mensajes en 75 sesiones llevan el marcador, y 5 de ellos tienen alguna
+tabla. Esos mensajes miden de 1 a 114 líneas (mediana 32.5). Los encabezados estaban: antes del 1 de
+octubre, 29 de 120 en inglés, 51 en español y 40 sin ninguno; desde entonces, los 16 en español.
+Pero eran líneas de texto en negrita o en mayúsculas, muchas veces dentro de un bloque de código, y
+se veían igual que lo demás. Otro dev
 del equipo le pide a su agente "una tabla de lo que llevamos y lo que falta" y recibe tablas
 encuadradas con ✅/⏳ y columnas Quién / Cuándo (capturas que compartió; sus transcripts no se
 leyeron).
@@ -29,12 +31,12 @@ leyeron).
   Límites: hasta 6 filas por tabla, una línea por celda, y las líneas en blanco se conservan, porque
   sin ellas la tabla no se dibuja y las líneas en negrita se juntan. Una tabla vacía lleva una fila
   `Nothing` y nunca falta. Se quitó el límite de "dos líneas por pregunta, 18 en total".
-- La sección pesa lo mismo (5,882 tokens antes y 5,881 después, `cl100k_base`, hasta el fin de
+- La sección pesa lo mismo (5,882 tokens antes y 5,883 después, `cl100k_base`, hasta el fin de
   "Ending a run that did not finish"). La plantilla se pagó compactando los bullets de la misma
-  sección, sin quitar ninguna regla.
+  sección, sin quitar ninguna regla; queda 1 token arriba.
 - `references/plain-close.md`: sección nueva con la evidencia, y la tabla de tokens re-medida. Sus
   cifras de v0.41.1 tenían entre 495 y 525 tokens de atraso, porque se agregó texto arriba de la
-  sección sin medirlo. La región termina 881 tokens por encima de la ventana de 5,000.
+  sección sin medirlo. La región termina 883 tokens por encima de la ventana de 5,000.
 - `test/claim-surface-carriers.py`: chequeos nuevos de que la forma (las dos tablas, sus columnas,
   las tres líneas y la equivalencia con Q0–Q6) está en SKILL.md, en la referencia y en el README, y
   de que ningún carrier conserva la plantilla vieja de siete encabezados en mayúsculas. Cada chequeo
