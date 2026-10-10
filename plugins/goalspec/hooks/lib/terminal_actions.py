@@ -29,6 +29,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import tempfile
 
@@ -124,8 +125,9 @@ DESTRUCTIVE_RE = re.compile(
 # one SKILL.md does not call terminal ("undoing it would be hard or harmful"); and the denial
 # pushed agents to move the delete into a script, the evasion the deny text warns about. A form,
 # not a smarter matcher: the WHOLE command must be `rm -rf <abs path> [...]` with no shell syntax
-# at all, and each path, symlinks resolved, must sit inside a first-level `name.XXXXXX` dir
-# (mktemp's shape) under the real temp root. Measured on this macOS: `rm -rf <symlink>/` deletes
+# at all, and each path -- the entry and, symlinks resolved, its target -- must sit inside a
+# first-level `name.XXXXXX` dir that is this user's and mode 0700 (what mktemp -d makes), under a
+# sticky or user-owned 0700 temp root. Measured on this macOS: `rm -rf <symlink>/` deletes
 # the link's TARGET, so the textual path is never trusted. Chained, `$VAR`, globbed or relative
 # forms stay terminal, which is why /checkpoint-3t must print the literal path and run it alone.
 _TEMP_CLEANUP_SHELL = re.compile(r"[;&|<>()$`\\*?\[\]{}~\n]")
@@ -133,13 +135,40 @@ _MKTEMP_NAME = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_]{6,}")
 
 
 def _temp_roots():
+    """Real temp roots that are temp-shaped themselves: sticky like /tmp, or the user's own 0700
+    dir like macOS's per-user T. A TMPDIR pointed at /private or $HOME is not a root (codex, 0.55.0
+    round 1: TMPDIR=/private made /private/x.ABCDEF pass)."""
     roots = set()
-    for r in (tempfile.gettempdir(), os.environ.get("TMPDIR") or "", "/tmp"):
-        if r:
-            real = os.path.realpath(r)
-            if real != os.sep:
-                roots.add(real)
+    for r in (tempfile.gettempdir(), "/tmp"):
+        real = os.path.realpath(r)
+        try:
+            st = os.stat(real)
+        except OSError:
+            continue
+        if real != os.sep and stat.S_ISDIR(st.st_mode) and (
+                st.st_mode & stat.S_ISVTX or (st.st_uid == os.getuid() and not st.st_mode & 0o077)):
+            roots.add(real)
     return roots
+
+
+def _in_own_mktemp(path, roots):
+    """`path` lies inside a first-level dir under a root that is shaped AND owned like mktemp's:
+    name.XXXXXX, a real dir, this user's, mode 0700. The name alone is not provenance (codex, 0.55.0
+    round 1: a persistent claude-state.ABCDEF passed); a missing one has nothing to delete."""
+    for root in roots:
+        if not path.startswith(root + os.sep):
+            continue
+        first = path[len(root) + 1:].split(os.sep)[0]
+        if not _MKTEMP_NAME.fullmatch(first):
+            continue
+        try:
+            st = os.lstat(os.path.join(root, first))
+        except FileNotFoundError:
+            return True
+        except OSError:
+            return False
+        return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077
+    return False
 
 
 def is_temp_cleanup(command):
@@ -156,10 +185,11 @@ def is_temp_cleanup(command):
     for p in toks[2:]:
         if not p.startswith("/"):  # the hook's cwd need not be the shell's
             return False
-        real = os.path.realpath(p)
-        if not any(real.startswith(root + os.sep)
-                   and _MKTEMP_NAME.fullmatch(real[len(root) + 1:].split(os.sep)[0])
-                   for root in roots):
+        # Both places rm can act on: the entry itself (parent resolved, last name kept: a symlink
+        # outside temp that points in is deleted where IT is) and its target (`link/` follows it).
+        bare = p.rstrip("/") or os.sep
+        entry = os.path.join(os.path.realpath(os.path.dirname(bare)), os.path.basename(bare))
+        if not (_in_own_mktemp(entry, roots) and _in_own_mktemp(os.path.realpath(p), roots)):
             return False
     return True
 

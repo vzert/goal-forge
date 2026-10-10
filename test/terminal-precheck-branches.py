@@ -102,7 +102,8 @@ def transcript(events, name):
     return p
 
 
-def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=None, proc_cwd=None):
+def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=None, proc_cwd=None,
+             env_extra=None):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
     if session_id:
         payload["session_id"] = session_id
@@ -112,7 +113,7 @@ def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=No
         payload["transcript_path"] = transcript_path
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True, cwd=proc_cwd,
-                         env={**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT})
+                         env={**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT, **(env_extra or {})})
     raw = out.stdout.strip()
     if not raw:
         return "allow", ""
@@ -903,6 +904,19 @@ LINK = os.path.join(TROOT, "lnk.%s" % os.path.basename(MKT).split(".")[1])
 if os.path.lexists(LINK):
     os.unlink(LINK)
 os.symlink(OUTSIDE, LINK)                           # mktemp-shaped name, target outside temp
+# codex round 1 on 0.55.0: the name is not provenance. A mktemp-shaped dir that is not 0700 (a
+# long-lived one), and a symlink OUTSIDE every mktemp dir that points into one.
+PERSIST = tempfile.mkdtemp(prefix="claude-state.")
+os.chmod(PERSIST, 0o755)
+OUTDIR = os.path.join(os.path.realpath("/tmp"), "goalspec-outside-%d" % os.getpid())
+os.makedirs(OUTDIR, exist_ok=True)
+INLINK = os.path.join(OUTDIR, "into-mktemp")
+os.symlink(MKT, INLINK)
+OUTLINK = os.path.join(MKT, "out-link")             # inside the mktemp dir, pointing out of temp
+os.symlink(OUTSIDE, OUTLINK)
+WIDE = os.path.join(TMP, "wide")                    # writable but 0755: not a temp-shaped root
+os.makedirs(WIDE, exist_ok=True)
+os.chmod(WIDE, 0o755)
 
 
 def _tc(name, command):
@@ -942,6 +956,14 @@ def _push_deny_lacks_temp_form():
 
 
 case("130-push-deny-does-not-name-the-temp-form-DENY", _push_deny_lacks_temp_form)
+case("131-mktemp-shaped-dir-not-0700-DENY", lambda: _tc("131", "rm -rf %s/state.json" % PERSIST))
+# TMPDIR at a writable 0755 dir: Python accepts it as the temp dir, the root check must not.
+case("132-tmpdir-pointed-at-wide-dir-DENY", lambda: run_hook(
+    make_repo("132", None, None), "rm -rf %s/adversary-shape.ABCDEF" % WIDE,
+    transcript([{"text": SPEC_TEXT}], "132"), env_extra={"TMPDIR": WIDE}))
+case("133-symlink-outside-into-mktemp-DENY", lambda: _tc("133", "rm -rf " + INLINK))
+case("134-symlink-inside-mktemp-to-outside-trailing-slash-DENY", lambda: _tc(
+    "134", "rm -rf %s/" % OUTLINK))
 
 
 def run_hook_raw(payload):
@@ -988,8 +1010,10 @@ def main():
         if not got_ok:
             failures.append("%s: want %s, got %s (%s)" % (name, want, decision, detail))
 
-    os.unlink(LINK)  # the one fixture outside TMP; MKT is an empty dir, removed the same way
-    os.rmdir(MKT)
+    for link in (LINK, INLINK, OUTLINK):  # the fixtures outside TMP, all empty dirs or links
+        os.unlink(link)
+    for d in (MKT, PERSIST, OUTDIR):
+        os.rmdir(d)
     for name, decision, detail in rows:
         print("%-52s %-20s %s" % (name, decision, detail))
 

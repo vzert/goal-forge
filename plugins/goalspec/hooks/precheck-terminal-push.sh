@@ -204,8 +204,9 @@ temp_note = ""
 if kind == "destructive":
     temp_note = (" If this only deletes a temp directory this session made with mktemp, run it as "
                  "its own command, exactly `rm -rf <absolute path>` with the path written out (no "
-                 "$VAR, no glob, nothing chained): a path inside a name.XXXXXX directory under the "
-                 "system temp root, symlinks resolved, is not terminal and passes.")
+                 "$VAR, no glob, nothing chained): a path inside a name.XXXXXX directory you own with "
+                 "mode 0700 (what mktemp -d makes) under the system temp root, symlinks checked at "
+                 "both ends, is not terminal and passes.")
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
              "If those words are only data (a string, a payload), write the text to a file with the "
              "Write tool and pass the file -- this hook reads the command text, never the contents of a "
