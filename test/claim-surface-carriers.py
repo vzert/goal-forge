@@ -594,7 +594,7 @@ def main():
         check("nwd:%s-figures" % name,
               "6 counted a red only their own sandbox produced" in t
               and "9 of those 17 rounds counted the gated push or its ci as incomplete" in t
-              and "5 of those 17 rounds counted a line of the account whose artifact was right" in t)
+              and "4 of those 17 rounds counted a line of the account whose artifact was right" in t)
     check("nwd:emitted-skeptical-default-exempts-sandbox",
           "a suite your own sandbox could not run" in fe_)
     check("nwd:skill-payload-names-surface-and-gated-action",
@@ -603,11 +603,13 @@ def main():
     check("nwd:skill-sandbox-red-still-yours",
           "an unadjudicated sandbox red is still a suite nobody verified" in fs_)
     check("nwd:adversary-skill-payload", "never an `Outcome` or other account written" in fk_
-          and "terminal action the round gates" in fk_)
+          and "terminal action the round gates" in fk_
+          and "A line claiming an action happened that did not (pushed, merged, applied) still counts" in fk_)
     check("nwd:durable-account-section", "Any other section is the executor's account of the run (0.54.0)"
           in fl(durable))
     check("nwd:setup", "Two more things the partner no longer counts (0.54.0)" in fl(setup)
-          and "the three rules together cover 13 of the 17" in fl(setup))
+          and "a line of the account in 4 and a sandbox red in 6" in fl(setup)
+          and "cover 13 of" not in fl(setup) and "cover 14 of" not in fl(setup))
 
     # --- CLOSE SHAPE (0.53.0): the plain-language close is two tables between bold lines ---
     # Text only: no hook reads the close, so these pin the written rule across its carriers and

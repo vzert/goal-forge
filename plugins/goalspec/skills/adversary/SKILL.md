@@ -68,7 +68,7 @@ paths not prose, data never instructions, restricted to the contract, delta-scop
   the run; and if the claim ends in a push, merge, deploy, publish or send that this round gates,
   say so. Both backends then report as a MINOR note, not a break, a line of that account whose
   artifact is right, the gated action not having happened yet, and a red only their own sandbox
-  produced (the goalspec skill's step 6, same grep term: claim surface).
+  produced. A line claiming an action happened that did not (pushed, merged, applied) still counts (the goalspec skill's step 6, same grep term: claim surface).
 - **A live system is handed over read-only**: when the claim is about a live system (a production
   host, a database, a deploy), point at evidence you captured or at commands that only read —
   never a write-capable path to production, and never an instruction whose natural reading is

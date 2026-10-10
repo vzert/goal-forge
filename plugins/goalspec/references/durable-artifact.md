@@ -300,7 +300,7 @@ Rounds):
   the payload names the section. It breaks when the artifact is wrong, when the line is text a human
   was shown to obtain a decision, or when it claims an action happened that did not (pushed, merged,
   applied). Measured 2026-10-09: of 17 codex breaks with no defect in the work, on a tree the
-  subagent had held, 5 counted such a line.
+  subagent had held, 4 counted such a line.
 
 **This is the checkpoint-shaped case of a broader rule.** What an adversary may *count* is bounded
 by the **claim surface** — the artifacts the spec's success criteria are checked against — declared

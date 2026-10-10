@@ -162,10 +162,11 @@ figure the deliverable states correctly. It is still a break when the artifact i
 line was shown to a human to obtain a decision, or when it claims an action happened that did not
 (a "merged" for a PR that is still open). Measured 2026-10-09 on the Mac and on a shared
 server: of 48 codex breaks over a tree the subagent had held, 17 found no defect in the work. The
-gated push or its CI was counted in 9 of them, a line of the account in 5 and a sandbox red in 6,
-and the three rules together cover 13 of the 17. Of the other 4, 3 broke on a criterion of the
-goal-spec itself that the delta had made stale (the spec is attacked as written), and 1 on an
-account line saying a PR was merged while it was still open, which still counts.
+gated push or its CI was counted in 9 of them, a line of the account in 4 and a sandbox red in 6
+(one round can carry several). Some of those rounds also broke on things these rules leave counted
+on purpose: a criterion of the goal-spec the delta had made stale (3 rounds), an account line saying
+a PR was merged while it was still open (1), a coverage-floor table that contradicted itself (1),
+and a payload that did not point at the surfaces governing a negative claim (1).
 
 Check your own partner's reach without a model call:
 `codex sandbox -P :workspace -C <repo> -- bash -c 'mkdir -p ~/.claude/projects/probe && echo ok'`.

@@ -327,7 +327,7 @@ the record: report it, do not count it. It is BLOCKING when the artifact itself 
 line is text a human was shown to obtain a decision (rule 2 above), or when the line claims an
 action or mutation happened that did not (pushed, merged, deployed, applied, executed): a false
 action claim counts wherever it lives, and the gated-action rule below says the same. The live goal-spec and the coverage-floor table are not an account: a criterion
-there is attacked as written. Measured 2026-10-09: 5 of those 17 rounds counted a line of the
+there is attacked as written. Measured 2026-10-09: 4 of those 17 rounds counted a line of the
 account whose artifact was right.
 
 If the outcome pointer resolves to a .goalspec/checkpoint*.md (the checkpoint is per-session:

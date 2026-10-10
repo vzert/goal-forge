@@ -18,7 +18,7 @@ en las rondas de goalspec 0.49.1 en adelante: de 48 breaks de codex sobre un ár
 subagente, 17 no traían ningún defecto del trabajo (los dos clasificadores coinciden en esas 17).
 Lo que sí traían:
 - 9 contaban como incompleto el push, el merge o el CI que la propia ronda autoriza;
-- 5 contaban una línea del relato que escribe el ejecutor (el `Outcome` del checkpoint, el payload)
+- 4 contaban una línea del relato que escribe el ejecutor (el `Outcome` del checkpoint, el payload)
   cuyo artefacto estaba bien: un commit viejo, una cifra que el entregable dice bien;
 - 6 contaban un rojo que solo existía en el sandbox de codex (mkdtemp bajo `.git`, un módulo que
   falta). El prompt ya pedía marcarlo `UNVERIFIABLE-BY-THIS-BACKEND`, pero su regla escéptica ("si
@@ -43,9 +43,13 @@ por uno. Por eso no se quita codex: se cambia qué cuenta.
   acción falsa cuenta donde esté. El goal-spec vivo y la tabla de cobertura no son relato: un criterio ahí se ataca tal
   como está escrito.
 
-Los tres juntos cubren 13 de las 17 rondas. De las otras 4, 3 rompieron sobre un criterio del propio
-goal-spec que el delta dejó viejo, y 1 sobre un `Outcome` que decía "PR unido" con el PR abierto.
-Las dos cosas siguen contando a propósito.
+Una ronda puede traer varias de estas causas. Algunas de las 17 también rompieron por cosas que
+siguen contando a propósito: un criterio del propio goal-spec que el delta dejó viejo (3 rondas), un
+`Outcome` que decía "PR unido" con el PR abierto (1), una tabla de cobertura que se contradecía (1) y
+un payload que no apuntaba a lo que gobierna una afirmación negativa (1). No se publica una cifra de
+"cuántas de las 17 se habrían evitado": depende de cómo se lea cada hallazgo (por ejemplo, si el
+commit es parte de lo que la ronda autoriza), y dos rondas del adversario rompieron dos derivaciones
+distintas de esa cifra. El análisis ronda por ronda está en la nota de investigación del proyecto.
 
 **Prueba de comportamiento (n=1 por brazo).** Un repo de prueba con el trabajo correcto, un push
 pendiente que la ronda autoriza, una suite que crea su carpeta temporal bajo `.git` y dos líneas
