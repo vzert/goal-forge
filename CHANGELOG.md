@@ -12,7 +12,8 @@ version bump are never delivered to already-installed users.
   codex con la que se publico 0.54.0). Los chequeos de presencia leen el markdown sin comentarios HTML y
   los hooks por lo que emiten; los de ausencia siguen leyendo el texto crudo. `--selftest` lo prueba con
   mutaciones por archivo: 182 de presencia y 22 de ausencia vistos en rojo; 3 leen un comentario a
-  proposito y 5 no tienen forma de comentario, declarados con su motivo. Sin cambio en el plugin.
+  proposito y 5 no tienen forma de comentario, declarados con su motivo. El selftest tambien falla si
+  el total no es 212, y el filtro trata igual los saltos de linea CRLF. Sin cambio en el plugin.
 
 ## [0.54.0] - 2026-10-09
 

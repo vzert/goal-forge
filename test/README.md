@@ -75,7 +75,8 @@ form (the three checks on the JSON example config, `bash -n`, and one negative w
 line can hold). `NO_COMMENT_FORM` also declares the negative clause of
 `nwd:emitted-account-is-a-pointer`, which reads emitted text; that check is counted among the
 positives, because its positive clauses are proven. Both lists live in the file with their
-reasons, and a check that fits none of these fails the selftest.
+reasons, and a check that fits none of these fails the selftest. It also fails when the number of
+checks is not `EXPECTED_CHECKS` (212), so a deleted check cannot pass silently.
 
 **Before editing the gate, copy it somewhere and `--compare` against that copy afterwards** — in both
 modes. Exit code is non-zero if any observed cell changed that `--expected` did not declare, or if a

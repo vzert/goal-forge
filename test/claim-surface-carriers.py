@@ -111,6 +111,7 @@ def prose(text):
     so a banned phrase surviving in a comment is still drift. Hook carriers are not stripped at
     all -- `#` inside the prompt heredoc is content and inside the Python heredocs is a comment, so
     no line rule is sound -- their positive checks read what the hook EMITS when driven."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"<!--.*?(-->|\Z)", "", text, flags=re.S)
     if text.startswith("---\n"):
         end = text.find("\n---", 4)
@@ -743,6 +744,8 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
+EXPECTED_CHECKS = 212  # the count the selftest proves; a deleted check must not pass silently
+
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",
     "plugins/goalspec/agents/goal-adversary.md", "plugins/goalspec/references/durable-artifact.md",
@@ -814,7 +817,9 @@ def selftest():
             ("x\n<!--\nsecret\n-->\ny", "secret", "y"),
             ("x <!-- one --> mid <!-- secret --> z", "secret", "mid"),
             ("x\n<!-- unclosed\nsecret", "secret", "x"),
-            ("---\nname: a\n# secret\n---\nbody # kept", "secret", "body # kept")):
+            ("---\nname: a\n# secret\n---\nbody # kept", "secret", "body # kept"),
+            ("---\r\nname: a\r\n# secret\r\n---\r\nbody", "secret", "body"),
+            ("a <!-- sec\r\nret --> b", "sec", "b")):
         out = prose(src)
         if want_gone in out or want_kept not in out:
             failures.append("prose(%r) -> %r" % (src, out))
@@ -835,7 +840,10 @@ def selftest():
     with open(os.path.join(root, "negative.json")) as fh:
         negative = json.load(fh)
     labels = set(base)
-    if len(base) != sum(1 for _ in base) or not all(base.values()):
+    if len(labels) != EXPECTED_CHECKS:
+        failures.append("%d checks, expected %d: a check was added or removed without updating "
+                        "EXPECTED_CHECKS (and the counts in CHANGELOG/test/README)" % (len(labels), EXPECTED_CHECKS))
+    if not all(base.values()):
         failures.append("baseline not all green: %s" % sorted(l for l, ok in base.items() if not ok))
     needles = sorted({n for ns in negative.values() for n in ns})
 
@@ -881,9 +889,10 @@ def selftest():
     print("labels: %d (unique)" % len(labels))
     print("  positive, red when the phrase is only in a comment: %d" % len(positive_proven))
     print("  negative only, red when the phrase is planted in a comment: %d" % len(neg_only & negative_proven))
-    print("  of the positives, also carrying a negative clause: %d" % len(positive_proven & set(negative)))
     print("  comment carriers (declared, read raw on purpose): %d" % len(COMMENT_CARRIERS))
     print("  no comment form (declared): %d" % len(set(NO_COMMENT_FORM) - positive_proven - negative_proven))
+    print("(these four rows are disjoint and sum to the labels; %d of the positives also carry a "
+          "negative clause)" % len(positive_proven & set(negative)))
     if failures:
         print("\nselftest FAILED:")
         for f in failures:
