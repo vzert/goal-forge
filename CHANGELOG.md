@@ -30,13 +30,13 @@ leyeron).
   etiquetas van en el idioma del usuario y la versión en español queda escrita junto a la plantilla.
   Límites: hasta 6 filas por tabla, una línea por celda, y las líneas en blanco se conservan, porque
   sin ellas la tabla no se dibuja y las líneas en negrita se juntan. Una tabla vacía lleva una fila
-  `Nothing` y nunca falta. Se quitó el límite de "dos líneas por pregunta, 18 en total".
-- La sección pesa lo mismo (5,882 tokens antes y 5,883 después, `cl100k_base`, hasta el fin de
+  `Nothing` y nunca falta. Q2 tampoco desaparece: si no se omitió nada, la tabla de lo hecho termina en una fila `Skipped | ❌ Nothing`. Se quitó el límite de "dos líneas por pregunta, 18 en total".
+- La sección pesa lo mismo (5,882 tokens antes y 5,885 después, `cl100k_base`, hasta el fin de
   "Ending a run that did not finish"). La plantilla se pagó compactando los bullets de la misma
-  sección, sin quitar ninguna regla; queda 1 token arriba.
+  sección, sin quitar ninguna regla; quedan 3 tokens arriba.
 - `references/plain-close.md`: sección nueva con la evidencia, y la tabla de tokens re-medida. Sus
   cifras de v0.41.1 tenían entre 495 y 525 tokens de atraso, porque se agregó texto arriba de la
-  sección sin medirlo. La región termina 883 tokens por encima de la ventana de 5,000.
+  sección sin medirlo. La región termina 885 tokens por encima de la ventana de 5,000.
 - `test/claim-surface-carriers.py`: chequeos nuevos de que la forma (las dos tablas, sus columnas,
   las tres líneas y la equivalencia con Q0–Q6) está en SKILL.md, en la referencia y en el README, y
   de que ningún carrier conserva la plantilla vieja de siete encabezados en mayúsculas. Cada chequeo

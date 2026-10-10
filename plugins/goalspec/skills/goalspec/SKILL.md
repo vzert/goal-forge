@@ -85,7 +85,8 @@ Difícil de deshacer · Decides tú · ¿Cerrado?
 - **Fixed shape, bounded size, nothing dropped.** Copy the shape line for line — ≤6 rows per table,
   one line per cell, the blank lines kept (without them a table does not render and the bold lines
   merge into one). Nothing to report is `Nothing` — an empty
-  table is one row `| — | Nothing |`, never absent; an absent line reads as an oversight.
+  table is one row `| — | Nothing |`, never absent; an absent line reads as an oversight. Q2 too:
+  with nothing skipped, `What's done` still ends in a row `| Skipped | ❌ Nothing |`.
 - **Q0 orients first — fixed order, no conditions:** the project or system in plain words (among ten
   agents, "the push" names nothing), the ask that **opened the session** in the user's own words,
   then this part if different and what it became (the spec's objective, so a reframe shows). Copy
@@ -100,14 +101,12 @@ Difícil de deshacer · Decides tú · ¿Cerrado?
   primera encontró un fallo real que corregí, la segunda nada" is as plain and reports. Test: **could
   the reader say what was done and by whom?** Plain counts are information; the round-count ban is
   about the method's own bookkeeping.
-- **`Closed?` must agree with the marker you just emitted.** No adversary held → `No`. If
-  they disagree, the marker is right and your summary is wrong. If the work fought back, say so
-  plainly — that tells the reader how much to trust it.
+- **`Closed?` must agree with the marker.** No adversary held → `No`; if they disagree, the marker
+  is right. If the work fought back, say so — it tells the reader how much to trust it.
 - **`You decide` (Q5) asks, it does not report — and on any turn that ends the run, it asks in a modal.**
-  "Yes, there are decisions pending" is a dead handoff, the exact failure principle 4 exists to
-  prevent. Name each decision here in one line, then **raise them in an `AskUserQuestion` below the
-  block** — the text names them, the modal is where they can answer. The trigger is every ending,
-  not only a completion-review; see "Ending a run that did not finish".
+  "Yes, there are decisions pending" is a dead handoff (principle 4). Name each in one line, then
+  **raise them in an `AskUserQuestion` below the block** — the modal is where they answer. The
+  trigger is every ending, not only a completion-review ("Ending a run that did not finish").
 - **It crowns the detail, never replaces it.** Everything technical stays above, in full.
 - **Position follows the reader — the modal is the one thing that may follow the block.** In a
   **conversation turn**: marker, then block, then nothing *except* the `AskUserQuestion` that ending

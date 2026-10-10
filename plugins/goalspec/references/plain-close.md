@@ -123,7 +123,8 @@ look like the prose around it.
 
 So the block is now: `Where we are` (Q0), a `What's done` table (✅ done = Q1, ❌ not done with its
 reason = Q2), a `What's left` table with Who and When (Q4), and three bold lines — `Hard to undo`
-(Q3), `You decide` (Q5), `Closed?` (Q6). Q3 keeps a line of its own on purpose: folded into a table
+(Q3), `You decide` (Q5), `Closed?` (Q6). Q2 never goes implicit: with nothing skipped, the done table still ends in a `Skipped | ❌ Nothing` row,
+since a table, unlike a heading, can lose a question silently. Q3 keeps a line of its own on purpose: folded into a table
 row it is the easiest answer to drop, and it is the no-harm one. Labels follow the user's language
 (the shape, not the language, is what is fixed). The question
 numbers are kept because the rest of `SKILL.md` refers to Q5 and Q6 by number.
@@ -170,14 +171,15 @@ that reopens the close on click). A better-looking close that is still buried is
   | Boundary | Cumulative tokens |
   | --- | --- |
   | start of `## The plain-language close` (line 49) | 3282 |
-  | end of that section (= start of `## Ending a run that did not finish`) | 4525 |
-  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5519 |
-  | end of the whole section, waiver paragraph included | 5883 |
+  | end of that section (= start of `## Ending a run that did not finish`) | 4527 |
+  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5521 |
+  | end of the whole section, waiver paragraph included | 5885 |
 
   **Re-measured at v0.53.0 (2026-10-09)**: the rows above are current. The figures this table
-  carried until then (2787 / 4029 / 5023 / 5357, v0.41.1) had gone stale by 495–525 tokens through
-  text added *above* the section, unmeasured — the region now ends **883** over the window. v0.53.0
-  itself is net +1 (5882 before, 5883 after): the table template was paid for by compressing the
+  carried until then (2787 / 4029 / 5023 / 5357, v0.41.1) had gone stale — against the file as it
+  stood just before v0.53.0 (3282 / 4524 / 5518 / 5882) — by 495–525 tokens through
+  text added *above* the section, unmeasured — the region now ends **885** over the window. v0.53.0
+  itself is net +3 (5882 before, 5885 after): the table template was paid for by compressing the
   section's own bullets. The history paragraph below keeps its v0.41.1 numbers as history.
 
   Method: the file's text from line 1 up to each boundary, encoded **as one string**. A per-line

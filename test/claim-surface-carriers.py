@@ -588,7 +588,8 @@ def main():
                          and "Decides tú" in sec and "¿Cerrado?" in sec),
                         ("q-mapping", "Q0" in sec and all("← Q%d" % i in sec for i in range(1, 7))),
                         ("bounded", "≤6 rows per table" in sec),
-                        ("empty-table-row", "| — | Nothing |" in sec)):
+                        ("empty-table-row", "| — | Nothing |" in sec),
+                        ("q2-never-implicit", "| Skipped | ❌ Nothing |" in sec)):
         check("shape:skill-%s" % lab, needle if isinstance(needle, bool) else needle in sec)
     check("shape:skill-old-template-gone",
           "CAN THIS BE CONSIDERED CLOSED?" not in skill and "eighteen lines total" not in skill)
