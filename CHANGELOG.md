@@ -16,8 +16,8 @@ version bump are never delivered to already-installed users.
   `rm -rf <ruta absoluta>...`, sin sintaxis de shell (`;`, `&`, `|`, redireccion, `$`, glob, `~`,
   `..` se resuelve), con cada ruta -- la entrada y, si es un enlace, su destino -- dentro de una
   carpeta de primer nivel con forma `nombre.XXXXXX`, del usuario y con permisos 0700 (lo que crea
-  `mktemp -d`), bajo una raiz temporal con sticky bit o del usuario con 0700, ya no es terminal.
-  El nombre solo no basta, ni un TMPDIR apuntado a una carpeta amplia (ronda de codex). Lo usan `classify()` y
+  `mktemp -d`), bajo una raiz temporal con sticky bit (`/tmp`) o la carpeta T por usuario de macOS, ya no es
+  terminal. El nombre solo no basta, ni un TMPDIR apuntado a otra carpeta (rondas de codex). Lo usan `classify()` y
   `classify_all()`, asi que el precheck y el control de staleness del Stop lo ven igual.
   Por que: medido el 2026-10-10 sobre las 159 negaciones `destructive` reales de este equipo, 76-77
   eran el borrado local de una carpeta temporal que la propia sesion creo (dos etiquetadores ciegos,
@@ -29,7 +29,7 @@ version bump are never delivered to already-installed users.
 - `hooks/precheck-terminal-push.sh`: la negacion de un comando destructivo nombra esa forma; la de
   un push no.
 - `DESTRUCTIVE_RE`: el comentario ya no dice que detecta `-fr` y `-Rf` (nunca lo hizo; 0 usos en
-  156.054 comandos reales). Sin cambio en lo que detecta.
+  los 156.054 comandos Bash de los transcripts de un equipo, el 2026-10-10). Sin cambio en lo que detecta.
 - SKILL.md y `references/mid-session-retrigger.md` describen la excepcion.
 - Casos nuevos: 116-134 y 124b en `test/terminal-precheck-branches.py`, `stale-10`/`stale-11` en
   `test/gate-branches.py`. 116, 117 y `stale-10` fallan contra el modulo anterior; cada chequeo de

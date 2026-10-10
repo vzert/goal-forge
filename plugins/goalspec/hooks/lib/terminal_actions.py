@@ -111,7 +111,8 @@ DEPLOY_RE = re.compile(
 DESTRUCTIVE_RE = re.compile(
     # rm -rf, -rfv, -xrf: one lowercase flag cluster with r before f, then an arg. NOT -fr, -Rf,
     # `-r -f` or --recursive --force (until 0.55.0 this comment claimed -fr and -Rf; it never
-    # matched them). Measured 2026-10-10 over 156,054 real Bash commands: 0 used -fr/-Rf/--recursive.
+    # matched them). Measured 2026-10-10 in the 156,054 Bash commands of one machine's
+# ~/.claude/projects transcripts (not reproducible from this repo): 0 used -fr/-Rf/--recursive.
     r"\brm\s+-\w*r\w*f\w*\s"
     r"|\bwrangler\s+d1\s+migrations\s+apply\b"
     r"|\bprisma\s+migrate\s+deploy\b"
@@ -132,12 +133,13 @@ DESTRUCTIVE_RE = re.compile(
 # forms stay terminal, which is why /checkpoint-3t must print the literal path and run it alone.
 _TEMP_CLEANUP_SHELL = re.compile(r"[;&|<>()$`\\*?\[\]{}~\n]")
 _MKTEMP_NAME = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_]{6,}")
+_MACOS_USER_T = re.compile(r"/private/var/folders/[^/]+/[^/]+/T")
 
 
 def _temp_roots():
-    """Real temp roots that are temp-shaped themselves: sticky like /tmp, or the user's own 0700
-    dir like macOS's per-user T. A TMPDIR pointed at /private or $HOME is not a root (codex, 0.55.0
-    round 1: TMPDIR=/private made /private/x.ABCDEF pass)."""
+    """Real temp roots: a sticky dir like /tmp, or macOS's per-user T (/private/var/folders/../T,
+    this user's, 0700). Any other TMPDIR is not a root, however it is owned (codex, 0.55.0: first
+    TMPDIR=/private, then a user-owned 0700 dir, made name.ABCDEF under it pass)."""
     roots = set()
     for r in (tempfile.gettempdir(), "/tmp"):
         real = os.path.realpath(r)
@@ -146,7 +148,9 @@ def _temp_roots():
         except OSError:
             continue
         if real != os.sep and stat.S_ISDIR(st.st_mode) and (
-                st.st_mode & stat.S_ISVTX or (st.st_uid == os.getuid() and not st.st_mode & 0o077)):
+                st.st_mode & stat.S_ISVTX or (_MACOS_USER_T.fullmatch(real)
+                                              and st.st_uid == os.getuid()
+                                              and not st.st_mode & 0o077)):
             roots.add(real)
     return roots
 

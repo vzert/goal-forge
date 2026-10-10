@@ -917,6 +917,9 @@ os.symlink(OUTSIDE, OUTLINK)
 WIDE = os.path.join(TMP, "wide")                    # writable but 0755: not a temp-shaped root
 os.makedirs(WIDE, exist_ok=True)
 os.chmod(WIDE, 0o755)
+NARROW = os.path.join(REPO, "test", ".narrow-tmpdir-%d" % os.getpid())  # own 0700, outside temp
+os.makedirs(NARROW, exist_ok=True)
+os.chmod(NARROW, 0o700)
 
 
 def _tc(name, command):
@@ -961,6 +964,9 @@ case("131-mktemp-shaped-dir-not-0700-DENY", lambda: _tc("131", "rm -rf %s/state.
 case("132-tmpdir-pointed-at-wide-dir-DENY", lambda: run_hook(
     make_repo("132", None, None), "rm -rf %s/adversary-shape.ABCDEF" % WIDE,
     transcript([{"text": SPEC_TEXT}], "132"), env_extra={"TMPDIR": WIDE}))
+case("132b-tmpdir-pointed-at-own-0700-dir-DENY", lambda: run_hook(
+    make_repo("132b", None, None), "rm -rf %s/persistent.abcdef" % NARROW,
+    transcript([{"text": SPEC_TEXT}], "132b"), env_extra={"TMPDIR": NARROW}))
 case("133-symlink-outside-into-mktemp-DENY", lambda: _tc("133", "rm -rf " + INLINK))
 case("134-symlink-inside-mktemp-to-outside-trailing-slash-DENY", lambda: _tc(
     "134", "rm -rf %s/" % OUTLINK))
@@ -1012,7 +1018,7 @@ def main():
 
     for link in (LINK, INLINK, OUTLINK):  # the fixtures outside TMP, all empty dirs or links
         os.unlink(link)
-    for d in (MKT, PERSIST, OUTDIR):
+    for d in (MKT, PERSIST, OUTDIR, NARROW):
         os.rmdir(d)
     for name, decision, detail in rows:
         print("%-52s %-20s %s" % (name, decision, detail))

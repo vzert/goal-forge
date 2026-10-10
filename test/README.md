@@ -794,13 +794,14 @@ regardless of content, case 13); deploy/destructive commands (never content-exem
 agnostic, cases 14-16), except — new in 0.55.0 — the one canonical delete of an own mktemp
 directory: a command that is exactly `rm -rf <absolute path>...`, no shell syntax, every path's
 entry and, if it is a symlink, its target inside a first-level `name.XXXXXX` directory that the
-user owns with mode 0700, under a sticky or user-owned 0700 temp root (cases 116-117 allow;
+user owns with mode 0700, under a sticky temp root or macOS's per-user T (cases 116-117 allow;
 118-128 each deny one way out of that form: a symlink with a trailing slash, `$VAR`, a chained
 command, `..`, the temp root itself, a non-mktemp child such as `claude-501`, a relative path also
 with the hook running inside the mktemp dir (124b), a mktemp name outside temp, a second path
 outside, a redirect, a glob; 129-130: only the destructive deny names the form; 131-134, from the
-codex round on 0.55.0: a mktemp-shaped dir that is not 0700, TMPDIR at a writable 0755 dir, a
-symlink outside temp pointing into a mktemp dir, one inside pointing out). Each check in
+codex rounds on 0.55.0: a mktemp-shaped dir that is not 0700, TMPDIR at a writable 0755 dir and
+(132b) at a user-owned 0700 one, a symlink outside temp pointing into a mktemp dir, one inside
+pointing out). Each check in
 `is_temp_cleanup` was removed in turn and its own case went red; the two universal escape hatches (not our tool, not a terminal command,
 malformed JSON — all allow, cases 17-19); a goal-spec written to disk instead of posted as
 chat text (cases 20-22, see below); and the deny text itself (cases 42, 43 and the deny-text case numbered 44: an interview-only
