@@ -71,8 +71,11 @@ emits when driven, never on its source. `--selftest` proves it per carrier file,
 truncating the file finds the checks that depend on it, turning every line into a comment must turn
 each of those red, and planting every superseded phrase in a comment must turn each negative check
 red. Three checks read a maintainer comment on purpose and must stay green; five have no comment
-form (a JSON carrier, `bash -n`, a needle no `#` line can hold, a negative on emitted text). Both
-lists live in the file with their reasons, and a check that fits none of these fails the selftest.
+form (the three checks on the JSON example config, `bash -n`, and one negative whose needle no `#`
+line can hold). `NO_COMMENT_FORM` also declares the negative clause of
+`nwd:emitted-account-is-a-pointer`, which reads emitted text; that check is counted among the
+positives, because its positive clauses are proven. Both lists live in the file with their
+reasons, and a check that fits none of these fails the selftest.
 
 **Before editing the gate, copy it somewhere and `--compare` against that copy afterwards** — in both
 modes. Exit code is non-zero if any observed cell changed that `--expected` did not declare, or if a
