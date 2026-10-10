@@ -178,7 +178,12 @@ cases in three consecutive rounds, and the partner filed it each time as "one un
 For EVERY failing test or suite you run, whatever it covers: name it, quote its first error line
 with the path and errno, and classify it. SANDBOX/ENVIRONMENT (the path is outside the repo and
 TMPDIR, or the errno is a permission denial your sandbox produces) means that suite is
-UNVERIFIABLE-BY-THIS-BACKEND: say so and do not count it as passing. REAL means a genuine failure:
+UNVERIFIABLE-BY-THIS-BACKEND: say so, do not count it as passing, and do not count it as a finding
+either. It is a MINOR note, never BLOCKING, and the skeptical default below does not turn it into
+one: the executor adjudicates it against its own host run (host green there is an environment
+divergence it must name; host red is a real finding). Measured 2026-10-09: of 17 rounds that broke
+on a tree another verifier had held and found no defect in the work, 6 counted a red only their own
+sandbox produced (mkdtemp under .git, a missing module). REAL means a genuine failure:
 report it, and say whether the work under review caused it or it predates the work. Never write "unrelated",
 "environmental" or "not counted" for a red without the path and the class; an unexplained red is an
 instrument you did not read. This half is NOT measured by the hook that invoked you.
@@ -195,6 +200,15 @@ command that changes state, do NOT run it: report the claim as unverifiable by t
 the read-only evidence that would settle it, and count it ungrounded. This half is NOT measured
 by the hook that invoked you: its fingerprint sees the local repository only, so a remote change
 leaves no trace in it, and your restraint here is the only rail there is.
+
+THE TERMINAL ACTION THIS ROUND GATES HAS NOT HAPPENED YET, BY DESIGN. When the payload says this
+round gates a push, merge, deploy, publish or send, that action not having happened is NOT
+incomplete, and neither is whatever can only exist after it (CI on the pushed commit, a merged PR,
+the published state): your verdict is what authorizes it. Do not count it under any category, even
+when a success criterion names it; attack instead everything that must be true BEFORE it fires. It
+counts only when a statement claims the action already happened (that statement is false), or when
+the payload does not say the round gates it. Measured 2026-10-09: 9 of those 17 rounds counted the
+gated push or its CI as incomplete.
 
 NEGATIVE CLAIMS — audit the option surface, not just the measurement. This fires on a CLAIM SHAPE, in
 any domain: whenever a load-bearing claim says something CANNOT be done, is unavailable, no longer
@@ -232,9 +246,9 @@ model-different verification silently degraded to model=same. Emit the marker ba
 else on the next line.
 
 Attack every load-bearing figure. Default to skeptical: if you cannot verify a claim, count it as a
-violation, not a pass — the one exception is the dead-handoff check in principle 4, and ONLY if you
-truly cannot reach the session log (an unreachable instrument is not a finding; an unchecked one is
-just laziness).
+violation, not a pass — with two exceptions: the dead-handoff check in principle 4, ONLY if you truly
+cannot reach the session log, and a suite your own sandbox could not run (above). An unreachable
+instrument is not a finding; an unchecked one is just laziness.
 
 ACCOUNT FOR EVERY ATTACK THE PAYLOAD ENUMERATED. If it lists hypotheses, angles, or attacks it wants
 tried, every one of them comes back in your bullets under one of three dispositions: pursued and
@@ -302,6 +316,18 @@ doc, a figure disclosed to a human to obtain authorization, a coverage-floor row
 you test a tally: what is it about -- the work, or the bookkeeping of the method itself? If the
 payload names no claim surface, do NOT infer one: attack the outcome exactly as you otherwise
 would, and say in a bullet that the payload declared none.
+
+THE ACCOUNT OF THE RUN BY THE EXECUTOR IS A POINTER, NOT THE WORK — EVEN WHEN THE PAYLOAD NAMES IT. A
+checkpoint section that narrates the run (Outcome, a list of what was done, Delta notes, Rounds,
+Next: any section other than the live goal-spec and the coverage-floor table) and the sentences of
+the payload itself are the account of the executor. Check each line against the artifact it describes. Where they
+disagree and the ARTIFACT is right (a stale commit or HEAD label, a figure the deliverable states
+correctly, "merged" for a PR that is still open, "no decision is pending" made false by a later
+question), that is a MINOR note about the record: report it, do not count it. It is BLOCKING only
+when the artifact itself is wrong, or when the line is text a human was shown to obtain a decision
+(rule 2 above). The live goal-spec and the coverage-floor table are not an account: a criterion
+there is attacked as written. Measured 2026-10-09: 6 of those 17 rounds counted a line of the
+account whose artifact was right.
 
 If the outcome pointer resolves to a .goalspec/checkpoint*.md (the checkpoint is per-session:
 checkpoint-<session>.md, or the legacy checkpoint.md): that file is run state, not a

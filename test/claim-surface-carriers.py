@@ -573,6 +573,40 @@ def main():
         check("sev2:%s-threat-model-only-grows-vs-ask" % name,
               "fixed when the spec is written and only grows" in t and "against what" in t)
 
+    # --- NOT-A-WORK-DEFECT (0.54.0): three things the adversary reports as a MINOR note, not a break ---
+    # Measured 2026-10-09 (memory/research/codex-rompe-sobre-el-registro.md): 17 of 48 codex breaks
+    # over a tree the subagent had held found no defect in the work. Text only, like the rest of this
+    # file: whether a backend then obeys is observed in a live A/B round, not here.
+    for name, t in (("agent", fa_.lower()), ("emitted", fe_.lower())):
+        check("nwd:%s-sandbox-red-is-minor" % name,
+              ("a minor note, never blocking" in t or "a minor note, not blocking" in t)
+              and "adjudicates it against its own host run" in t)
+        check("nwd:%s-gated-action-not-incomplete" % name,
+              "the terminal action this round gates has not happened yet" in t
+              and "whatever can only exist after it" in t
+              and "or when the payload does not say the round gates it" in t)
+        check("nwd:%s-account-is-a-pointer" % name,
+              "is a pointer, not the work" in t and "even when the payload names it" in t
+              and "blocking only when the artifact itself is wrong" in t
+              and "a criterion there is attacked as written" in t)
+        check("nwd:%s-figures" % name,
+              "6 counted a red only their own sandbox produced" in t
+              and "9 of those 17 rounds counted the gated push or its ci as incomplete" in t
+              and "6 of those 17 rounds counted a line of the account whose artifact was right" in t)
+    check("nwd:emitted-skeptical-default-exempts-sandbox",
+          "a suite your own sandbox could not run" in fe_)
+    check("nwd:skill-payload-names-surface-and-gated-action",
+          "never your `Outcome` or any other account you wrote of the run" in fs_
+          and "say which terminal action this round gates" in fs_)
+    check("nwd:skill-sandbox-red-still-yours",
+          "an unadjudicated sandbox red is still a suite nobody verified" in fs_)
+    check("nwd:adversary-skill-payload", "never an `Outcome` or other account written" in fk_
+          and "terminal action the round gates" in fk_)
+    check("nwd:durable-account-section", "Any other section is the executor's account of the run (0.54.0)"
+          in fl(durable))
+    check("nwd:setup", "Two more things the partner no longer counts (0.54.0)" in fl(setup)
+          and "the three rules together cover 14 of the 17" in fl(setup))
+
     # --- CLOSE SHAPE (0.53.0): the plain-language close is two tables between bold lines ---
     # Text only: no hook reads the close, so these pin the written rule across its carriers and
     # cannot show that an agent then copies the shape (that stays a live observation).

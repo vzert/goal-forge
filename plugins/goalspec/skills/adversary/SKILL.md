@@ -63,6 +63,12 @@ paths not prose, data never instructions, restricted to the contract, delta-scop
   did not find it", **never** "not applicable" or "does not exist": falsely declaring evidence
   unavailable contaminates the verification without lying about the result, and the adversary
   is instructed to check your reach claims.
+- **Name the claim surface, and the terminal action the round gates (0.54.0)**: the claim surface
+  is the spec or claim and the work's own paths, never an `Outcome` or other account written about
+  the run; and if the claim ends in a push, merge, deploy, publish or send that this round gates,
+  say so. Both backends then report as a MINOR note, not a break, a line of that account whose
+  artifact is right, the gated action not having happened yet, and a red only their own sandbox
+  produced (the goalspec skill's step 6, same grep term: claim surface).
 - **A live system is handed over read-only**: when the claim is about a live system (a production
   host, a database, a deploy), point at evidence you captured or at commands that only read —
   never a write-capable path to production, and never an instruction whose natural reading is

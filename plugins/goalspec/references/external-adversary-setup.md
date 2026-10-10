@@ -147,8 +147,26 @@ rounds the partner filed that red as "unrelated" without a cause. The hook does 
 config (codex keeps it under `~/.codex`), and a redirected `HOME` changes the world the repo's own
 suite measures and hides the real `~/.claude/projects` from the dead-handoff check. Instead the
 prompt makes the partner classify every red it runs: sandbox/environment (path + errno, reported
-`UNVERIFIABLE-BY-THIS-BACKEND`, never counted as passing) or real. Check your own partner's reach
-without a model call:
+`UNVERIFIABLE-BY-THIS-BACKEND`, never counted as passing) or real. Since 0.54.0 a
+sandbox/environment red is also never counted as a finding: it is a MINOR note, and you adjudicate
+it against your host run (SKILL.md step 6). Before that, the prompt's skeptical default ("if you
+cannot verify a claim, count it") turned it into a BLOCKING one.
+
+**Two more things the partner no longer counts (0.54.0), for the same reason: they are not defects
+in the work.** (1) The terminal action the round gates (a push, a merge, a deploy, a publish, a
+send) not having happened yet, and whatever only exists after it (CI on the pushed commit, a merged
+PR). The payload must say which action the round gates; if it does not, the partner counts it as
+before. (2) A line of the executor's account of the run (a checkpoint `Outcome`, delta notes, the
+sentences of the payload) that disagrees with an artifact that is right: a stale commit label, a
+figure the deliverable states correctly. It is still a break when the artifact is wrong, or when the
+line was shown to a human to obtain a decision. Measured 2026-10-09 on the Mac and on a shared
+server: of 48 codex breaks over a tree the subagent had held, 17 found no defect in the work. The
+gated push or its CI was counted in 9 of them, a line of the account in 6 and a sandbox red in 6,
+and the three rules together cover 14 of the 17. The other 3 broke on a criterion of the goal-spec
+itself that the delta had made stale. The spec is attacked as written, and these rules do not cover
+that case.
+
+Check your own partner's reach without a model call:
 `codex sandbox -P :workspace -C <repo> -- bash -c 'mkdir -p ~/.claude/projects/probe && echo ok'`.
 The narrower operator-side option exists and is yours, not the hook's: `codex exec --add-dir <dir>`
 (or `-c sandbox_workspace_write.writable_roots=[...]`) makes one more directory writable to the

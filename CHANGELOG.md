@@ -8,6 +8,61 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-10-09
+
+### El adversario deja de romper por tres cosas que no son defectos del trabajo
+
+Codex daba `break` ronda tras ronda sobre árboles que el subagente ya había aprobado, y muchas veces
+sin nada malo en el trabajo. Medido el 2026-10-09 en el Mac y en el servidor compartido (5 usuarios),
+en las rondas de goalspec 0.49.1 en adelante: de 48 breaks de codex sobre un árbol con un `hold` del
+subagente, 17 no traían ningún defecto del trabajo (los dos clasificadores coinciden en esas 17).
+Lo que sí traían:
+- 9 contaban como incompleto el push, el merge o el CI que la propia ronda autoriza;
+- 6 contaban una línea del relato que escribe el ejecutor (el `Outcome` del checkpoint, el payload)
+  cuyo artefacto estaba bien: un commit viejo, una cifra que el entregable dice bien;
+- 6 contaban un rojo que solo existía en el sandbox de codex (mkdtemp bajo `.git`, un módulo que
+  falta). El prompt ya pedía marcarlo `UNVERIFIABLE-BY-THIS-BACKEND`, pero su regla escéptica ("si
+  no puedes verificarlo, cuéntalo") lo convertía en BLOCKING.
+
+En otras 23 de esas 48 rondas codex sí encontró un defecto real que el subagente no vio, en los 4
+usuarios del servidor que tienen rondas así. Por eso no se quita codex: se cambia qué cuenta.
+
+- **H3, el sandbox.** Un rojo que solo produjo el sandbox del adversario es una nota MINOR, nunca
+  BLOCKING, y la regla escéptica ya no lo convierte en uno. El ejecutor sigue obligado a cruzarlo con
+  su corrida en el host (SKILL.md paso 6, sin cambio de fondo).
+- **H2, la acción que la ronda autoriza.** Si el payload dice que la ronda autoriza un push, merge,
+  deploy, publish o envío, que no haya ocurrido, y lo que solo existe después (el CI del commit, el PR
+  unido), no cuenta. Sí cuenta si un texto afirma que ya ocurrió, o si el payload no lo dice.
+- **H1, el relato del ejecutor.** Una sección del checkpoint que narra la corrida (`Outcome`, lista
+  de lo hecho, notas del delta, `Rounds`, `Next`) y las frases del payload son un puntero, no el
+  trabajo, aunque el payload las nombre. Si una línea contradice un artefacto que está bien, es una
+  nota MINOR. Rompe solo si el artefacto está mal, o si esa línea se le mostró a un humano para que
+  decidiera. El goal-spec vivo y la tabla de cobertura no son relato: un criterio ahí se ataca tal
+  como está escrito.
+
+Los tres juntos cubren 14 de las 17 rondas. Las otras 3 rompieron sobre un criterio del propio
+goal-spec que el delta dejó viejo, y eso sigue contando a propósito.
+
+**Prueba de comportamiento (n=1 por brazo).** Un repo de prueba con el trabajo correcto, un push
+pendiente que la ronda autoriza, una suite que crea su carpeta temporal bajo `.git` y dos líneas
+viejas en el `Outcome`. Con el prompt de 0.53.0 codex dio `break` por las dos líneas del `Outcome`
+y por la suite, y además contó como restricción tardía el arreglo del repo de prueba, que leyó en el
+transcript de esta sesión. Con el nuevo, `hold`, con las tres cosas como MINOR o sin contar. El control: el mismo
+repo más un CHANGELOG que promete algo que el código no hace (`café` → `cafe`). Con el prompt nuevo,
+`break` solo por ese defecto. Con el viejo, `break` solo por el `Outcome`: no vio el defecto. Una
+primera tanda tenía un defecto real que no quise poner en el repo de prueba (quitar guiones de los
+extremos contradecía su no-harm), y las tres rondas lo atraparon. Se corrigió el repo y se repitió.
+
+Portadores: el prompt de `hooks/external-adversary.sh`, `agents/goal-adversary.md`,
+`skills/goalspec/SKILL.md` (paso 6: el payload nombra como superficie el goal-spec vivo, la tabla de
+cobertura y las rutas del trabajo, nunca el `Outcome`, y dice qué acción terminal autoriza la ronda),
+`skills/adversary/SKILL.md`, `references/durable-artifact.md` y `references/external-adversary-setup.md`.
+`test/claim-surface-carriers.py` suma 14 chequeos `nwd:*` (212 en total), los 14 vistos fallar con los
+portadores de 0.53.0. Los del backend externo leen el prompt **emitido** por el hook, no su fuente.
+
+Lo que no cubre: que un agente obedezca en una sesión real (la prueba fue una corrida aislada por
+brazo), y el goal-spec que el delta deja viejo.
+
 ## [0.53.0] - 2026-10-09
 
 ### El cierre en lenguaje llano tiene una forma fija: dos tablas entre líneas en negrita
