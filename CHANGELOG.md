@@ -14,6 +14,12 @@ version bump are never delivered to already-installed users.
   mutaciones por archivo: 182 de presencia y 22 de ausencia vistos en rojo; 3 leen un comentario a
   proposito y 5 no tienen forma de comentario, declarados con su motivo. El selftest tambien falla si
   el total no es 212, y el filtro trata igual los saltos de linea CRLF. Sin cambio en el plugin.
+- `test/external-adversary-branches.py`, caso 09: corre desde una subcarpeta de un repo desechable
+  bajo el `TMPDIR` de la suite, no desde `test/` de este repo. Antes el hook creaba su copia de
+  revision bajo el `.git` de este repo, y el sandbox `workspace-write` de codex lo niega (`mktemp:
+  ... Operation not permitted`), asi que el caso salia rojo en cada ronda de codex. Ahora pasa ahi con
+  el mismo `expect`. De paso, la comprobacion resolvia `.git` contra el directorio del proceso y no
+  contra el repo del caso; solo funcionaba porque ambos eran el mismo. Sin cambio en el plugin.
 
 ## [0.54.0] - 2026-10-09
 

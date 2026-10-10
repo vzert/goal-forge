@@ -323,8 +323,10 @@ its first `fatal:`/`error:` line, else its first non-empty line. 36 blocks `git 
 read-only), a path that printed no notice at all before. Run inside codex's `workspace-write`
 sandbox (2026-10-07) from a linked worktree whose common `.git` lives elsewhere, case 09 goes
 `pass+root` and the dump now shows the cause: `mktemp: ... .git/goalspec-review-...: Operation not
-permitted`. One run, that topology only; not measured from a plain checkout.
-That `pass+root` stays an expected red in that sandbox; 09's `expect` is not weakened. Against 0.49.1
+permitted`. Measured again 2026-10-10 from a plain checkout, same cause. Since p-804f4593cc case 09
+runs from a subdirectory of a throwaway repo under the suite's `TMPDIR` workdir instead of from
+this repo's `test/`, so the hook's review copy lands under that repo's `.git`, which the sandbox can
+write: 09 now passes there with its `expect` unchanged (`pass+isolatedroot`). Against 0.49.1
 36 and 37 come back `pass+nocause` and `pass+silent`. **38** is the trap an adversary found in the
 first draft: `worktree add` succeeds but a post-checkout hook writes to git's stderr, then the copy
 fails on an unreadable file; the cause must name the copy, not the hook (the draft gives

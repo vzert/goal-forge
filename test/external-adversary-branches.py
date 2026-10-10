@@ -23,7 +23,8 @@ The two 0.21.1 fixes are the point of this file:
   v0.19.1 contra-dato) is out of the hook's reach entirely.
 * Reviewed-state isolation (worktree-isolation change) — cases 09/16/17/18/19 now run against a
   PRIVATE linked worktree materialized under the reviewed repo's own `.git/` (case 09's assertion
-  updated to match: it lands under REPO's git-common-dir, not literally at REPO). Case 24 is the
+  updated to match: it lands under the case repo's git-common-dir, not literally at its root; since
+  p-804f4593cc that repo is a throwaway under the suite's TMPDIR workdir, not REPO). Case 24 is the
   point of the whole change: a "sibling session" commits to the ORIGINAL repo mid-round (simulating
   the live incident of 2026-09-17/18, a concurrent `/checkpoint-3t` commit misattributed to the
   external adversary) and the isolated review must come back CLEAN — proof the false-positive class
@@ -129,7 +130,7 @@ CASES = [
      None, "not-found"),
     ("08-unwritable-tmpdir", "STUB_TMPDIR", {"TMPDIR": "/nonexistent-goalspec-suite"},
      None, "pass+tmpdir-rw"),
-    ("09-invoked-from-subdir", "STUB_PWD", {}, os.path.join(REPO, "test"), "pass+isolatedroot"),
+    ("09-invoked-from-subdir", "STUB_PWD", {}, "MUTREPO_SUBDIR", "pass+isolatedroot"),
     ("10-recursion-guard", MODEL + "\n" + HOLD + "\n", {"GOAL_ADVERSARY_ACTIVE": "1"},
      None, "recursion"),
     # Outside ANY git repo there is no root to resolve (the recorded Fase 1 incident class:
@@ -152,7 +153,7 @@ CASES = [
      NOISE + MODEL_UNKNOWN_BRACKET + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+idunresolved"),
     # --- read-only rail (0.44.0). A partner that REPAIRS what it was sent to measure verifies a
     # state it created. These four run in a THROWAWAY git repo (cwd MUTREPO) for the obvious reason:
-    # the stub writes files, and every other case in this file runs with cwd=REPO.
+    # the stub writes files, and most other cases in this file run with cwd=REPO.
     #
     # 16 is THE discriminating case, and it is why the fingerprint hashes content instead of reading
     # `git status`: the file the stub appends to is ALREADY modified before the hook runs, so the
@@ -440,7 +441,7 @@ TAIL_MARKERS = {
 }
 
 
-def classify(res, case_name):
+def classify(res, case_name, repo=REPO):
     err, out = res.stderr, res.stdout
     if case_name[:2] in TAIL_MARKERS:
         # Merged 2>&1 through the tail: everything is in `out`, stderr is empty. Short-circuit, or
@@ -501,13 +502,15 @@ def classify(res, case_name):
         # `pass+cwd:...`, never `pass+root`. Two separate, real defects, not one — see the comment
         # on the `+root` branch below for what actually explains rounds 1 and 2 (worktree add
         # specifically, in those two observed cases — not asserted as the only possible cause).
-        repo_git = os.path.realpath(subprocess.run(
-            ["git", "-C", REPO, "rev-parse", "--git-common-dir"],
-            capture_output=True, text=True, check=True).stdout.strip())
-        if not os.path.isabs(repo_git):
-            repo_git = os.path.realpath(os.path.join(REPO, repo_git))
-        if seen == os.path.realpath(REPO):
-            # isolation unavailable, un-isolated fallback landed at REPO itself — CORRECT here, not
+        # Join BEFORE realpath: git prints a relative `.git` from the main worktree, and realpath
+        # alone resolves it against this process's cwd — REPO, which only matched while case 09
+        # itself ran inside REPO.
+        repo_git = subprocess.run(
+            ["git", "-C", repo, "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, check=True).stdout.strip()
+        repo_git = os.path.realpath(os.path.join(repo, repo_git))
+        if seen == os.path.realpath(repo):
+            # isolation unavailable, un-isolated fallback landed at the case repo itself — CORRECT here, not
             # only a degraded case: this branch is EXPECTED (not a regression) whenever ANY step of
             # the hook's isolation attempt does not complete (common-dir resolution, `mktemp`,
             # `rmdir`, the `git worktree add` call itself, or materializing the reviewed state into
@@ -537,7 +540,7 @@ def classify(res, case_name):
             # under the common .git (`Operation not permitted`), not `worktree add` — 36/37 pin both.
             branch += "+root"
         elif gcd == repo_git and seen.startswith(repo_git + os.sep):
-            branch += "+isolatedroot"  # isolated review copy, provably under REPO's own git-common-dir
+            branch += "+isolatedroot"  # isolated review copy, provably under the case repo's git-common-dir
         else:
             branch += "+cwd:" + seen
     if case_name.startswith("14"):
@@ -650,12 +653,23 @@ def suite(hook, workdir):
         env.update(env_extra)
         pipe = env.pop("_PIPE", None)
         hook_marker = None
+        case_repo = REPO
         if cwd == "WORKDIR":
             run_cwd = workdir
         elif cwd == "MUTREPO_UNBORN":
             run_cwd = make_mutrepo_unborn(workdir, name)
         elif cwd == "MUTREPO":
             run_cwd = make_mutrepo(workdir, name)
+        elif cwd == "MUTREPO_SUBDIR":
+            # Case 09 used to run from REPO/test, so the hook created its review copy under THIS
+            # repo's .git — which a write-restricted partner sandbox denies (codex workspace-write:
+            # `mktemp ... .git/goalspec-review-*: Operation not permitted`, p-804f4593cc). A
+            # throwaway repo under the workdir (TMPDIR, writable there) tests the same thing: an
+            # invocation from a subdirectory lands in an isolated copy under the repo's own
+            # git-common-dir.
+            case_repo = make_mutrepo(workdir, name)
+            run_cwd = os.path.join(case_repo, "sub")
+            os.makedirs(run_cwd)
         elif cwd == "MUTREPO_WTBLOCKED":
             run_cwd = make_mutrepo(workdir, name)
             open(os.path.join(run_cwd, ".git", "worktrees"), "w").close()
@@ -690,7 +704,7 @@ def suite(hook, workdir):
             # Restore write access, or TemporaryDirectory cannot clean the workdir up.
             while readonly:
                 os.chmod(readonly.pop(), 0o755)
-        branch = classify(res, name)
+        branch = classify(res, name, case_repo)
         if hook_marker and not os.path.exists(hook_marker):
             branch += "+hook-did-not-run"
         rows.append((name, branch, expect, res))
