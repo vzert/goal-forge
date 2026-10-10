@@ -38,8 +38,9 @@ leyeron).
   cifras de v0.41.1 tenían entre 495 y 525 tokens de atraso, porque se agregó texto arriba de la
   sección sin medirlo. La región termina 856 tokens por encima de la ventana de 5,000.
 - `test/claim-surface-carriers.py`: chequeos nuevos de que la forma (las dos tablas, sus columnas,
-  las tres líneas y la equivalencia con Q0–Q6) está en SKILL.md, en la referencia y en el README, y
-  de que ningún carrier conserva la plantilla vieja de siete encabezados en mayúsculas. Cada chequeo
+  las tres líneas y la equivalencia con Q0–Q6) está en SKILL.md, en la referencia y en el README.
+  Sobre la plantilla vieja, solo revisan dos frases suyas en SKILL.md y la frase "seven headings" en
+  la referencia; el README no tiene ese chequeo, porque su historia de v0.41.0 cita el encabezado viejo. Cada chequeo
   tiene una mutación que debe detectar.
 - Fuera de alcance, por decisión del operador: la posición del cierre. En esos mismos logs, el
   cierre casi nunca es lo último del turno, porque después vienen la narración del checkpoint y una
