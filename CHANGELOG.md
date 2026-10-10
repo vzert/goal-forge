@@ -44,7 +44,8 @@ por uno. Por eso no se quita codex: se cambia qué cuenta.
   como está escrito.
 
 Una ronda puede traer varias de estas causas. Algunas de las 17 también rompieron por cosas que
-siguen contando a propósito: un criterio del propio goal-spec que el delta dejó viejo (3 rondas), un
+siguen contando a propósito: un criterio del propio goal-spec que el delta dejó viejo (2 rondas), una afirmación negativa
+del spec sin demostrar (1), un
 `Outcome` que decía "PR unido" con el PR abierto (1), una tabla de cobertura que se contradecía (1) y
 un payload que no apuntaba a lo que gobierna una afirmación negativa (1). No se publica una cifra de
 "cuántas de las 17 se habrían evitado": depende de cómo se lea cada hallazgo (por ejemplo, si el

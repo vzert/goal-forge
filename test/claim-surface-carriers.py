@@ -599,6 +599,7 @@ def main():
           "a suite your own sandbox could not run" in fe_)
     check("nwd:skill-payload-names-surface-and-gated-action",
           "never your `Outcome` or any other account you wrote of the run" in fs_
+          and "(never one claiming an action happened that did not: that still counts)" in fs_
           and "say which terminal action this round gates" in fs_)
     check("nwd:skill-sandbox-red-still-yours",
           "an unadjudicated sandbox red is still a suite nobody verified" in fs_)
@@ -609,6 +610,7 @@ def main():
           in fl(durable))
     check("nwd:setup", "Two more things the partner no longer counts (0.54.0)" in fl(setup)
           and "a line of the account in 4 and a sandbox red in 6" in fl(setup)
+          and "made stale (2 rounds)" in fl(setup)
           and "cover 13 of" not in fl(setup) and "cover 14 of" not in fl(setup))
 
     # --- CLOSE SHAPE (0.53.0): the plain-language close is two tables between bold lines ---

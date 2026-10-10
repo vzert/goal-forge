@@ -164,7 +164,8 @@ line was shown to a human to obtain a decision, or when it claims an action happ
 server: of 48 codex breaks over a tree the subagent had held, 17 found no defect in the work. The
 gated push or its CI was counted in 9 of them, a line of the account in 4 and a sandbox red in 6
 (one round can carry several). Some of those rounds also broke on things these rules leave counted
-on purpose: a criterion of the goal-spec the delta had made stale (3 rounds), an account line saying
+on purpose: a criterion of the goal-spec the delta had made stale (2 rounds), a negative claim in
+the spec left undemonstrated (1), an account line saying
 a PR was merged while it was still open (1), a coverage-floor table that contradicted itself (1),
 and a payload that did not point at the surfaces governing a negative claim (1).
 
