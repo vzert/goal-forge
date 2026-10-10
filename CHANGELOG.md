@@ -8,11 +8,17 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.54.1] - 2026-10-10
+
+### El aviso de descomposicion ya no niega los spawns del adversario
+
 - `hooks/nudge-decompose.sh`: el aviso ya no dice que no aparecio ninguna llamada Task/Agent en la
   sesion. Eso era falso cuando el agente habia lanzado el adversario, que el conteo excluye a
   proposito. Ahora dice que no se lanzo ningun subagente de trabajo y que el adversario no cuenta,
   porque verifica y no reparte el trabajo. Solo cambia el texto; cuando avisa y cuando calla sigue
   igual. Caso nuevo 26 en `test/decompose-nudge-branches.py`: falla contra el hook anterior.
+### Pruebas, sin cambio en el plugin
+
 - `test/claim-surface-carriers.py` deja de aceptar una frase escondida en un comentario (la objecion de
   codex con la que se publico 0.54.0). Los chequeos de presencia leen el markdown sin comentarios HTML y
   los hooks por lo que emiten; los de ausencia siguen leyendo el texto crudo. `--selftest` lo prueba con
