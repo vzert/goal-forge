@@ -93,9 +93,8 @@ Difícil de deshacer · Decides tú · ¿Cerrado?
   from the `## Goal-spec`'s `Asked` line, never recall at hour six — it carries the opening ask
   through every later cycle (v0.41.0 lost it by copying a re-entered cycle's `Asked: "hagamos el
   push"`; `references/plain-close.md`).
-- **Words a 12-year-old reads without stopping.** No `break`/`hold`/waiver, no bracket markers, no
-  paths, line numbers, commit hashes, tool or gate names, round counts. Say *"nadie de fuera lo
-  revisó"*, not *"cero `hold`"*.
+- **Words a 12-year-old reads without stopping.** No `break`/`hold`/waiver, bracket markers,
+  paths, line numbers, commit hashes, tool or gate names, round counts.
 - **Plain is not vague — name who did what.** The ban is on *jargon*, not *information*: "nadie de
   fuera lo revisó" says almost nothing; "un revisor independiente intentó romperlo dos veces: la
   primera encontró un fallo real que corregí, la segunda nada" is as plain and reports. Test: **could
@@ -107,7 +106,7 @@ Difícil de deshacer · Decides tú · ¿Cerrado?
   "Yes, there are decisions pending" is a dead handoff (principle 4). Name each in one line, then
   **raise them in an `AskUserQuestion` below the block** — the modal is where they answer. The
   trigger is every ending, not only a completion-review ("Ending a run that did not finish").
-- **It crowns the detail, never replaces it.** Everything technical stays above, in full.
+- **It crowns the detail**, never replaces it: everything technical stays above.
 - **Position follows the reader — the modal is the one thing that may follow the block.** In a
   **conversation turn**: marker, then block, then nothing *except* the `AskUserQuestion` that ending
   owes (next section) — it marks a handoff, not a finish; a continuation block goes **above**. In a

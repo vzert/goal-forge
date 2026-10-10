@@ -597,6 +597,8 @@ def main():
     check("shape:plain-close-section", "## v0.53.0 — one fixed shape: two tables between bold lines" in plain
           and "`Hard to undo`" in plain and "Who / When" in plain)
     check("shape:plain-close-no-seven-headings", "seven headings" not in plain)
+    check("shape:q2-row-in-reference-and-readme",
+          "`Skipped | ❌ Nothing`" in plain and "`Skipped | ❌ Nothing`" in readme_)
     check("shape:readme", "**v0.53.0** gives the plain-language close one fixed shape" in readme_
           and "`What's left` table with **Who** and **When**" in readme_)
 

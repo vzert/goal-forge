@@ -110,7 +110,8 @@ report, not theirs):
 
 The seven questions did not change; their **shape** did. The operator's report: in the terminal the
 close looks like every other paragraph of the session, so when it scrolls up it has to be hunted
-for. Measured 2026-10-09 on that operator's own agent logs (215 transcripts; assistant `text`
+for. Measured 2026-10-09 on that operator's own agent logs (215 transcripts on disk that day — older ones are deleted automatically, so a later re-run sees
+fewer; assistant `text`
 blocks only, thinking excluded): **136 messages in 75 sessions carry the marker, and 5 of them hold
 any markdown table**; those messages run 1–114 lines (median 32.5). The headings were there — English
 in 29 of the 120 before 2026-10-01, Spanish in 51, neither in 40; Spanish in all 16 since — but as
@@ -171,15 +172,15 @@ that reopens the close on click). A better-looking close that is still buried is
   | Boundary | Cumulative tokens |
   | --- | --- |
   | start of `## The plain-language close` (line 49) | 3282 |
-  | end of that section (= start of `## Ending a run that did not finish`) | 4527 |
-  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5521 |
-  | end of the whole section, waiver paragraph included | 5885 |
+  | end of that section (= start of `## Ending a run that did not finish`) | 4498 |
+  | end of that next section's prose, i.e. up to but **not** including its `[GOAL-CLOSE-WAIVED]` paragraph | 5492 |
+  | end of the whole section, waiver paragraph included | 5856 |
 
   **Re-measured at v0.53.0 (2026-10-09)**: the rows above are current. The figures this table
   carried until then (2787 / 4029 / 5023 / 5357, v0.41.1) had gone stale — against the file as it
   stood just before v0.53.0 (3282 / 4524 / 5518 / 5882) — by 495–525 tokens through
-  text added *above* the section, unmeasured — the region now ends **885** over the window. v0.53.0
-  itself is net +3 (5882 before, 5885 after): the table template was paid for by compressing the
+  text added *above* the section, unmeasured — the region now ends **856** over the window. v0.53.0
+  itself is net −26 (5882 before, 5856 after): the table template was paid for by compressing the
   section's own bullets. The history paragraph below keeps its v0.41.1 numbers as history.
 
   Method: the file's text from line 1 up to each boundary, encoded **as one string**. A per-line

@@ -304,7 +304,7 @@ sobrevive a /resume — dime si quiero eso antes de aplicarlo.
 
 ### What's new
 
-See [`CHANGELOG.md`](CHANGELOG.md) for the full history and the latest release. **v0.53.0** gives the plain-language close one fixed shape: a `Where we are` line, a `What's done` table (✅ done, ❌ not done with its reason), a `What's left` table with **Who** and **When**, and three bold lines — `Hard to undo`, `You decide`, `Closed?` — labels in the user's language. Same seven questions; a terminal draws a table as a boxed grid, so the close is found by scrolling instead of by reading (in one heavy user's logs, 5 of 136 messages carrying the marker held any table). One notable change: **v0.43.0** gives the convergence
+See [`CHANGELOG.md`](CHANGELOG.md) for the full history and the latest release. **v0.53.0** gives the plain-language close one fixed shape: a `Where we are` line, a `What's done` table (✅ done, ❌ not done with its reason — a `Skipped | ❌ Nothing` row when nothing was), a `What's left` table with **Who** and **When**, and three bold lines — `Hard to undo`, `You decide`, `Closed?` — labels in the user's language. Same seven questions; a terminal draws a table as a boxed grid, so the close is found by scrolling instead of by reading (in one heavy user's logs, 5 of 136 messages carrying the marker held any table). One notable change: **v0.43.0** gives the convergence
 floor back a line the **agent** can read, and turns its counter into a real streak. Since v0.36.0 the
 floor emitted one line to the human and nothing to the model, and the opt-in teeth are suspended at
 the floor — so the floor emitted nothing agent-facing and nothing blocking, in *either* mode: a check

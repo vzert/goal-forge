@@ -13,7 +13,7 @@ version bump are never delivered to already-installed users.
 ### El cierre en lenguaje llano tiene una forma fija: dos tablas entre líneas en negrita
 
 En la terminal, el cierre se veía igual que el resto de la sesión, y cuando se quedaba arriba había
-que buscarlo. Medido el 2026-10-09 en los 215 transcripts de claude-vzert (solo bloques `text` del
+que buscarlo. Medido el 2026-10-09 en los 215 transcripts de claude-vzert que había en disco ese día (los viejos se borran solos, así que una medición posterior ve menos) (solo bloques `text` del
 asistente, sin thinking): 136 mensajes en 75 sesiones llevan el marcador, y 5 de ellos tienen alguna
 tabla. Esos mensajes miden de 1 a 114 líneas (mediana 32.5). Los encabezados estaban: antes del 1 de
 octubre, 29 de 120 en inglés, 51 en español y 40 sin ninguno; desde entonces, los 16 en español.
@@ -31,12 +31,12 @@ leyeron).
   Límites: hasta 6 filas por tabla, una línea por celda, y las líneas en blanco se conservan, porque
   sin ellas la tabla no se dibuja y las líneas en negrita se juntan. Una tabla vacía lleva una fila
   `Nothing` y nunca falta. Q2 tampoco desaparece: si no se omitió nada, la tabla de lo hecho termina en una fila `Skipped | ❌ Nothing`. Se quitó el límite de "dos líneas por pregunta, 18 en total".
-- La sección pesa lo mismo (5,882 tokens antes y 5,885 después, `cl100k_base`, hasta el fin de
+- La sección pesa menos (5,882 tokens antes y 5,856 después, `cl100k_base`, hasta el fin de
   "Ending a run that did not finish"). La plantilla se pagó compactando los bullets de la misma
-  sección, sin quitar ninguna regla; quedan 3 tokens arriba.
+  sección, sin quitar ninguna regla.
 - `references/plain-close.md`: sección nueva con la evidencia, y la tabla de tokens re-medida. Sus
   cifras de v0.41.1 tenían entre 495 y 525 tokens de atraso, porque se agregó texto arriba de la
-  sección sin medirlo. La región termina 885 tokens por encima de la ventana de 5,000.
+  sección sin medirlo. La región termina 856 tokens por encima de la ventana de 5,000.
 - `test/claim-surface-carriers.py`: chequeos nuevos de que la forma (las dos tablas, sus columnas,
   las tres líneas y la equivalencia con Q0–Q6) está en SKILL.md, en la referencia y en el README, y
   de que ningún carrier conserva la plantilla vieja de siete encabezados en mayúsculas. Cada chequeo
