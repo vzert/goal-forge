@@ -40,7 +40,7 @@ The two 0.21.1 fixes are the point of this file:
   Case 29 feeds a transcript larger than a pipe buffer and requires no "write error: Broken pipe"
   on stderr (grep -m1 closes the pipe early). Fails against 0.46.4 as `pass+sandboxfwd+brokenpipe`.
 * Filter-proof UNVERIFIED line (0.48.2) — cases 33/34/35 run the hook through the filter an executor
-  actually used (`grep -v '^external-adversary\|^  ' | tail -14`) on the three paths that mark a
+  actually used (`grep -v '^external-adversary\\|^  ' | tail -14`) on the three paths that mark a
   hold UNVERIFIED, and require the unprefixed notice as the LAST line. All three fail against 0.48.1.
 * Isolation fallback names its cause (0.49.2) — case 36 blocks `git worktree add`, 37 blocks `mktemp`
   (needs a non-root user); both must fall back un-isolated AND print the tool's first error line.
