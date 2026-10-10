@@ -329,7 +329,21 @@ def main():
     print("{:<32} {:<8} {}".format(name16, "content-ok" if ok16 else "content-MISSING",
                                     "" if ok16 else "  <-- FAIL, expected file name + lifecycle text"))
 
-    total = len(CASES) + 1
+    # --- 26: the message must not claim an absence the transcript contradicts. Before this case
+    # the text said no Task/Agent call appeared anywhere, which is false on the very run case 07
+    # nudges on: the adversary was spawned, and the count excludes it by design. Pinned: the text
+    # names WORK subagents and says the adversary does not count, and the old claim is gone. ---
+    name26 = "26-message-says-adversary-not-counted"
+    out26 = run_case_raw(name26, CHECKPOINT_2ROW, [("Agent", "goalspec:goal-adversary")], tmp)
+    ok26 = ("no work subagent" in out26
+            and "goal-adversary spawn does not count" in out26
+            and "call appears anywhere" not in out26)
+    if not ok26:
+        failures.append((name26, "new wording", "old or missing wording"))
+    print("{:<32} {:<8} {}".format(name26, "content-ok" if ok26 else "content-MISSING",
+                                    "" if ok26 else "  <-- FAIL, expected work-subagent wording"))
+
+    total = len(CASES) + 2
     print()
     if failures:
         print("{} case(s) FAILED".format(len(failures)))

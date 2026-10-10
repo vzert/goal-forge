@@ -539,6 +539,11 @@ decomposition (silent), not nudge.
 **11/12** prove the row-count check is real (1 row, 0 rows); **13/14** prove the
 checkpoint/heading gate is real (no file, heading absent).
 
+**26** pins the message text on the run **07** nudges on (an adversary spawn and no worker): the
+nudge says no *work* subagent was spawned and that a `goal-adversary` spawn does not count, and the
+old claim that no Task/Agent call appeared anywhere is gone — it was false whenever the adversary
+had run.
+
 ```sh
 python3 test/decompose-nudge-branches.py
 ```

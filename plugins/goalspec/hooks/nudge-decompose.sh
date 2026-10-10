@@ -249,7 +249,8 @@ except Exception:
 
 msg = (
     "[DECOMPOSE-NUDGE] {} coverage-floor table lists {} entities, and no "
-    "Task/Agent subagent call appears anywhere in this session. If those entities are independent "
+    "work subagent (Task/Agent) was spawned in this session — a goal-adversary spawn does not "
+    "count here, because it verifies the outcome rather than splitting the work. If those entities are independent "
     "(SKILL.md coverage-floor: decide at enumeration time, not at close), consider one subagent per "
     "entity instead of working through them serially in this context, each spawn naming its model "
     "and effort by task (SKILL.md, \"Subagent model by task\"). This is a structural proxy, "
