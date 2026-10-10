@@ -417,7 +417,8 @@ def stale_transcript(events, name):
         for ev in events:
             content = []
             if "bash" in ev:
-                content.append({"type": "tool_use", "name": "Bash", "input": {"command": ev["bash"]}})
+                content.append({"type": "tool_use", "name": "Bash", "id": ev.get("bash_id"),
+                                "input": {"command": ev["bash"]}})
             if "write" in ev:
                 fp, body = ev["write"]
                 content.append({"type": "tool_use", "name": "Write", "id": ev.get("write_id"),
@@ -435,6 +436,11 @@ def stale_transcript(events, name):
                 content.append({"type": "text", "text": ev["text"]})
             fh.write(json.dumps({"type": "assistant", "timestamp": ev.get("timestamp"),
                                  "message": {"content": content}}) + "\n")
+            if "result" in ev:  # the Bash call's output (0.55.0: the temp-delete provenance)
+                fh.write(json.dumps({"type": "user", "timestamp": ev.get("timestamp"),
+                                     "message": {"role": "user", "content": [
+                                         {"type": "tool_result", "tool_use_id": ev.get("bash_id"),
+                                          "content": ev["result"]}]}}) + "\n")
     return p
 
 
@@ -519,9 +525,20 @@ STALE_CASES = [
      "still working, no fresh review this turn"),
     # 0.55.0 (p-ff03d9a39d): the canonical own-temp-dir delete is not terminal for this backstop
     # either — it shares classify() with the precheck. The path does not exist, as at Stop time
-    # after the delete ran. 11 is its control: a delete in the repo after the review stays STALE.
+    # after the delete ran; an earlier Bash output printed it, as mktemp does. 11 is its control (a
+    # delete in the repo stays STALE); 12 the provenance one (never printed stays STALE).
     ("stale-10-own-mktemp-delete-after-review-NOT-STALE",
      lambda: stale_repo("s10", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC},
+      {"timestamp": T0, "bash": "mktemp -d", "bash_id": "mk10",
+       "result": os.path.join(tempfile.gettempdir(), "3t-recover.zz9gone")},
+      {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "rm -rf " + os.path.join(tempfile.gettempdir(),
+                                                         "3t-recover.zz9gone"),
+       "text": "cleaned up."}],
+     "still working, no fresh review this turn"),
+    ("stale-12-unprinted-mktemp-delete-after-review-STALE",
+     lambda: stale_repo("s12", {"src/app.js": "code"}, T2),
      [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
       {"timestamp": T2, "bash": "rm -rf " + os.path.join(tempfile.gettempdir(),
                                                          "3t-recover.zz9gone"),

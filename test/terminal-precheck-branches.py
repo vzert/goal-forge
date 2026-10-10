@@ -99,6 +99,10 @@ def transcript(events, name):
             if "text" in ev:
                 content.append({"type": "text", "text": ev["text"]})
             fh.write(json.dumps({"type": "assistant", "message": {"content": content}}) + "\n")
+            if "result" in ev:  # the Bash call's output, as the harness writes it (0.55.0)
+                fh.write(json.dumps({"type": "user", "message": {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": ev.get("bash_id"), "content": ev["result"],
+                     "is_error": ev.get("result_error", False)}]}}) + "\n")
     return p
 
 
@@ -922,8 +926,17 @@ os.makedirs(NARROW, exist_ok=True)
 os.chmod(NARROW, 0o700)
 
 
-def _tc(name, command):
-    return run_hook(make_repo(name, None, None), command, transcript([{"text": SPEC_TEXT}], name))
+# Every fixture path printed once, as `mktemp -d` would, so each case below is decided by its own
+# check and not by the provenance one; 135-137 test provenance itself.
+PRINTED = {"bash": "mktemp -d", "bash_id": "mk", "result": "\n".join(
+    [MKT, LINK, PERSIST, INLINK, OUTLINK, WIDE + "/adversary-shape.ABCDEF",
+     NARROW + "/persistent.abcdef", "/tmp/foo/3t-recover.abcdef",
+     os.path.join(TROOT, "claude-501", "x")])}  # scratchpad-like paths are printed all the time
+
+
+def _tc(name, command, printed=PRINTED):
+    events = [{"text": SPEC_TEXT}] + ([printed] if printed else [])
+    return run_hook(make_repo(name, None, None), command, transcript(events, name))
 
 
 case("116-own-mktemp-dir-literal-ALLOW", lambda: _tc("116", "rm -rf " + MKT))
@@ -937,7 +950,7 @@ case("123-non-mktemp-child-of-temp-DENY", lambda: _tc(
     "123", "rm -rf " + os.path.join(TROOT, "claude-501")))
 case("124-relative-path-DENY", lambda: _tc("124", "rm -rf 3t-recover.abcdef"))
 case("124b-relative-path-hook-cwd-inside-mktemp-DENY", lambda: run_hook(
-    make_repo("124b", None, None), "rm -rf sub", transcript([{"text": SPEC_TEXT}], "124b"),
+    make_repo("124b", None, None), "rm -rf sub", transcript([{"text": SPEC_TEXT}, PRINTED], "124b"),
     proc_cwd=MKT))
 case("125-mktemp-name-outside-temp-DENY", lambda: _tc(
     "125", "rm -rf " + os.path.join(REPO, "3t-recover.abcdef")))
@@ -963,13 +976,26 @@ case("131-mktemp-shaped-dir-not-0700-DENY", lambda: _tc("131", "rm -rf %s/state.
 # TMPDIR at a writable 0755 dir: Python accepts it as the temp dir, the root check must not.
 case("132-tmpdir-pointed-at-wide-dir-DENY", lambda: run_hook(
     make_repo("132", None, None), "rm -rf %s/adversary-shape.ABCDEF" % WIDE,
-    transcript([{"text": SPEC_TEXT}], "132"), env_extra={"TMPDIR": WIDE}))
+    transcript([{"text": SPEC_TEXT}, PRINTED], "132"), env_extra={"TMPDIR": WIDE}))
 case("132b-tmpdir-pointed-at-own-0700-dir-DENY", lambda: run_hook(
     make_repo("132b", None, None), "rm -rf %s/persistent.abcdef" % NARROW,
-    transcript([{"text": SPEC_TEXT}], "132b"), env_extra={"TMPDIR": NARROW}))
+    transcript([{"text": SPEC_TEXT}, PRINTED], "132b"), env_extra={"TMPDIR": NARROW}))
 case("133-symlink-outside-into-mktemp-DENY", lambda: _tc("133", "rm -rf " + INLINK))
 case("134-symlink-inside-mktemp-to-outside-trailing-slash-DENY", lambda: _tc(
     "134", "rm -rf %s/" % OUTLINK))
+# Provenance (Victor, after two codex rounds): the mktemp dir's name must have appeared in a Bash
+# OUTPUT of this session. Not printed at all; only typed in a command; only in an error result (a
+# hook's deny quotes the denied command, so counting errors would pass every second try).
+case("135-another-mktemp-dir-printed-not-this-one-DENY", lambda: _tc(
+    "135", "rm -rf " + MKT, printed={"bash": "mktemp -d", "bash_id": "t0",
+                                     "result": os.path.join(TROOT, "other.zzzzzz")}))
+case("135b-nothing-printed-DENY", lambda: _tc("135b", "rm -rf " + MKT, printed=None))
+case("136-mktemp-dir-only-typed-in-a-command-DENY", lambda: _tc(
+    "136", "rm -rf " + MKT, printed={"bash": "ls " + MKT, "bash_id": "t1", "result": "file.txt"}))
+case("137-mktemp-dir-only-in-an-error-result-DENY", lambda: _tc(
+    "137", "rm -rf " + MKT, printed={"bash": "rm -rf " + MKT, "bash_id": "t2",
+                                     "result": "PreToolUse:Bash hook error: ... (`rm -rf %s`)" % MKT,
+                                     "result_error": True}))
 
 
 def run_hook_raw(payload):

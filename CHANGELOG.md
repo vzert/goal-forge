@@ -17,7 +17,12 @@ version bump are never delivered to already-installed users.
   `..` se resuelve), con cada ruta -- la entrada y, si es un enlace, su destino -- dentro de una
   carpeta de primer nivel con forma `nombre.XXXXXX`, del usuario y con permisos 0700 (lo que crea
   `mktemp -d`), bajo una raiz temporal con sticky bit (`/tmp`) o la carpeta T por usuario de macOS, ya no es
-  terminal. El nombre solo no basta, ni un TMPDIR apuntado a otra carpeta (rondas de codex). Lo usan `classify()` y
+  terminal, y solo si la salida de un comando Bash anterior de la sesion imprimio esa carpeta como
+  parte de una ruta (`seen_temp_names`; mktemp la imprime, el paso 0b imprime RECOVER_DIR). No
+  cuenta haberla tecleado ni que aparezca en un resultado con error: el texto de la negacion
+  repite el comando. Sin transcript no hay excepcion. El nombre y los permisos no prueban quien
+  creo la carpeta, ni un TMPDIR apuntado a otra carpeta es raiz (rondas de codex; el origen lo
+  decidio Victor). Lo usan `classify()` y
   `classify_all()`, asi que el precheck y el control de staleness del Stop lo ven igual.
   Por que: medido el 2026-10-10 sobre las 159 negaciones `destructive` reales de este equipo, 76-77
   eran el borrado local de una carpeta temporal que la propia sesion creo (dos etiquetadores ciegos,
@@ -31,9 +36,9 @@ version bump are never delivered to already-installed users.
 - `DESTRUCTIVE_RE`: el comentario ya no dice que detecta `-fr` y `-Rf` (nunca lo hizo; 0 usos en
   los 156.054 comandos Bash de los transcripts de un equipo, el 2026-10-10). Sin cambio en lo que detecta.
 - SKILL.md y `references/mid-session-retrigger.md` describen la excepcion.
-- Casos nuevos: 116-134 y 124b en `test/terminal-precheck-branches.py`, `stale-10`/`stale-11` en
-  `test/gate-branches.py`. 116, 117 y `stale-10` fallan contra el modulo anterior; cada chequeo de
-  `is_temp_cleanup` se quito por turno y su caso se puso rojo. El resto de ambas suites, en los dos
+- Casos nuevos: 116-137, 124b, 132b y 135b en `test/terminal-precheck-branches.py`, `stale-10`..`12` en
+  `test/gate-branches.py`. 116, 117 y `stale-10` fallaban contra el modulo anterior; cada chequeo de
+  `is_temp_cleanup` y de `seen_temp_names` se quito por turno y su caso se puso rojo. El resto de ambas suites, en los dos
   modos del gate, no cambio.
 
 ## [0.54.1] - 2026-10-10

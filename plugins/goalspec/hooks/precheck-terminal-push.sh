@@ -113,7 +113,9 @@ if not isinstance(command, str) or not command.strip():
 
 cwd = data.get("cwd") or os.getcwd()
 
-is_term, kind, diffable = ta.is_terminal(command, cwd)
+# 0.55.0: the own-mktemp-dir exemption needs the names this session saw printed by Bash.
+seen = ta.seen_temp_names(data.get("transcript_path")) if ta.DESTRUCTIVE_RE.search(command) else None
+is_term, kind, diffable = ta.is_terminal(command, cwd, seen)
 if not is_term:
     allow()
 
@@ -205,8 +207,9 @@ if kind == "destructive":
     temp_note = (" If this only deletes a temp directory this session made with mktemp, run it as "
                  "its own command, exactly `rm -rf <absolute path>` with the path written out (no "
                  "$VAR, no glob, nothing chained): a path inside a name.XXXXXX directory you own with "
-                 "mode 0700 (what mktemp -d makes) under the system temp root, symlinks checked at "
-                 "both ends, is not terminal and passes.")
+                 "mode 0700 (what mktemp -d makes) under the system temp root, whose path an "
+                 "earlier command of this session printed (mktemp does), symlinks checked at both "
+                 "ends, is not terminal and passes.")
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
              "If those words are only data (a string, a payload), write the text to a file with the "
              "Write tool and pass the file -- this hook reads the command text, never the contents of a "

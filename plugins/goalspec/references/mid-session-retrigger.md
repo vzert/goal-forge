@@ -44,7 +44,8 @@ executor prose or infer intent — it pattern-matches a *bounded, literal* set o
 shapes (`git push` to a protected branch — also with git's own global options between `git` and
 the subcommand, `git -C <dir> push`, since 0.45.0 — `gh pr merge`, a handful of named deploy/publish CLIs,
 a couple of destructive shell idioms, minus one canonical delete of the session's own mktemp
-directory (named `name.XXXXXX`, owned by the user, mode 0700) since 0.55.0 — `terminal_actions.is_temp_cleanup`) and, for push/merge, diffs the *actual file paths* the
+directory (named `name.XXXXXX`, owned by the user, mode 0700, and printed by an earlier
+command of the session) since 0.55.0 — `terminal_actions.is_temp_cleanup`) and, for push/merge, diffs the *actual file paths* the
 action would touch against a small path allowlist. That is closer in kind to the coverage-floor
 enumeration this method already trusts mechanically (glob for files, diff for paths) than to the
 three failed matchers above, which all tried to fingerprint free-form, executor-authored text.

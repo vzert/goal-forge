@@ -131,8 +131,11 @@ DESTRUCTIVE_RE = re.compile(
 # sticky or user-owned 0700 temp root. Measured on this macOS: `rm -rf <symlink>/` deletes
 # the link's TARGET, so the textual path is never trusted. Chained, `$VAR`, globbed or relative
 # forms stay terminal, which is why /checkpoint-3t must print the literal path and run it alone.
+# Shape and mode are not provenance (codex, two rounds): a long-lived 0700 dir can be named
+# x.ABCDEF too. So the mktemp dir's name must also have appeared, as part of a path, in the output
+# of a Bash command earlier in THIS session (seen_temp_names) -- mktemp prints it, /checkpoint-3t
+# step 0b prints RECOVER_DIR. With no transcript there is no exemption.
 _TEMP_CLEANUP_SHELL = re.compile(r"[;&|<>()$`\\*?\[\]{}~\n]")
-_MKTEMP_NAME = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_]{6,}")
 _MACOS_USER_T = re.compile(r"/private/var/folders/[^/]+/[^/]+/T")
 
 
@@ -155,7 +158,7 @@ def _temp_roots():
     return roots
 
 
-def _in_own_mktemp(path, roots):
+def _in_own_mktemp(path, roots, seen):
     """`path` lies inside a first-level dir under a root that is shaped AND owned like mktemp's:
     name.XXXXXX, a real dir, this user's, mode 0700. The name alone is not provenance (codex, 0.55.0
     round 1: a persistent claude-state.ABCDEF passed); a missing one has nothing to delete."""
@@ -163,7 +166,7 @@ def _in_own_mktemp(path, roots):
         if not path.startswith(root + os.sep):
             continue
         first = path[len(root) + 1:].split(os.sep)[0]
-        if not _MKTEMP_NAME.fullmatch(first):
+        if first not in seen:  # seen holds only name.XXXXXX names (_SEEN_NAME_RE, below)
             continue
         try:
             st = os.lstat(os.path.join(root, first))
@@ -175,9 +178,10 @@ def _in_own_mktemp(path, roots):
     return False
 
 
-def is_temp_cleanup(command):
-    """True only for the canonical own-temp-dir delete described above."""
-    if not command or _TEMP_CLEANUP_SHELL.search(command.strip()):
+def is_temp_cleanup(command, seen=None):
+    """True only for the canonical own-temp-dir delete described above. `seen` is the set from
+    seen_temp_names(); None (no transcript) means no exemption."""
+    if not command or not seen or _TEMP_CLEANUP_SHELL.search(command.strip()):
         return False
     try:
         toks = shlex.split(command)
@@ -193,16 +197,48 @@ def is_temp_cleanup(command):
         # outside temp that points in is deleted where IT is) and its target (`link/` follows it).
         bare = p.rstrip("/") or os.sep
         entry = os.path.join(os.path.realpath(os.path.dirname(bare)), os.path.basename(bare))
-        if not (_in_own_mktemp(entry, roots) and _in_own_mktemp(os.path.realpath(p), roots)):
+        if not (_in_own_mktemp(entry, roots, seen)
+                and _in_own_mktemp(os.path.realpath(p), roots, seen)):
             return False
     return True
 
 
-def classify_all(command):
+_SEEN_NAME_RE = re.compile(r"/([A-Za-z0-9_-]+\.[A-Za-z0-9_]{6,})(?=[/\s\"'`:;,)\]]|$)")
+
+
+def seen_temp_names(transcript_path):
+    """mktemp-shaped names that appeared after a `/` in the output of a Bash call of this session
+    (not in a command the agent typed: typing a name proves nothing about who made it). Results
+    marked is_error do not count: a hook's deny text quotes the denied command, path included, so
+    counting it would let the second try of any denied delete pass. Unreadable transcript -> empty."""
+    names, bash_ids = set(), set()
+    try:
+        fh = open(transcript_path, encoding="utf-8", errors="replace")
+    except (OSError, TypeError):
+        return names
+    with fh:
+        for line in fh:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            content = (ev.get("message") or {}).get("content") if isinstance(ev, dict) else None
+            for blk in content if isinstance(content, list) else []:
+                if not isinstance(blk, dict):
+                    continue
+                if blk.get("type") == "tool_use" and blk.get("name") == "Bash":
+                    bash_ids.add(blk.get("id"))
+                elif blk.get("type") == "tool_result" and blk.get("tool_use_id") in bash_ids \
+                        and blk.get("is_error") is not True:
+                    names.update(_SEEN_NAME_RE.findall(_tool_result_text(blk.get("content"))))
+    return names
+
+
+def classify_all(command, seen=None):
     """Every kind present in `command`, in classify()'s priority order (0.45.0: `git push origin
     feat && gh pr merge` classified as push only, the push was out of scope as a feature push, and
     the merge in the same command ran unchecked)."""
-    if not command or is_temp_cleanup(command):
+    if not command or is_temp_cleanup(command, seen):
         return []
     kinds = []
     if PUSH_RE.search(command):
@@ -216,11 +252,11 @@ def classify_all(command):
     return kinds
 
 
-def classify(command):
+def classify(command, seen=None):
     """One of 'push' | 'merge' | 'deploy' | 'destructive' | None. Bounded, best-effort list — see
     references/ for the list this was ratified against; it is NOT exhaustive by design (a Bash
     command matcher cannot reason about non-Bash terminal actions, e.g. an MCP-tool delete)."""
-    if not command or is_temp_cleanup(command):
+    if not command or is_temp_cleanup(command, seen):
         return None
     if PUSH_RE.search(command):
         return "push"
@@ -385,7 +421,7 @@ def push_target_branch(command, cwd):
     return current_branch(cwd)
 
 
-def is_terminal(command, cwd):
+def is_terminal(command, cwd, seen=None):
     """-> (is_terminal: bool, kind: str|None, diffable: bool).
 
     'push' to a branch NOT in protected_branches() is explicitly OUT of scope (a feature-branch
@@ -393,7 +429,7 @@ def is_terminal(command, cwd):
     which SKILL.md already names terminal regardless of branch. Every push in the command is
     checked, each against its own repo.
     """
-    kinds = classify_all(command)
+    kinds = classify_all(command, seen)
     if not kinds:
         return False, None, False
     for other in ("merge", "deploy", "destructive"):
@@ -849,7 +885,7 @@ def last_completion_review_index(items):
     return idx
 
 
-def terminal_bash_after(items, index):
+def terminal_bash_after(items, index, seen=None):
     """-> list of {"timestamp", "command", "kind"} for every Bash item AFTER `items[index]` that
     classifies as terminal — using classify() only (no cwd/branch check: at Stop time we are
     looking back at commands that already ran, not deciding whether to allow one; a push that
@@ -860,7 +896,7 @@ def terminal_bash_after(items, index):
     for it in items[index + 1:]:
         if it["kind"] != "bash":
             continue
-        kind = classify(it["command"])
+        kind = classify(it["command"], seen)
         if kind is not None:
             out.append({"timestamp": it.get("timestamp"), "command": it["command"], "kind": kind})
     return out

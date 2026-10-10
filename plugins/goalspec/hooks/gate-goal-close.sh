@@ -563,7 +563,7 @@ if ta is not None and not lam_crs:
     items = ta.read_transcript_items(tpath)
     idx = ta.last_completion_review_index(items)
     if idx is not None:
-        terminal_calls = ta.terminal_bash_after(items, idx)
+        terminal_calls = ta.terminal_bash_after(items, idx, ta.seen_temp_names(tpath))
         if terminal_calls:
             # Read the repo each command acted on (`git -C <dir> push`), not only the hook cwd
             # (0.46.1, p-adbf311b73). One unreadable repo makes the whole set not exempt.
