@@ -921,7 +921,9 @@ os.symlink(OUTSIDE, OUTLINK)
 WIDE = os.path.join(TMP, "wide")                    # writable but 0755: not a temp-shaped root
 os.makedirs(WIDE, exist_ok=True)
 os.chmod(WIDE, 0o755)
-NARROW = os.path.join(REPO, "test", ".narrow-tmpdir-%d" % os.getpid())  # own 0700, outside temp
+# Own 0700, inside the suite's TMP (never the repo: with TMPDIR pointed here, system tools such as
+# xcrun write into it -- codex round 3). Not a root: neither sticky nor macOS's per-user T.
+NARROW = os.path.join(TMP, "narrow")
 os.makedirs(NARROW, exist_ok=True)
 os.chmod(NARROW, 0o700)
 
@@ -1044,7 +1046,7 @@ def main():
 
     for link in (LINK, INLINK, OUTLINK):  # the fixtures outside TMP, all empty dirs or links
         os.unlink(link)
-    for d in (MKT, PERSIST, OUTDIR, NARROW):
+    for d in (MKT, PERSIST, OUTDIR):
         os.rmdir(d)
     for name, decision, detail in rows:
         print("%-52s %-20s %s" % (name, decision, detail))

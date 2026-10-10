@@ -111,8 +111,9 @@ DEPLOY_RE = re.compile(
 DESTRUCTIVE_RE = re.compile(
     # rm -rf, -rfv, -xrf: one lowercase flag cluster with r before f, then an arg. NOT -fr, -Rf,
     # `-r -f` or --recursive --force (until 0.55.0 this comment claimed -fr and -Rf; it never
-    # matched them). Measured 2026-10-10 in the 156,054 Bash commands of one machine's
-# ~/.claude/projects transcripts (not reproducible from this repo): 0 used -fr/-Rf/--recursive.
+    # matched them). A snapshot of one machine's ~/.claude/projects transcripts on 2026-10-10
+# (~156k Bash commands, a corpus that keeps growing; not reproducible from this repo): 0 used
+# -fr/-Rf/--recursive.
     r"\brm\s+-\w*r\w*f\w*\s"
     r"|\bwrangler\s+d1\s+migrations\s+apply\b"
     r"|\bprisma\s+migrate\s+deploy\b"

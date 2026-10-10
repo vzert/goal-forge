@@ -34,7 +34,7 @@ version bump are never delivered to already-installed users.
 - `hooks/precheck-terminal-push.sh`: la negacion de un comando destructivo nombra esa forma; la de
   un push no.
 - `DESTRUCTIVE_RE`: el comentario ya no dice que detecta `-fr` y `-Rf` (nunca lo hizo; 0 usos en
-  los 156.054 comandos Bash de los transcripts de un equipo, el 2026-10-10). Sin cambio en lo que detecta.
+  una foto de los transcripts de un equipo el 2026-10-10, unos 156 mil comandos Bash). Sin cambio en lo que detecta.
 - SKILL.md y `references/mid-session-retrigger.md` describen la excepcion.
 - Casos nuevos: 116-137, 124b, 132b y 135b en `test/terminal-precheck-branches.py`, `stale-10`..`12` en
   `test/gate-branches.py`. 116, 117 y `stale-10` fallaban contra el modulo anterior; cada chequeo de
