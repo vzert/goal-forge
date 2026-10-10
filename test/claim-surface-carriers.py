@@ -587,12 +587,14 @@ def main():
               and "or when the payload does not say the round gates it" in t)
         check("nwd:%s-account-is-a-pointer" % name,
               "is a pointer, not the work" in t and "even when the payload names it" in t
-              and "blocking only when the artifact itself is wrong" in t
-              and "a criterion there is attacked as written" in t)
+              and "blocking when the artifact itself is wrong" in t
+              and "a criterion there is attacked as written" in t
+              and "a false action claim counts wherever it lives" in t
+              and '"merged" for a pr that is still open' not in t)
         check("nwd:%s-figures" % name,
               "6 counted a red only their own sandbox produced" in t
               and "9 of those 17 rounds counted the gated push or its ci as incomplete" in t
-              and "6 of those 17 rounds counted a line of the account whose artifact was right" in t)
+              and "5 of those 17 rounds counted a line of the account whose artifact was right" in t)
     check("nwd:emitted-skeptical-default-exempts-sandbox",
           "a suite your own sandbox could not run" in fe_)
     check("nwd:skill-payload-names-surface-and-gated-action",
@@ -605,7 +607,7 @@ def main():
     check("nwd:durable-account-section", "Any other section is the executor's account of the run (0.54.0)"
           in fl(durable))
     check("nwd:setup", "Two more things the partner no longer counts (0.54.0)" in fl(setup)
-          and "the three rules together cover 14 of the 17" in fl(setup))
+          and "the three rules together cover 13 of the 17" in fl(setup))
 
     # --- CLOSE SHAPE (0.53.0): the plain-language close is two tables between bold lines ---
     # Text only: no hook reads the close, so these pin the written rule across its carriers and

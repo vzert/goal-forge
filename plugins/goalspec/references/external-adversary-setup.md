@@ -158,13 +158,14 @@ send) not having happened yet, and whatever only exists after it (CI on the push
 PR). The payload must say which action the round gates; if it does not, the partner counts it as
 before. (2) A line of the executor's account of the run (a checkpoint `Outcome`, delta notes, the
 sentences of the payload) that disagrees with an artifact that is right: a stale commit label, a
-figure the deliverable states correctly. It is still a break when the artifact is wrong, or when the
-line was shown to a human to obtain a decision. Measured 2026-10-09 on the Mac and on a shared
+figure the deliverable states correctly. It is still a break when the artifact is wrong, when the
+line was shown to a human to obtain a decision, or when it claims an action happened that did not
+(a "merged" for a PR that is still open). Measured 2026-10-09 on the Mac and on a shared
 server: of 48 codex breaks over a tree the subagent had held, 17 found no defect in the work. The
-gated push or its CI was counted in 9 of them, a line of the account in 6 and a sandbox red in 6,
-and the three rules together cover 14 of the 17. The other 3 broke on a criterion of the goal-spec
-itself that the delta had made stale. The spec is attacked as written, and these rules do not cover
-that case.
+gated push or its CI was counted in 9 of them, a line of the account in 5 and a sandbox red in 6,
+and the three rules together cover 13 of the 17. Of the other 4, 3 broke on a criterion of the
+goal-spec itself that the delta had made stale (the spec is attacked as written), and 1 on an
+account line saying a PR was merged while it was still open, which still counts.
 
 Check your own partner's reach without a model call:
 `codex sandbox -P :workspace -C <repo> -- bash -c 'mkdir -p ~/.claude/projects/probe && echo ok'`.

@@ -18,14 +18,16 @@ en las rondas de goalspec 0.49.1 en adelante: de 48 breaks de codex sobre un ár
 subagente, 17 no traían ningún defecto del trabajo (los dos clasificadores coinciden en esas 17).
 Lo que sí traían:
 - 9 contaban como incompleto el push, el merge o el CI que la propia ronda autoriza;
-- 6 contaban una línea del relato que escribe el ejecutor (el `Outcome` del checkpoint, el payload)
+- 5 contaban una línea del relato que escribe el ejecutor (el `Outcome` del checkpoint, el payload)
   cuyo artefacto estaba bien: un commit viejo, una cifra que el entregable dice bien;
 - 6 contaban un rojo que solo existía en el sandbox de codex (mkdtemp bajo `.git`, un módulo que
   falta). El prompt ya pedía marcarlo `UNVERIFIABLE-BY-THIS-BACKEND`, pero su regla escéptica ("si
   no puedes verificarlo, cuéntalo") lo convertía en BLOCKING.
 
-En otras 23 de esas 48 rondas codex sí encontró un defecto real que el subagente no vio, en los 4
-usuarios del servidor que tienen rondas así. Por eso no se quita codex: se cambia qué cuenta.
+En otras 23 de esas 48 rondas, los dos clasificadores coinciden en que codex encontró un defecto del
+trabajo (o una falla de autonomía real) donde el subagente había dado `hold`. Las hay en los 4
+usuarios del servidor con rondas así. Es una etiqueta de clasificador, no un defecto verificado uno
+por uno. Por eso no se quita codex: se cambia qué cuenta.
 
 - **H3, el sandbox.** Un rojo que solo produjo el sandbox del adversario es una nota MINOR, nunca
   BLOCKING, y la regla escéptica ya no lo convierte en uno. El ejecutor sigue obligado a cruzarlo con
@@ -36,12 +38,14 @@ usuarios del servidor que tienen rondas así. Por eso no se quita codex: se camb
 - **H1, el relato del ejecutor.** Una sección del checkpoint que narra la corrida (`Outcome`, lista
   de lo hecho, notas del delta, `Rounds`, `Next`) y las frases del payload son un puntero, no el
   trabajo, aunque el payload las nombre. Si una línea contradice un artefacto que está bien, es una
-  nota MINOR. Rompe solo si el artefacto está mal, o si esa línea se le mostró a un humano para que
-  decidiera. El goal-spec vivo y la tabla de cobertura no son relato: un criterio ahí se ataca tal
+  nota MINOR. Rompe si el artefacto está mal, si esa línea se le mostró a un humano para que
+  decidiera, o si afirma que una acción ocurrió y no ocurrió (push, merge, deploy, "aplicado"): una
+  acción falsa cuenta donde esté. El goal-spec vivo y la tabla de cobertura no son relato: un criterio ahí se ataca tal
   como está escrito.
 
-Los tres juntos cubren 14 de las 17 rondas. Las otras 3 rompieron sobre un criterio del propio
-goal-spec que el delta dejó viejo, y eso sigue contando a propósito.
+Los tres juntos cubren 13 de las 17 rondas. De las otras 4, 3 rompieron sobre un criterio del propio
+goal-spec que el delta dejó viejo, y 1 sobre un `Outcome` que decía "PR unido" con el PR abierto.
+Las dos cosas siguen contando a propósito.
 
 **Prueba de comportamiento (n=1 por brazo).** Un repo de prueba con el trabajo correcto, un push
 pendiente que la ronda autoriza, una suite que crea su carpeta temporal bajo `.git` y dos líneas

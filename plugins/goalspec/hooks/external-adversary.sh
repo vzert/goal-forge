@@ -322,11 +322,12 @@ checkpoint section that narrates the run (Outcome, a list of what was done, Delt
 Next: any section other than the live goal-spec and the coverage-floor table) and the sentences of
 the payload itself are the account of the executor. Check each line against the artifact it describes. Where they
 disagree and the ARTIFACT is right (a stale commit or HEAD label, a figure the deliverable states
-correctly, "merged" for a PR that is still open, "no decision is pending" made false by a later
-question), that is a MINOR note about the record: report it, do not count it. It is BLOCKING only
-when the artifact itself is wrong, or when the line is text a human was shown to obtain a decision
-(rule 2 above). The live goal-spec and the coverage-floor table are not an account: a criterion
-there is attacked as written. Measured 2026-10-09: 6 of those 17 rounds counted a line of the
+correctly, "no decision is pending" made false by a later question), that is a MINOR note about
+the record: report it, do not count it. It is BLOCKING when the artifact itself is wrong, when the
+line is text a human was shown to obtain a decision (rule 2 above), or when the line claims an
+action or mutation happened that did not (pushed, merged, deployed, applied, executed): a false
+action claim counts wherever it lives, and the gated-action rule below says the same. The live goal-spec and the coverage-floor table are not an account: a criterion
+there is attacked as written. Measured 2026-10-09: 5 of those 17 rounds counted a line of the
 account whose artifact was right.
 
 If the outcome pointer resolves to a .goalspec/checkpoint*.md (the checkpoint is per-session:
