@@ -198,6 +198,14 @@ if relayed:
     next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed, path=ta.checkpoint_name_for(sid))
     seen_note = ""
 
+# 0.55.0 (p-ff03d9a39d): the one delete this hook lets through, named where the agent is denied,
+# because it only passes when run in exactly that form (terminal_actions.is_temp_cleanup).
+temp_note = ""
+if kind == "destructive":
+    temp_note = (" If this only deletes a temp directory this session made with mktemp, run it as "
+                 "its own command, exactly `rm -rf <absolute path>` with the path written out (no "
+                 "$VAR, no glob, nothing chained): a path inside a name.XXXXXX directory under the "
+                 "system temp root, symlinks resolved, is not terminal and passes.")
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
              "If those words are only data (a string, a payload), write the text to a file with the "
              "Write tool and pass the file -- this hook reads the command text, never the contents of a "
@@ -209,7 +217,7 @@ reason = (
     command.strip()[:200] + "`) in a goalspec-tracked session, and no operative "
     "[ADVERSARY-VERDICT: hold ...] is on record for it yet" + verdict_note + ". Per SKILL.md, a "
     "terminal/irreversible action must be reviewed by the goal-adversary BEFORE it runs, not after "
-    "the whole task closes. " + next_step + seen_note + text_note + " The waiver is not the default way past this: use "
+    "the whole task closes. " + next_step + seen_note + temp_note + text_note + " The waiver is not the default way past this: use "
     "[GOAL-CLOSE-WAIVED reason=<>=20 chars>] only when the user explicitly authorized skipping the "
     "adversary for this command, and it covers this one command in this turn, not the rest of the "
     "session."

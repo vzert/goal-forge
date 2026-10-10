@@ -28,7 +28,9 @@ in each docstring which direction is safe) — this module only ever reports wha
 import json
 import os
 import re
+import shlex
 import subprocess
+import tempfile
 
 # --- content exemption ---------------------------------------------------------------------------
 # Paths considered low-blast-radius regardless of which terminal command touches them — a
@@ -106,19 +108,67 @@ DEPLOY_RE = re.compile(
     r"|\bkubectl\s+(apply|delete)\b"
 )
 DESTRUCTIVE_RE = re.compile(
-    r"\brm\s+-\w*r\w*f\w*\s"  # rm -rf / -fr / -Rf etc, requires a following arg
+    # rm -rf, -rfv, -xrf: one lowercase flag cluster with r before f, then an arg. NOT -fr, -Rf,
+    # `-r -f` or --recursive --force (until 0.55.0 this comment claimed -fr and -Rf; it never
+    # matched them). Measured 2026-10-10 over 156,054 real Bash commands: 0 used -fr/-Rf/--recursive.
+    r"\brm\s+-\w*r\w*f\w*\s"
     r"|\bwrangler\s+d1\s+migrations\s+apply\b"
     r"|\bprisma\s+migrate\s+deploy\b"
     r"|\bknex\s+migrate:latest\b"
     r"|\balembic\s+upgrade\b"
 )
 
+# 0.55.0 (p-ff03d9a39d, p-a23bf3418e): one canonical form of deleting your own mktemp directory is
+# not terminal. Measured 2026-10-10 over the 159 real `destructive` denials on one machine: 76-77
+# were a local delete of a temp dir the session itself made (two blind labelers, kappa 0.97), the
+# one SKILL.md does not call terminal ("undoing it would be hard or harmful"); and the denial
+# pushed agents to move the delete into a script, the evasion the deny text warns about. A form,
+# not a smarter matcher: the WHOLE command must be `rm -rf <abs path> [...]` with no shell syntax
+# at all, and each path, symlinks resolved, must sit inside a first-level `name.XXXXXX` dir
+# (mktemp's shape) under the real temp root. Measured on this macOS: `rm -rf <symlink>/` deletes
+# the link's TARGET, so the textual path is never trusted. Chained, `$VAR`, globbed or relative
+# forms stay terminal, which is why /checkpoint-3t must print the literal path and run it alone.
+_TEMP_CLEANUP_SHELL = re.compile(r"[;&|<>()$`\\*?\[\]{}~\n]")
+_MKTEMP_NAME = re.compile(r"[A-Za-z0-9_-]+\.[A-Za-z0-9_]{6,}")
+
+
+def _temp_roots():
+    roots = set()
+    for r in (tempfile.gettempdir(), os.environ.get("TMPDIR") or "", "/tmp"):
+        if r:
+            real = os.path.realpath(r)
+            if real != os.sep:
+                roots.add(real)
+    return roots
+
+
+def is_temp_cleanup(command):
+    """True only for the canonical own-temp-dir delete described above."""
+    if not command or _TEMP_CLEANUP_SHELL.search(command.strip()):
+        return False
+    try:
+        toks = shlex.split(command)
+    except ValueError:
+        return False
+    if len(toks) < 3 or toks[0] != "rm" or toks[1] not in ("-rf", "-fr"):
+        return False
+    roots = _temp_roots()
+    for p in toks[2:]:
+        if not p.startswith("/"):  # the hook's cwd need not be the shell's
+            return False
+        real = os.path.realpath(p)
+        if not any(real.startswith(root + os.sep)
+                   and _MKTEMP_NAME.fullmatch(real[len(root) + 1:].split(os.sep)[0])
+                   for root in roots):
+            return False
+    return True
+
 
 def classify_all(command):
     """Every kind present in `command`, in classify()'s priority order (0.45.0: `git push origin
     feat && gh pr merge` classified as push only, the push was out of scope as a feature push, and
     the merge in the same command ran unchecked)."""
-    if not command:
+    if not command or is_temp_cleanup(command):
         return []
     kinds = []
     if PUSH_RE.search(command):
@@ -136,7 +186,7 @@ def classify(command):
     """One of 'push' | 'merge' | 'deploy' | 'destructive' | None. Bounded, best-effort list — see
     references/ for the list this was ratified against; it is NOT exhaustive by design (a Bash
     command matcher cannot reason about non-Bash terminal actions, e.g. an MCP-tool delete)."""
-    if not command:
+    if not command or is_temp_cleanup(command):
         return None
     if PUSH_RE.search(command):
         return "push"

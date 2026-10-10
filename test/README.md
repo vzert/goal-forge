@@ -148,7 +148,7 @@ diff the two outputs (drop lines carrying temp paths first). Restore it before a
 reads the tree. 0.48.1 measured its `git merge-base` fix this way: identical in both modes here,
 and only the two new cases changed in the precheck suite.
 
-**Staleness backstop cases (`stale-01`..`09`; 01-04 from 0.32.0)** live in this same file but run separately
+**Staleness backstop cases (`stale-01`..`11`; 01-04 from 0.32.0; 10-11 from 0.55.0)** live in this same file but run separately
 from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
 `commits_since()`), unlike every other case here, which is pure-transcript with no filesystem
 involved. Each builds its own synthetic repo with a commit stamped at a fixed `GIT_COMMITTER_DATE`
@@ -259,7 +259,7 @@ after any active one (`silence-resets-after-active-turn-SPEAKS`) both speak; the
 consecutive parked turns (`silence-second-parked-SILENT`, `silence-third-parked-SILENT`) do not. The
 first case is the regression control for a real bug found while building this: an earlier draft
 counted the goal-spec-announcement turn itself as "the prior parked turn", which silenced the very
-first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`09` above)
+first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`11` above)
 is deliberately EXEMPT from this silence (`skip_general_silence=True` at its own call site) — a
 terminal action having run after the operative close does not become less true because a later turn
 also failed to re-declare, and `stale-01` already pins that it must always fire.
@@ -791,7 +791,14 @@ cases 07-10); branch scoping (a feature-branch push is out of scope unless `--fo
 11-12); merge classification (`gh pr merge` against a synthetic repo with no real GitHub remote —
 `gh pr diff` fails deterministically, so the diff is undeterminable and NOT exempt by design,
 regardless of content, case 13); deploy/destructive commands (never content-exempt, branch-
-agnostic, cases 14-16); the two universal escape hatches (not our tool, not a terminal command,
+agnostic, cases 14-16), except — new in 0.55.0 — the one canonical delete of an own mktemp
+directory: a command that is exactly `rm -rf <absolute path>...`, no shell syntax, every path's
+real location inside a first-level `name.XXXXXX` directory under the temp root (cases 116-117
+allow; 118-128 each deny one way out of that form: a symlink with a trailing slash, `$VAR`, a
+chained command, `..`, the temp root itself, a non-mktemp child such as `claude-501`, a relative
+path also with the hook running inside the mktemp dir (124b), a mktemp name outside temp, a
+second path outside, a redirect, a glob; 129-130: only the destructive deny names the form). Each
+check in `is_temp_cleanup` was removed in turn and its own case went red; the two universal escape hatches (not our tool, not a terminal command,
 malformed JSON — all allow, cases 17-19); a goal-spec written to disk instead of posted as
 chat text (cases 20-22, see below); and the deny text itself (cases 42, 43 and the deny-text case numbered 44: an interview-only
 session is told to write the spec, the waiver is scoped to one command, and — new in 0.46.2 — a

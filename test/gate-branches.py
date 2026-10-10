@@ -517,6 +517,21 @@ STALE_CASES = [
      [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
       {"timestamp": T2, "bash": 'git -C "$OTHER" push origin main', "text": "pushed."}],
      "still working, no fresh review this turn"),
+    # 0.55.0 (p-ff03d9a39d): the canonical own-temp-dir delete is not terminal for this backstop
+    # either — it shares classify() with the precheck. The path does not exist, as at Stop time
+    # after the delete ran. 11 is its control: a delete in the repo after the review stays STALE.
+    ("stale-10-own-mktemp-delete-after-review-NOT-STALE",
+     lambda: stale_repo("s10", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "rm -rf " + os.path.join(tempfile.gettempdir(),
+                                                         "3t-recover.zz9gone"),
+       "text": "cleaned up."}],
+     "still working, no fresh review this turn"),
+    ("stale-11-repo-delete-after-review-STALE",
+     lambda: stale_repo("s11", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "rm -rf build/", "text": "cleaned up."}],
+     "still working, no fresh review this turn"),
 ]
 
 

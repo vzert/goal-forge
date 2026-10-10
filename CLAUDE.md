@@ -41,7 +41,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
 3. Run **the sixteen branch suites plus the carrier suite** (seventeen commands; one of them is not a
    branch suite — it checks written rules across their carriers): `python3 test/gate-branches.py` (Stop gate — includes the
-   terminal-action staleness backstop cases, `stale-01`..`09`, which need live git repos and
+   terminal-action staleness backstop cases, `stale-01`..`11`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
    `python3 test/verdict-nudge-branches.py` (PostToolUse verdict nudge),
    `python3 test/usage-budget-branches.py` (opt-in usage-budget Stop hook — hermetic, no credential

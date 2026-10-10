@@ -43,7 +43,8 @@ that version tractable where the general one is not: it does not try to classify
 executor prose or infer intent — it pattern-matches a *bounded, literal* set of Bash command
 shapes (`git push` to a protected branch — also with git's own global options between `git` and
 the subcommand, `git -C <dir> push`, since 0.45.0 — `gh pr merge`, a handful of named deploy/publish CLIs,
-a couple of destructive shell idioms) and, for push/merge, diffs the *actual file paths* the
+a couple of destructive shell idioms, minus one canonical delete of the session's own mktemp
+directory since 0.55.0 — `terminal_actions.is_temp_cleanup`) and, for push/merge, diffs the *actual file paths* the
 action would touch against a small path allowlist. That is closer in kind to the coverage-floor
 enumeration this method already trusts mechanically (glob for files, diff for paths) than to the
 three failed matchers above, which all tried to fingerprint free-form, executor-authored text.

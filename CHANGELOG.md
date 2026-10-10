@@ -8,6 +8,32 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.55.0] - 2026-10-10
+
+### El precheck deja pasar una forma exacta de borrar tu propia carpeta mktemp
+
+- `hooks/lib/terminal_actions.py`: `is_temp_cleanup()` — un comando que es exactamente
+  `rm -rf <ruta absoluta>...`, sin sintaxis de shell (`;`, `&`, `|`, redireccion, `$`, glob, `~`,
+  `..` se resuelve), con cada ruta, enlaces resueltos, dentro de una carpeta de primer nivel con
+  forma `nombre.XXXXXX` bajo la raiz temporal real, ya no es terminal. Lo usan `classify()` y
+  `classify_all()`, asi que el precheck y el control de staleness del Stop lo ven igual.
+  Por que: medido el 2026-10-10 sobre las 159 negaciones `destructive` reales de este equipo, 76-77
+  eran el borrado local de una carpeta temporal que la propia sesion creo (dos etiquetadores ciegos,
+  kappa 0.97) — un borrado que SKILL.md no llama terminal — y la negacion empujaba a mover el borrado
+  a un script (p-ff03d9a39d, p-a23bf3418e). Medido en macOS: `rm -rf <symlink>/` borra el DESTINO del
+  enlace, por eso se compara la ruta real y no el texto. Tal como se escribieron, ninguna de las 159
+  habria pasado (y ninguna remota o del repo pasa); el paso 0b de `/checkpoint-3t` tendria que
+  imprimir la ruta literal y correr el borrado solo.
+- `hooks/precheck-terminal-push.sh`: la negacion de un comando destructivo nombra esa forma; la de
+  un push no.
+- `DESTRUCTIVE_RE`: el comentario ya no dice que detecta `-fr` y `-Rf` (nunca lo hizo; 0 usos en
+  156.054 comandos reales). Sin cambio en lo que detecta.
+- SKILL.md y `references/mid-session-retrigger.md` describen la excepcion.
+- Casos nuevos: 116-130 y 124b en `test/terminal-precheck-branches.py`, `stale-10`/`stale-11` en
+  `test/gate-branches.py`. 116, 117 y `stale-10` fallan contra el modulo anterior; cada chequeo de
+  `is_temp_cleanup` se quito por turno y su caso se puso rojo. El resto de ambas suites, en los dos
+  modos del gate, no cambio.
+
 ## [0.54.1] - 2026-10-10
 
 ### El aviso de descomposicion ya no niega los spawns del adversario

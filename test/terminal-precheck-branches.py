@@ -102,7 +102,7 @@ def transcript(events, name):
     return p
 
 
-def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=None):
+def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=None, proc_cwd=None):
     payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": cwd}
     if session_id:
         payload["session_id"] = session_id
@@ -111,7 +111,7 @@ def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=No
     if transcript_path:
         payload["transcript_path"] = transcript_path
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
-                         capture_output=True, text=True,
+                         capture_output=True, text=True, cwd=proc_cwd,
                          env={**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT})
     raw = out.stdout.strip()
     if not raw:
@@ -891,6 +891,59 @@ case("115-newer-handback-hold-after-text-break-ALLOW", _fq(
                      {"write": (CKPT, HOLD_LINE), "write_id": "w115"}], True))
 
 
+# --- 0.55.0 (p-ff03d9a39d): the canonical own-mktemp-dir delete is not terminal -------------------
+# Measured 2026-10-10: 76-77 of 159 real `destructive` denials were a local delete of a temp dir the
+# session made. Only `rm -rf <abs path>...` with no shell syntax passes, each path's REAL location
+# inside a first-level `name.XXXXXX` dir under the temp root. Every case runs with a spec and no
+# verdict, so a terminal classification denies. The hook decides only; nothing here is deleted.
+TROOT = tempfile.gettempdir()
+MKT = tempfile.mkdtemp(prefix="3t-recover.")        # a real mktemp-shaped dir under the temp root
+OUTSIDE = os.path.join(REPO, "test")                # a real dir outside every temp root
+LINK = os.path.join(TROOT, "lnk.%s" % os.path.basename(MKT).split(".")[1])
+if os.path.lexists(LINK):
+    os.unlink(LINK)
+os.symlink(OUTSIDE, LINK)                           # mktemp-shaped name, target outside temp
+
+
+def _tc(name, command):
+    return run_hook(make_repo(name, None, None), command, transcript([{"text": SPEC_TEXT}], name))
+
+
+case("116-own-mktemp-dir-literal-ALLOW", lambda: _tc("116", "rm -rf " + MKT))
+case("117-own-mktemp-subdir-quoted-ALLOW", lambda: _tc("117", 'rm -rf "%s/sub"' % MKT))
+case("118-symlink-trailing-slash-to-outside-DENY", lambda: _tc("118", "rm -rf %s/" % LINK))
+case("119-shell-variable-DENY", lambda: _tc("119", 'rm -rf "$T"'))
+case("120-chained-command-DENY", lambda: _tc("120", "rm -rf %s; echo ok" % MKT))
+case("121-dotdot-escape-DENY", lambda: _tc("121", "rm -rf %s/../.." % MKT))
+case("122-temp-root-itself-DENY", lambda: _tc("122", "rm -rf " + TROOT))
+case("123-non-mktemp-child-of-temp-DENY", lambda: _tc(
+    "123", "rm -rf " + os.path.join(TROOT, "claude-501")))
+case("124-relative-path-DENY", lambda: _tc("124", "rm -rf 3t-recover.abcdef"))
+case("124b-relative-path-hook-cwd-inside-mktemp-DENY", lambda: run_hook(
+    make_repo("124b", None, None), "rm -rf sub", transcript([{"text": SPEC_TEXT}], "124b"),
+    proc_cwd=MKT))
+case("125-mktemp-name-outside-temp-DENY", lambda: _tc(
+    "125", "rm -rf " + os.path.join(REPO, "3t-recover.abcdef")))
+case("126-second-path-outside-DENY", lambda: _tc("126", "rm -rf %s %s" % (MKT, OUTSIDE)))
+case("127-stderr-redirect-stays-terminal-DENY", lambda: _tc("127", "rm -rf %s 2>/dev/null" % MKT))
+case("128-glob-DENY", lambda: _tc("128", "rm -rf %s/*" % MKT))
+# The form only helps if the denied agent learns it: the destructive deny names it, a push deny not.
+TEMP_NEEDLE = "exactly `rm -rf <absolute path>`"
+case("129-destructive-deny-names-the-temp-form-DENY", lambda: _deny_reason_has(
+    "129", TEMP_NEEDLE, lambda: _tc("129", 'rm -rf "$T"')))
+
+
+def _push_deny_lacks_temp_form():
+    decision, detail = run_hook(make_repo("130", None, {"src/app.js": "code"}), "git push origin main",
+                                transcript([{"text": SPEC_TEXT}], "130"))
+    if decision != "deny":
+        return decision, detail
+    return ("deny", "") if TEMP_NEEDLE not in LAST_REASON[0] else ("wrong-text", "temp form on a push")
+
+
+case("130-push-deny-does-not-name-the-temp-form-DENY", _push_deny_lacks_temp_form)
+
+
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
                          capture_output=True, text=True,
@@ -935,6 +988,8 @@ def main():
         if not got_ok:
             failures.append("%s: want %s, got %s (%s)" % (name, want, decision, detail))
 
+    os.unlink(LINK)  # the one fixture outside TMP; MKT is an empty dir, removed the same way
+    os.rmdir(MKT)
     for name, decision, detail in rows:
         print("%-52s %-20s %s" % (name, decision, detail))
 
