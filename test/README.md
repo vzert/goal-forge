@@ -369,7 +369,7 @@ warned about, while 16/19's clean `hold` is degraded to `UNVERIFIED`. **19** cov
 which `--exclude-standard` hides, so the fingerprint hashes it explicitly. **18** is the control
 that keeps this from being a mere dirty-tree detector: same pre-dirtied repo, partner writes
 nothing, clean pass. These four run in a throwaway git repo (`cwd` sentinel `MUTREPO`) for the
-obvious reason — the stubs write files, and every other case in this file runs with `cwd=REPO`.
+obvious reason — the stubs write files, and most other cases in this file run with `cwd=REPO`.
 
 Cases **20/21** pin the other half of "never weaken the gate", and 20 exists because an external
 partner found the hole in it. Until 0.44.0 the `RC -ne 0` test came **first**, so a partner that
