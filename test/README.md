@@ -58,10 +58,21 @@ needs history.
 ```sh
 python3 test/gate-branches.py                                  # run against the repo's gate
 python3 test/claim-surface-carriers.py         # claim-surface, role-fixity and visible-text rules present + consistent across their carriers
+python3 test/claim-surface-carriers.py --selftest  # every check goes red when its phrase lives only in a comment (~50 s)
 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh  # regression parity vs a pre-edit copy
 GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh
 python3 test/gate-branches.py --compare /tmp/gate-BASELINE.sh --expected 16-hold,26-floor
 ```
+
+`claim-surface-carriers.py` reads a markdown carrier with its HTML comments (and its frontmatter `#`
+lines) removed for the checks that require a phrase, and raw for the checks that require a superseded
+phrase to be gone, because the agent loads the file raw. A hook carrier is checked on what the hook
+emits when driven, never on its source. `--selftest` proves it per carrier file, in a throwaway copy:
+truncating the file finds the checks that depend on it, turning every line into a comment must turn
+each of those red, and planting every superseded phrase in a comment must turn each negative check
+red. Three checks read a maintainer comment on purpose and must stay green; five have no comment
+form (a JSON carrier, `bash -n`, a needle no `#` line can hold, a negative on emitted text). Both
+lists live in the file with their reasons, and a check that fits none of these fails the selftest.
 
 **Before editing the gate, copy it somewhere and `--compare` against that copy afterwards** — in both
 modes. Exit code is non-zero if any observed cell changed that `--expected` did not declare, or if a
