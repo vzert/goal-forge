@@ -8,6 +8,41 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.55.1] - 2026-10-10
+
+### El aviso de cierre viejo deja de afirmar un push que no hubo
+Sesión 3-tier-memory d4f9b656 (2026-10-10, goalspec 0.54.1). Tras cerrar con
+`[COMPLETION-REVIEW: adversary …]`, el agente escribió el payload del adversario externo con un
+heredoc que decía `git push of 401d0bb..HEAD to origin main`, y otra vez tras un commit local. El Stop
+gate dijo "Hubo una acción difícil de deshacer después del último cierre declarado" en cada turno
+siguiente, y el agente tuvo que contestarlo tres veces antes de que existiera el push. Reproducido
+sobre ese JSONL con el reflog del repo cortado a cada Stop: 0.55.0 avisa en 7 Stops antes del push
+real; 0.55.1 en ninguno, y sí avisa tras el push real si no hay cierre nuevo.
+
+- `hooks/lib/terminal_actions.py`, `push_landed_since`: lee el reflog de las refs remotas
+  (`logs/refs/remotes/**` del directorio común de git) y dice si una entrada `update by push` cayó en
+  o después del cierre. Responde True, False o None (no se sabe: sin repo, sin hora, sin remoto,
+  `core.logAllRefUpdates` apagado o sin reflog de refs remotas). Nunca lanza: una excepción tumbaría
+  el gate entero hacia el silencio, y así lo hizo el primer borrador en stale-09.
+- `hooks/gate-goal-close.sh`, paso 5b: si TODOS los comandos marcados después del cierre son push, y
+  ninguno apunta a una URL o una ruta (`remote_url_push`), y en cada repo el reflog prueba que ningún
+  push llegó, calla. Cualquier otra combinación sigue con el chequeo de siempre: un merge, un deploy o
+  un borrado en la mezcla, un push a URL, un repo que solo el shell conoce (`-C "$VAR"`) o un reflog
+  ilegible.
+- El mensaje dice lo que mide: "corrió un comando cuyo texto nombra un push, merge, deploy o borrado",
+  que el aviso lee el texto y no lo que hizo, y la salida de escribir ese texto con Write en un
+  archivo. Antes afirmaba como hecho que hubo una acción difícil de deshacer.
+- No cambia: el precheck (PreToolUse) sigue leyendo el texto entero del comando, heredocs incluidos.
+  No se excluyen cuerpos de heredoc: el mismo texto es dato en un comando y código en el siguiente.
+- Lo que no ve: un push a un remoto sin refspec de fetch para esa rama, y un push hecho desde otro
+  clon. Los dos callan sobre un push real; el precheck, que corre antes del push, sigue siendo la
+  primera línea. Un push de otra sesión en el mismo clon sigue haciendo avisar, como antes.
+- `gate-branches`: casos stale-13 a stale-18. 13 y 18 (texto sin push que llegó) fallan con 0.55.0;
+  14 a 17 son guardas que avisan con las dos versiones. `stale_repo()` fecha el push base antes del
+  cierre y empuja el commit posterior salvo `push_after=False`, porque `GIT_COMMITTER_DATE` fija
+  también la hora del reflog; stale-01 a 12 conservan su decisión. `--compare` contra el gate de
+  0.55.0: paridad en modo normal y con `GOAL_GATE_ENFORCE=1`. El resto de las suites sale idéntico.
+
 ## [0.55.0] - 2026-10-10
 
 ### El precheck deja pasar una forma exacta de borrar tu propia carpeta mktemp

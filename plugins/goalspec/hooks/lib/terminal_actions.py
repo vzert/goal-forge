@@ -504,6 +504,99 @@ def commits_since(cwd, since_ts):
     return [p for p in out.splitlines() if p.strip()]
 
 
+def _iso_epoch(ts):
+    """ISO8601 (the transcript's `2026-10-10T21:10:00.047Z`) -> unix seconds, or None."""
+    import datetime
+    if not isinstance(ts, str) or not ts.strip():
+        return None
+    try:
+        dt = datetime.datetime.fromisoformat(ts.strip().replace("Z", "+00:00"))
+    except Exception:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=datetime.timezone.utc)
+    return dt.timestamp()
+
+
+def push_landed_since(cwd, since_ts):
+    """0.55.1 — did a `git push` from this clone land at or after `since_ts`? Read from the reflog of
+    the remote-tracking refs: a push that updates `refs/remotes/<remote>/<branch>` writes an entry
+    whose message is `update by push`, stamped with the push time. -> True (one landed), False (the
+    reflog is readable and none landed), None (cannot tell: not a repo, no timestamp, no remote,
+    `core.logAllRefUpdates` false, or no remote-tracking reflog at all).
+
+    For the Stop-gate staleness backstop only. Field case (2026-10-10, 3-tier-memory session
+    d4f9b656): the backstop fired three times on Bash calls whose TEXT named a push (an adversary
+    payload written with a heredoc), before any push existed; the reflog of that clone had exactly
+    one `update by push` after the close, the real push, 3 s before the transcript shows its call.
+    What it cannot see, so a caller must not read False as "no push" for it: a push to a URL or a
+    path instead of a named remote, and a remote with no fetch refspec for the branch (neither
+    updates a remote-tracking ref); a push made from another clone. remote_url_push() covers the
+    first; the other two stay silent on a real push, and are declared in the CHANGELOG.
+    Never raises: an exception here would fail the whole gate open, which is how the first draft
+    turned stale-09 (repo None, from `-C "$OTHER"`) into silence."""
+    try:
+        return _push_landed_since(cwd, since_ts)
+    except Exception:
+        return None
+
+
+def _push_landed_since(cwd, since_ts):
+    if not isinstance(cwd, str) or not cwd:
+        return None
+    since = _iso_epoch(since_ts)
+    if since is None:
+        return None
+    common = _run(["git", "rev-parse", "--git-common-dir"], cwd)
+    if not common or not common.strip():
+        return None
+    remotes = _run(["git", "remote"], cwd)
+    if not remotes or not remotes.split():
+        return None
+    if (_run(["git", "config", "--get", "core.logAllRefUpdates"], cwd) or "").strip().lower() in (
+            "false", "0", "no", "off"):
+        return None
+    common = common.strip()
+    logdir = os.path.join(common if os.path.isabs(common) else os.path.join(cwd, common),
+                          "logs", "refs", "remotes")
+    if not os.path.isdir(logdir):
+        return None
+    for root, _dirs, files in os.walk(logdir):
+        for f in files:
+            try:
+                with open(os.path.join(root, f), "r", encoding="utf-8", errors="replace") as fh:
+                    for line in fh:
+                        head, _, msg = line.rstrip("\n").partition("\t")
+                        parts = head.split()
+                        if len(parts) < 2 or not msg.startswith("update by push"):
+                            continue
+                        try:
+                            when = int(parts[-2])
+                        except ValueError:
+                            continue
+                        if when >= int(since):
+                            return True
+            except Exception:
+                return None
+    return False
+
+
+_URL_TARGET_RE = re.compile(r"^(?:[A-Za-z][\w+.-]*://|[\w.-]+@[\w.-]+:|/|\./|\.\./|~)")
+
+
+def remote_url_push(command, cwd):
+    """0.55.1 — True when a `git push` in `command` names a URL or a path as its repository
+    (`git push https://host/x.git main`, `git push git@host:x main`, `git push ../other main`). Such
+    a push updates no remote-tracking ref, so push_landed_since() cannot see it: the caller treats
+    it as unknown. A first argument that is neither a URL nor a path (a remote name, or the words of
+    a payload that only mention a push) is left to the reflog."""
+    for _d, args in git_calls(command, "push", cwd):
+        positional = [a for a in args if a and not a.startswith("-")]
+        if positional and _URL_TARGET_RE.match(positional[0]):
+            return True
+    return False
+
+
 def staleness_repos(command, cwd):
     """-> the repos whose recent commits the staleness backstop must read for one terminal command
     that already ran: the repo of every `git [-C dir] push|merge` in it (git_calls, the same parse

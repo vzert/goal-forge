@@ -39,7 +39,7 @@ change, is a declared change that did not happen — a muted alarm of its own, a
 external-adversary case 38 once passed empty. test/expected_check.py holds that check for every
 suite with --expected; it is judged per prefix, so `stale-` passes when any stale case changed.
 """
-import argparse, json, os, re, subprocess, sys, tempfile
+import argparse, json, os, re, shutil, subprocess, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -379,11 +379,14 @@ def _sh(args, cwd, env=None):
     return out.stdout
 
 
-def stale_repo(name, files_after_review, committer_date, work=None):
+def stale_repo(name, files_after_review, committer_date, work=None, push_after=True):
     """A repo with one pushed baseline commit, then ONE MORE commit — containing
     `files_after_review` — stamped at `committer_date` (ISO8601). That second commit is what
     commits_since(review_ts) must find when review_ts is BEFORE committer_date. `work` puts the
-    working tree at an exact path instead (stale-09 needs a directory literally named `$OTHER`)."""
+    working tree at an exact path instead (stale-09 needs a directory literally named `$OTHER`).
+    0.55.1: the baseline push is stamped BEFORE the review (GIT_COMMITTER_DATE sets the reflog
+    time too), and `push_after` pushes the second commit at `committer_date`, so the remote-tracking
+    reflog tells the truth about whether a push landed after the review (push_landed_since)."""
     work = work or os.path.join(STALE_TMP, name, "work")
     bare = os.path.join(STALE_TMP, name, "bare.git")
     os.makedirs(work)
@@ -396,7 +399,8 @@ def stale_repo(name, files_after_review, committer_date, work=None):
         fh.write("init")
     _sh(["git", "add", "-A"], work)
     _sh(["git", "commit", "-qm", "pushed baseline"], work)
-    _sh(["git", "push", "-q", "-u", "origin", "main"], work)
+    _sh(["git", "push", "-q", "-u", "origin", "main"], work,
+        env=dict(os.environ, GIT_COMMITTER_DATE="2025-12-31T00:00:00Z"))
     for rel, content in files_after_review.items():
         p = os.path.join(work, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -405,6 +409,15 @@ def stale_repo(name, files_after_review, committer_date, work=None):
     _sh(["git", "add", "-A"], work)
     env = dict(os.environ, GIT_COMMITTER_DATE=committer_date, GIT_AUTHOR_DATE=committer_date)
     _sh(["git", "commit", "-qm", "after the review"], work, env=env)
+    if push_after:
+        _sh(["git", "push", "-q", "origin", "main"], work, env=env)
+    return work
+
+
+def _no_remote_reflog(work):
+    """stale-17: a clone whose remote-tracking reflog is gone (core.logAllRefUpdates off, or logs
+    pruned) cannot prove that no push landed."""
+    shutil.rmtree(os.path.join(work, ".git", "logs", "refs", "remotes"))
     return work
 
 
@@ -548,6 +561,49 @@ STALE_CASES = [
      lambda: stale_repo("s11", {"src/app.js": "code"}, T2),
      [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
       {"timestamp": T2, "bash": "rm -rf build/", "text": "cleaned up."}],
+     "still working, no fresh review this turn"),
+    # 0.55.1 — 3-tier-memory session d4f9b656: three reminders for Bash calls whose TEXT named a
+    # push (an adversary payload written with a heredoc, once chained after a local commit) before
+    # any push existed. When every flagged call is a push, the remote-tracking reflog decides: no
+    # `update by push` after the review -> silent (13, 18). A real push still warns (14); a push to
+    # a URL, which updates no tracking ref (15), a push mixed with another terminal kind (16) and an
+    # unreadable reflog (17) keep the old check.
+    ("stale-13-heredoc-names-push-none-landed-NOT-STALE",
+     lambda: stale_repo("s13", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "cat > /tmp/payload.txt <<EOF\n- Gated action: git push of "
+                                "401d0bb..HEAD to origin main\nEOF", "text": "payload written."}],
+     "still working, no fresh review this turn"),
+    ("stale-14-real-push-after-heredoc-STALE",
+     lambda: stale_repo("s14", {"src/app.js": "code"}, T2),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "cat > /tmp/payload.txt <<EOF\n- Gated action: git push of "
+                                "401d0bb..HEAD to origin main\nEOF"},
+      {"timestamp": T2, "bash": "git push origin main 2>&1 | tail -3", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    ("stale-15-url-push-none-landed-STALE",
+     lambda: stale_repo("s15", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push https://example.com/r.git main", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    ("stale-16-push-text-and-merge-STALE",
+     lambda: stale_repo("s16", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "cat > /tmp/p.txt <<EOF\ngit push origin main\nEOF"},
+      {"timestamp": T2, "bash": "gh pr merge 5 --merge", "text": "merged."}],
+     "still working, no fresh review this turn"),
+    ("stale-17-no-remote-reflog-STALE",
+     lambda: _no_remote_reflog(stale_repo("s17", {"src/app.js": "code"}, T2, push_after=False)),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "cat > /tmp/p.txt <<EOF\ngit push origin main\nEOF",
+       "text": "payload written."}],
+     "still working, no fresh review this turn"),
+    ("stale-18-commit-then-heredoc-push-text-NOT-STALE",
+     lambda: stale_repo("s18", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git commit -qam fix && cat > /tmp/p2.txt <<EOF\n- Gated action: "
+                                "git push of 401d0bb..HEAD to origin main\nEOF",
+       "text": "committed, payload written."}],
      "still working, no fresh review this turn"),
 ]
 
@@ -1116,7 +1172,7 @@ def main():
     d = json.loads(out) if out else {}
     sys_msg = d.get("systemMessage") or ""
     agent_msg = d.get("hookSpecificOutput", {}).get("additionalContext") or (d.get("reason") or "")
-    want = "ese cierre no cubre esta acción"
+    want = "ese cierre no la cubre"
     ok = bool(want in sys_msg and sys_msg == agent_msg and sys_msg)
     print("%-38s sys=%-60s agentlen=%-4d%s"
           % ("audience-stale-terminal-UNIFIED", sys_msg[:60], len(agent_msg), "" if ok else "   <-- FAILS"))
