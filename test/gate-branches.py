@@ -414,6 +414,20 @@ def stale_repo(name, files_after_review, committer_date, work=None, push_after=T
     return work
 
 
+def _with_tag(work, tag="v1"):
+    """stale-20: a local tag exists, so `git push origin v1` may push it (no tracking ref moves)."""
+    _sh(["git", "tag", tag], work)
+    return work
+
+
+def _emptied_remote_reflog(work):
+    """stale-23: a real push landed, then logs/refs/remotes was emptied but kept (external round)."""
+    d = os.path.join(work, ".git", "logs", "refs", "remotes")
+    shutil.rmtree(d)
+    os.makedirs(d)
+    return work
+
+
 def _no_remote_reflog(work):
     """stale-17: a clone whose remote-tracking reflog is gone (core.logAllRefUpdates off, or logs
     pruned) cannot prove that no push landed."""
@@ -604,6 +618,46 @@ STALE_CASES = [
       {"timestamp": T2, "bash": "git commit -qam fix && cat > /tmp/p2.txt <<EOF\n- Gated action: "
                                 "git push of 401d0bb..HEAD to origin main\nEOF",
        "text": "committed, payload written."}],
+     "still working, no fresh review this turn"),
+    # Subagent round on 0.55.1: the reflog only vouches for a push to a branch of a named remote,
+    # made in the repo the gate reads. 19: one command holding a push AND a deploy (classify()
+    # reported only the push). 20: a tag push (no tracking ref moves; the tag is checked with
+    # show-ref). 21: a remote branch deletion. 22: `cd <other> && git push` reads another repo.
+    ("stale-19-push-and-deploy-one-command-STALE",
+     lambda: stale_repo("s19", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin main; wrangler deploy", "text": "deployed."}],
+     "still working, no fresh review this turn"),
+    ("stale-20-tag-push-STALE",
+     lambda: _with_tag(stale_repo("s20", {"src/app.js": "code"}, T2, push_after=False)),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin v1", "text": "tag pushed."}],
+     "still working, no fresh review this turn"),
+    ("stale-21-remote-branch-delete-STALE",
+     lambda: stale_repo("s21", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin --delete feat", "text": "deleted."}],
+     "still working, no fresh review this turn"),
+    ("stale-22-cd-other-repo-push-STALE",
+     lambda: stale_repo("s22", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "cd /home/u/other && git push origin main", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    # 24: the field shape, `cd <this repo> && git commit && cat > payload <<EOF ... push ... EOF`:
+    # a cd that stays in the session repo is resolved, not treated as unknown (an earlier draft
+    # brought back 4 of the 7 false reminders of d4f9b656 that way).
+    ("stale-24-cd-same-repo-heredoc-push-text-NOT-STALE",
+     lambda: stale_repo("s24", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "cd " + os.path.join(STALE_TMP, "s24", "work") + " && git commit "
+                                "-qam fix && cat > /tmp/p.txt <<EOF\n- Gated action: git push of "
+                                "a..HEAD to origin main\nEOF", "text": "committed."}],
+     "still working, no fresh review this turn"),
+    # External round on 0.55.1: a real push, then an emptied (not removed) remote-tracking log dir.
+    ("stale-23-emptied-remote-reflog-after-real-push-STALE",
+     lambda: _emptied_remote_reflog(stale_repo("s23", {"src/app.js": "code"}, T2)),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin main", "text": "pushed."}],
      "still working, no fresh review this turn"),
 ]
 

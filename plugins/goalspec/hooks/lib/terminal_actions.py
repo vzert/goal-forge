@@ -531,7 +531,7 @@ def push_landed_since(cwd, since_ts):
     one `update by push` after the close, the real push, 3 s before the transcript shows its call.
     What it cannot see, so a caller must not read False as "no push" for it: a push to a URL or a
     path instead of a named remote, and a remote with no fetch refspec for the branch (neither
-    updates a remote-tracking ref); a push made from another clone. remote_url_push() covers the
+    updates a remote-tracking ref); a push made from another clone. push_reflog_blind() covers the
     first; the other two stay silent on a real push, and are declared in the CHANGELOG.
     Never raises: an exception here would fail the whole gate open, which is how the first draft
     turned stale-09 (repo None, from `-C "$OTHER"`) into silence."""
@@ -561,6 +561,18 @@ def _push_landed_since(cwd, since_ts):
                           "logs", "refs", "remotes")
     if not os.path.isdir(logdir):
         return None
+    # Every remote-tracking ref must have its log file: an empty or partial logs/refs/remotes
+    # (pruned by hand, or refs that predate logAllRefUpdates) cannot prove that no push landed
+    # (external adversary round on 0.55.1: an emptied directory returned False after a real push).
+    refs = _run(["git", "for-each-ref", "--format=%(refname)", "refs/remotes"], cwd)
+    if refs is None:
+        return None
+    gitlogs = os.path.dirname(os.path.dirname(logdir))
+    for ref in refs.split():
+        if not ref.endswith("/HEAD") and not os.path.isfile(os.path.join(gitlogs, ref)):
+            return None
+    if not refs.split():
+        return None
     for root, _dirs, files in os.walk(logdir):
         for f in files:
             try:
@@ -582,18 +594,79 @@ def _push_landed_since(cwd, since_ts):
 
 
 _URL_TARGET_RE = re.compile(r"^(?:[A-Za-z][\w+.-]*://|[\w.-]+@[\w.-]+:|/|\./|\.\./|~)")
+# Push flags whose effect writes no remote-tracking ref (a tag, a deletion) or names the repository
+# some other way. Any of them and the reflog cannot vouch for the push (subagent round on 0.55.1:
+# `git push origin v1` and `git push origin --delete feat` really ran and the gate stayed silent).
+_REFLOG_BLIND_FLAGS = ("--delete", "-d", "--tags", "--follow-tags", "--prune", "--repo",
+                       "--receive-pack", "--exec")
+# Shell shapes that point git at a repository the gate cannot resolve: GIT_DIR / GIT_WORK_TREE /
+# --git-dir / --work-tree. A `cd` is resolved instead (_cd_moves_repo), because `cd <this repo> &&`
+# is the common form: the field transcript did it, and treating every `cd` as unknown brought back
+# 4 of its 7 false reminders.
+_OTHER_REPO_RE = re.compile(r"\bGIT_DIR=|\bGIT_WORK_TREE=|--git-dir\b|--work-tree\b")
+_CD_RE = re.compile(r"(?:^|[\s;&|(])(?:cd|pushd)(?:\s+([^\s;&|)]+))?")
 
 
-def remote_url_push(command, cwd):
-    """0.55.1 — True when a `git push` in `command` names a URL or a path as its repository
-    (`git push https://host/x.git main`, `git push git@host:x main`, `git push ../other main`). Such
-    a push updates no remote-tracking ref, so push_landed_since() cannot see it: the caller treats
-    it as unknown. A first argument that is neither a URL nor a path (a remote name, or the words of
-    a payload that only mention a push) is left to the reflog."""
-    for _d, args in git_calls(command, "push", cwd):
-        positional = [a for a in args if a and not a.startswith("-")]
-        if positional and _URL_TARGET_RE.match(positional[0]):
+def _toplevel(d):
+    out = _run(["git", "rev-parse", "--show-toplevel"], d)
+    return os.path.realpath(out.strip()) if out and out.strip() else None
+
+
+def _cd_moves_repo(command, cwd):
+    """True when a `cd`/`pushd` in `command` may leave the git repository of `cwd`: its target does
+    not exist, carries `$`, `~user` or a backtick, is relative after another `cd`, has no target, or
+    sits in a different git top level. False when every one stays in cwd's top level."""
+    base = _toplevel(cwd) if isinstance(cwd, str) and cwd else None
+    seen = 0
+    for m in _CD_RE.finditer(command or ""):
+        seen += 1
+        t = (m.group(1) or "").strip("\"'")
+        if not t or "$" in t or "`" in t or (t.startswith("~") and not t.startswith("~/")) or base is None:
             return True
+        t = os.path.expanduser(t)
+        if not os.path.isabs(t):
+            if seen > 1:
+                return True
+            t = os.path.join(cwd, t)
+        if not os.path.isdir(t) or _toplevel(t) != base:
+            return True
+    return False
+
+
+def _local_tag(name, cwd):
+    if not name or not isinstance(cwd, str) or not cwd:
+        return False
+    return _run(["git", "show-ref", "--verify", "--quiet", "refs/tags/" + name], cwd) is not None
+
+
+def push_reflog_blind(command, cwd):
+    """0.55.1 — True when a `git push` in `command` may have done something the remote-tracking
+    reflog cannot show, so push_landed_since() must not be read as "no push landed" for it:
+      * it names a URL or a path as its repository (no tracking ref is updated);
+      * its first positional contains `:` (scp-style `host:path`, which a remote name never has);
+      * it carries a flag that pushes or deletes without writing a tracking ref, or names the
+        repository another way (_REFLOG_BLIND_FLAGS, `=` forms included);
+      * a refspec deletes (`:feat`, `+:feat`) or targets `refs/tags/`, or names a tag that exists in
+        this repo (checked with `git show-ref`, not guessed from the text);
+      * the command may move to another repository first (a `cd` out of cwd's git top level,
+        _cd_moves_repo; GIT_DIR, --git-dir; _OTHER_REPO_RE).
+    Errs toward True: a False here only lets the reflog decide; the reflog still has to show no push."""
+    if _OTHER_REPO_RE.search(command or "") or _cd_moves_repo(command, cwd):
+        return True
+    for d, args in git_calls(command, "push", cwd):
+        if any(a.split("=", 1)[0] in _REFLOG_BLIND_FLAGS for a in args if a.startswith("-")):
+            return True
+        positional = [a for a in args if a and not a.startswith("-")]
+        if not positional:
+            continue
+        if _URL_TARGET_RE.match(positional[0]) or ":" in positional[0]:
+            return True
+        for ref in positional[1:]:
+            spec = ref.lstrip("+")
+            src, _, dst = spec.partition(":")
+            if spec.startswith(":") or "refs/tags/" in spec or _local_tag(src, d) \
+                    or (dst and _local_tag(dst, d)):
+                return True
     return False
 
 

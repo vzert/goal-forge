@@ -577,10 +577,13 @@ if ta is not None and not lam_crs:
             # whether one landed after the close. The calls are flagged by their TEXT, and a payload
             # that only names a push (3-tier-memory session d4f9b656, three false reminders before
             # any push) is not one. Only a readable "none landed" in EVERY repo silences it; a push
-            # to a URL or a path, or a reflog that cannot be read, falls through to the old check.
+            # that the reflog cannot see (push_reflog_blind), or a reflog that cannot be read, falls
+            # through to the old check.
             review_ts = items[idx].get("timestamp")
-            only_pushes = all(c["kind"] == "push" for c in terminal_calls) and not any(
-                ta.remote_url_push(c["command"], cwd) for c in terminal_calls)
+            # classify_all, not the call kind: one command can hold a push AND a deploy, and
+            # classify() reports only the push (subagent round on 0.55.1).
+            only_pushes = all(set(ta.classify_all(c["command"])) == {"push"} for c in terminal_calls) \
+                and not any(ta.push_reflog_blind(c["command"], cwd) for c in terminal_calls)
             no_push_landed = only_pushes and bool(repos) and all(
                 r is not None and ta.push_landed_since(r, review_ts) is False for r in repos)
             paths = []
@@ -696,7 +699,7 @@ case "$DETAIL" in
     # 0.55.1: the message says what is measured (the TEXT of a command), not that an action
     # happened. 3-tier-memory session d4f9b656 got it three times for heredocs that only named a
     # push, and had to answer a factual claim that was false.
-    MSG="Después del último cierre declarado corrió un comando cuyo texto nombra un push, merge, deploy o borrado (${DETAIL}). Este aviso lee el texto del comando, no lo que hizo; para un push solo calla si el reflog prueba que ninguno llegó al remoto. Si fue una acción real, ese cierre no la cubre: repite 4b + 6 para ella y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Si esas palabras solo eran dato (un heredoc, un payload), escribe ese texto con Write en un archivo y pasa el archivo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
+    MSG="Después del último cierre declarado corrió un comando cuyo texto nombra un push, merge, deploy o borrado (${DETAIL}). Este aviso lee el texto del comando, no lo que hizo; solo calla cuando todo lo marcado es un push a una rama de un remoto con nombre y el reflog de ese clon prueba que ninguno llegó. Si fue una acción real, ese cierre no la cubre: repite 4b + 6 para ella y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Si esas palabras solo eran dato (un heredoc, un payload), escribe ese texto con Write en un archivo y pasa el archivo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
     AGENT_MSG="$MSG"
     ;;
   *)
