@@ -148,7 +148,7 @@ diff the two outputs (drop lines carrying temp paths first). Restore it before a
 reads the tree. 0.48.1 measured its `git merge-base` fix this way: identical in both modes here,
 and only the two new cases changed in the precheck suite.
 
-**Staleness backstop cases (`stale-01`..`29`; 01-04 from 0.32.0; 10-12 from 0.55.0; 13-29 from 0.55.1)** live in this same file but run separately
+**Staleness backstop cases (`stale-01`..`12`; 01-04 from 0.32.0; 10-12 from 0.55.0)** live in this same file but run separately
 from `CASES`/`suite()`/`--compare` above — they need LIVE git state (`hooks/lib/terminal_actions.py`'s
 `commits_since()`), unlike every other case here, which is pure-transcript with no filesystem
 involved. Each builds its own synthetic repo with a commit stamped at a fixed `GIT_COMMITTER_DATE`
@@ -171,7 +171,7 @@ parsed `-C` repo and went silent where 0.46.0 flagged. **09** (adversary round 2
 the repo is one only the shell knew, so nothing is exempt (flag), the same direction the precheck
 takes for it. A literal `$OTHER` directory holding only memory, inside a memory-only cwd, is the
 trap; 0.46.0 (which read cwd) and the second draft of 0.46.1 (which read the literal path) were
-both silent there. **13**-**18** (0.55.1, 3-tier-memory session d4f9b656) are commands whose TEXT names a push with no push behind it (a heredoc payload, once after a local commit): when every flagged call is a push, the remote-tracking reflog decides, so 13 and 18 (no `update by push` after the review) are silent and fail against 0.55.0; 14 (a real push after the payload), 15 (a push to a URL, which updates no tracking ref), 16 (push text plus a `gh pr merge`) and 17 (the remote-tracking reflog removed) still flag, and so do 19-22 from the subagent round: one command holding a push and a deploy (`classify()` reports only the push, so the gate uses `classify_all`), a tag push (checked with `git show-ref`), a remote branch deletion, and `cd <other> && git push` (the reflog read is the wrong repo's); 23 (external round) a real push after which the remote-tracking log directory was emptied, which must read as unknown. 24 is the field shape with a `cd` into the session repo itself, which is resolved with `git rev-parse --show-toplevel` and stays silent. 25-29 (delta round) are `--mirror`, a bare repo path without `./`, a bundled `-fd`, a `$T` refspec and a malformed tracking log line; they fail against the denylist cut and pin the allowlist that replaced it. `stale_repo()` stamps the baseline push before the review and pushes the post-review commit unless `push_after=False`, because `GIT_COMMITTER_DATE` also sets the reflog time. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
+both silent there. Requires `CLAUDE_PLUGIN_ROOT` set in the test's own
 subprocess env (the gate imports `hooks/lib/terminal_actions.py` via `LIBDIR`, which resolves from
 it) — omitting it makes every staleness case silently degrade to "not stale", indistinguishable
 from a passing case, which is exactly the trap the first draft of this suite fell into.
@@ -259,7 +259,7 @@ after any active one (`silence-resets-after-active-turn-SPEAKS`) both speak; the
 consecutive parked turns (`silence-second-parked-SILENT`, `silence-third-parked-SILENT`) do not. The
 first case is the regression control for a real bug found while building this: an earlier draft
 counted the goal-spec-announcement turn itself as "the prior parked turn", which silenced the very
-first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`29` above)
+first reminder of every session — exactly backwards. The staleness backstop (`stale-01`..`12` above)
 is deliberately EXEMPT from this silence (`skip_general_silence=True` at its own call site) — a
 terminal action having run after the operative close does not become less true because a later turn
 also failed to re-declare, and `stale-01` already pins that it must always fire.

@@ -39,7 +39,7 @@ change, is a declared change that did not happen — a muted alarm of its own, a
 external-adversary case 38 once passed empty. test/expected_check.py holds that check for every
 suite with --expected; it is judged per prefix, so `stale-` passes when any stale case changed.
 """
-import argparse, json, os, re, shutil, subprocess, sys, tempfile
+import argparse, json, os, re, subprocess, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -379,14 +379,11 @@ def _sh(args, cwd, env=None):
     return out.stdout
 
 
-def stale_repo(name, files_after_review, committer_date, work=None, push_after=True):
+def stale_repo(name, files_after_review, committer_date, work=None):
     """A repo with one pushed baseline commit, then ONE MORE commit — containing
     `files_after_review` — stamped at `committer_date` (ISO8601). That second commit is what
     commits_since(review_ts) must find when review_ts is BEFORE committer_date. `work` puts the
-    working tree at an exact path instead (stale-09 needs a directory literally named `$OTHER`).
-    0.55.1: the baseline push is stamped BEFORE the review (GIT_COMMITTER_DATE sets the reflog
-    time too), and `push_after` pushes the second commit at `committer_date`, so the remote-tracking
-    reflog tells the truth about whether a push landed after the review (push_landed_since)."""
+    working tree at an exact path instead (stale-09 needs a directory literally named `$OTHER`)."""
     work = work or os.path.join(STALE_TMP, name, "work")
     bare = os.path.join(STALE_TMP, name, "bare.git")
     os.makedirs(work)
@@ -399,8 +396,7 @@ def stale_repo(name, files_after_review, committer_date, work=None, push_after=T
         fh.write("init")
     _sh(["git", "add", "-A"], work)
     _sh(["git", "commit", "-qm", "pushed baseline"], work)
-    _sh(["git", "push", "-q", "-u", "origin", "main"], work,
-        env=dict(os.environ, GIT_COMMITTER_DATE="2025-12-31T00:00:00Z"))
+    _sh(["git", "push", "-q", "-u", "origin", "main"], work)
     for rel, content in files_after_review.items():
         p = os.path.join(work, rel)
         os.makedirs(os.path.dirname(p), exist_ok=True)
@@ -409,42 +405,6 @@ def stale_repo(name, files_after_review, committer_date, work=None, push_after=T
     _sh(["git", "add", "-A"], work)
     env = dict(os.environ, GIT_COMMITTER_DATE=committer_date, GIT_AUTHOR_DATE=committer_date)
     _sh(["git", "commit", "-qm", "after the review"], work, env=env)
-    if push_after:
-        _sh(["git", "push", "-q", "origin", "main"], work, env=env)
-    return work
-
-
-def _with_tag(work, tag="v1"):
-    """stale-20: a local tag exists, so `git push origin v1` may push it (no tracking ref moves)."""
-    _sh(["git", "tag", tag], work)
-    return work
-
-
-def _emptied_remote_reflog(work):
-    """stale-23: a real push landed, then logs/refs/remotes was emptied but kept (external round)."""
-    d = os.path.join(work, ".git", "logs", "refs", "remotes")
-    shutil.rmtree(d)
-    os.makedirs(d)
-    return work
-
-
-def _with_bare_dir(work, name="mirror.git"):
-    """stale-26: a bare repo inside the working tree, pushable as `git push mirror.git main`."""
-    _sh(["git", "init", "-q", "--bare", name], work)
-    return work
-
-
-def _malformed_remote_reflog(work):
-    """stale-29: a real push landed, then its tracking log was replaced with a non-reflog line."""
-    with open(os.path.join(work, ".git", "logs", "refs", "remotes", "origin", "main"), "w") as fh:
-        fh.write("not a reflog line\n")
-    return work
-
-
-def _no_remote_reflog(work):
-    """stale-17: a clone whose remote-tracking reflog is gone (core.logAllRefUpdates off, or logs
-    pruned) cannot prove that no push landed."""
-    shutil.rmtree(os.path.join(work, ".git", "logs", "refs", "remotes"))
     return work
 
 
@@ -588,119 +548,6 @@ STALE_CASES = [
      lambda: stale_repo("s11", {"src/app.js": "code"}, T2),
      [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
       {"timestamp": T2, "bash": "rm -rf build/", "text": "cleaned up."}],
-     "still working, no fresh review this turn"),
-    # 0.55.1 — 3-tier-memory session d4f9b656: three reminders for Bash calls whose TEXT named a
-    # push (an adversary payload written with a heredoc, once chained after a local commit) before
-    # any push existed. When every flagged call is a push, the remote-tracking reflog decides: no
-    # `update by push` after the review -> silent (13, 18). A real push still warns (14); a push to
-    # a URL, which updates no tracking ref (15), a push mixed with another terminal kind (16) and an
-    # unreadable reflog (17) keep the old check.
-    ("stale-13-heredoc-names-push-none-landed-NOT-STALE",
-     lambda: stale_repo("s13", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "cat > /tmp/payload.txt <<EOF\n- Gated action: git push of "
-                                "401d0bb..HEAD to origin main\nEOF", "text": "payload written."}],
-     "still working, no fresh review this turn"),
-    ("stale-14-real-push-after-heredoc-STALE",
-     lambda: stale_repo("s14", {"src/app.js": "code"}, T2),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "cat > /tmp/payload.txt <<EOF\n- Gated action: git push of "
-                                "401d0bb..HEAD to origin main\nEOF"},
-      {"timestamp": T2, "bash": "git push origin main 2>&1 | tail -3", "text": "pushed."}],
-     "still working, no fresh review this turn"),
-    ("stale-15-url-push-none-landed-STALE",
-     lambda: stale_repo("s15", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push https://example.com/r.git main", "text": "pushed."}],
-     "still working, no fresh review this turn"),
-    ("stale-16-push-text-and-merge-STALE",
-     lambda: stale_repo("s16", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "cat > /tmp/p.txt <<EOF\ngit push origin main\nEOF"},
-      {"timestamp": T2, "bash": "gh pr merge 5 --merge", "text": "merged."}],
-     "still working, no fresh review this turn"),
-    ("stale-17-no-remote-reflog-STALE",
-     lambda: _no_remote_reflog(stale_repo("s17", {"src/app.js": "code"}, T2, push_after=False)),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "cat > /tmp/p.txt <<EOF\ngit push origin main\nEOF",
-       "text": "payload written."}],
-     "still working, no fresh review this turn"),
-    ("stale-18-commit-then-heredoc-push-text-NOT-STALE",
-     lambda: stale_repo("s18", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git commit -qam fix && cat > /tmp/p2.txt <<EOF\n- Gated action: "
-                                "git push of 401d0bb..HEAD to origin main\nEOF",
-       "text": "committed, payload written."}],
-     "still working, no fresh review this turn"),
-    # Subagent round on 0.55.1: the reflog only vouches for a push to a branch of a named remote,
-    # made in the repo the gate reads. 19: one command holding a push AND a deploy (classify()
-    # reported only the push). 20: a tag push (no tracking ref moves; the tag is checked with
-    # show-ref). 21: a remote branch deletion. 22: `cd <other> && git push` reads another repo.
-    ("stale-19-push-and-deploy-one-command-STALE",
-     lambda: stale_repo("s19", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push origin main; wrangler deploy", "text": "deployed."}],
-     "still working, no fresh review this turn"),
-    ("stale-20-tag-push-STALE",
-     lambda: _with_tag(stale_repo("s20", {"src/app.js": "code"}, T2, push_after=False)),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push origin v1", "text": "tag pushed."}],
-     "still working, no fresh review this turn"),
-    ("stale-21-remote-branch-delete-STALE",
-     lambda: stale_repo("s21", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push origin --delete feat", "text": "deleted."}],
-     "still working, no fresh review this turn"),
-    ("stale-22-cd-other-repo-push-STALE",
-     lambda: stale_repo("s22", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "cd /home/u/other && git push origin main", "text": "pushed."}],
-     "still working, no fresh review this turn"),
-    # 24: the field shape, `cd <this repo> && git commit && cat > payload <<EOF ... push ... EOF`:
-    # a cd that stays in the session repo is resolved, not treated as unknown (an earlier draft
-    # brought back 4 of the 7 false reminders of d4f9b656 that way).
-    ("stale-24-cd-same-repo-heredoc-push-text-NOT-STALE",
-     lambda: stale_repo("s24", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "cd " + os.path.join(STALE_TMP, "s24", "work") + " && git commit "
-                                "-qam fix && cat > /tmp/p.txt <<EOF\n- Gated action: git push of "
-                                "a..HEAD to origin main\nEOF", "text": "committed."}],
-     "still working, no fresh review this turn"),
-    # Delta round on 0.55.1 (both backends): the denylist of push flags missed `--mirror` and a
-    # bundled `-fd`, `$T`/`$R` were read literally, and a bare repo path without `./` passed as a
-    # remote name. 0.55.1 inverts it: an allowlist of flags, `$`/glob arguments blind, and a
-    # repository that is not in `git remote` blind when git could still push there. 25-28 pin it;
-    # 29 is a real push whose tracking log was replaced by a malformed line (unknown, not "none").
-    ("stale-25-mirror-push-STALE",
-     lambda: _with_tag(stale_repo("s25", {"src/app.js": "code"}, T2, push_after=False)),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push --mirror origin", "text": "mirrored."}],
-     "still working, no fresh review this turn"),
-    ("stale-26-bare-path-without-dot-slash-STALE",
-     lambda: _with_bare_dir(stale_repo("s26", {"src/app.js": "code"}, T2, push_after=False)),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push mirror.git main", "text": "pushed."}],
-     "still working, no fresh review this turn"),
-    ("stale-27-bundled-delete-flag-STALE",
-     lambda: stale_repo("s27", {"src/app.js": "code"}, T2, push_after=False),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push -fd origin feat", "text": "deleted."}],
-     "still working, no fresh review this turn"),
-    ("stale-28-shell-variable-refspec-STALE",
-     lambda: _with_tag(stale_repo("s28", {"src/app.js": "code"}, T2, push_after=False), "v9"),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "T=v9; git push origin $T", "text": "pushed."}],
-     "still working, no fresh review this turn"),
-    ("stale-29-malformed-remote-reflog-STALE",
-     lambda: _malformed_remote_reflog(stale_repo("s29", {"src/app.js": "code"}, T2)),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push origin main", "text": "pushed."}],
-     "still working, no fresh review this turn"),
-    # External round on 0.55.1: a real push, then an emptied (not removed) remote-tracking log dir.
-    ("stale-23-emptied-remote-reflog-after-real-push-STALE",
-     lambda: _emptied_remote_reflog(stale_repo("s23", {"src/app.js": "code"}, T2)),
-     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
-      {"timestamp": T2, "bash": "git push origin main", "text": "pushed."}],
      "still working, no fresh review this turn"),
 ]
 

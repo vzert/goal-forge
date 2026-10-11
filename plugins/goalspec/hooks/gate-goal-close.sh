@@ -573,27 +573,14 @@ if ta is not None and not lam_crs:
                 for r in ta.staleness_repos(call["command"], cwd):
                     if r not in repos:
                         repos.append(r)
-            # 0.55.1: when every flagged call is a push, ask the reflog of the remote-tracking refs
-            # whether one landed after the close. The calls are flagged by their TEXT, and a payload
-            # that only names a push (3-tier-memory session d4f9b656, three false reminders before
-            # any push) is not one. Only a readable "none landed" in EVERY repo silences it; a push
-            # that the reflog cannot see (push_reflog_blind), or a reflog that cannot be read, falls
-            # through to the old check.
-            review_ts = items[idx].get("timestamp")
-            # classify_all, not the call kind: one command can hold a push AND a deploy, and
-            # classify() reports only the push (subagent round on 0.55.1).
-            only_pushes = all(set(ta.classify_all(c["command"])) == {"push"} for c in terminal_calls) \
-                and not any(ta.push_reflog_blind(c["command"], cwd) for c in terminal_calls)
-            no_push_landed = only_pushes and bool(repos) and all(
-                r is not None and ta.push_landed_since(r, review_ts) is False for r in repos)
             paths = []
             for r in repos:
-                p = ta.commits_since(r, review_ts) if r else None
+                p = ta.commits_since(r, items[idx].get("timestamp")) if r else None
                 if p is None:
                     paths = None
                     break
                 paths.extend(p)
-            if not no_push_landed and not ta.all_exempt(paths):
+            if not ta.all_exempt(paths):
                 remind("completion-review:stale-terminal-action-after-close", skip_general_silence=True)
 
 # 6. Floor as its own branch (0.18.0). Until now the floor could only be APPENDED to a reminder some
@@ -697,9 +684,11 @@ case "$DETAIL" in
     # what a stale review means, never the waiver's own grammar — so this detail is stated here, not
     # assumed inherited.
     # 0.55.1: the message says what is measured (the TEXT of a command), not that an action
-    # happened. 3-tier-memory session d4f9b656 got it three times for heredocs that only named a
-    # push, and had to answer a factual claim that was false.
-    MSG="Después del último cierre declarado corrió un comando cuyo texto nombra un push, merge, deploy o borrado (${DETAIL}). Este aviso lee el texto del comando, no lo que hizo; solo calla cuando todo lo marcado es un push a una rama de un remoto con nombre y el reflog de ese clon prueba que ninguno llegó. Si fue una acción real, ese cierre no la cubre: repite 4b + 6 para ella y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Si esas palabras solo eran dato (un heredoc, un payload), escribe ese texto con Write en un archivo y pasa el archivo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
+    # happened. 3-tier-memory session d4f9b656 got it at 7 Stops for heredocs that only named a
+    # push, and had to answer a factual claim that was false. A reflog check that would have kept
+    # it silent there was built and dropped: four adversary rounds kept finding real pushes it
+    # missed (CHANGELOG 0.55.1).
+    MSG="Después del último cierre declarado corrió un comando cuyo texto nombra un push, merge, deploy o borrado (${DETAIL}). Este aviso lee el texto del comando, no lo que hizo. Si fue una acción real, ese cierre no la cubre: repite 4b + 6 para ella y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Si esas palabras solo eran dato (un heredoc, un payload), escribe ese texto con Write en un archivo y pasa el archivo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
     AGENT_MSG="$MSG"
     ;;
   *)
