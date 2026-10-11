@@ -578,13 +578,17 @@ def _push_landed_since(cwd, since_ts):
             try:
                 with open(os.path.join(root, f), "r", encoding="utf-8", errors="replace") as fh:
                     for line in fh:
-                        head, _, msg = line.rstrip("\n").partition("\t")
-                        parts = head.split()
-                        if len(parts) < 2 or not msg.startswith("update by push"):
+                        if not line.strip():
                             continue
+                        head, tab, msg = line.rstrip("\n").partition("\t")
+                        parts = head.split()
                         try:
                             when = int(parts[-2])
-                        except ValueError:
+                        except (ValueError, IndexError):
+                            return None  # a line that is not a reflog entry: the log proves nothing
+                        if not tab or len(parts) < 6:
+                            return None
+                        if not msg.startswith("update by push"):
                             continue
                         if when >= int(since):
                             return True
@@ -594,17 +598,23 @@ def _push_landed_since(cwd, since_ts):
 
 
 _URL_TARGET_RE = re.compile(r"^(?:[A-Za-z][\w+.-]*://|[\w.-]+@[\w.-]+:|/|\./|\.\./|~)")
-# Push flags whose effect writes no remote-tracking ref (a tag, a deletion) or names the repository
-# some other way. Any of them and the reflog cannot vouch for the push (subagent round on 0.55.1:
-# `git push origin v1` and `git push origin --delete feat` really ran and the gate stayed silent).
-_REFLOG_BLIND_FLAGS = ("--delete", "-d", "--tags", "--follow-tags", "--prune", "--repo",
-                       "--receive-pack", "--exec")
+# 0.55.1 — the push flags the reflog can vouch for: each either changes nothing about WHICH refs move
+# or moves only branches of the named remote. An allowlist, not a denylist: two adversary rounds kept
+# finding pushes a denylist missed (`--mirror`, `-fd`), and learning #81 says that race does not end.
+# Any flag outside it, including a bundled short flag with a letter outside _SAFE_SHORT, makes the
+# push reflog-blind.
+_SAFE_PUSH_FLAGS = ("--set-upstream", "--quiet", "--verbose", "--force", "--force-with-lease",
+                    "--force-if-includes", "--no-verify", "--verify", "--porcelain", "--progress",
+                    "--no-progress", "--atomic", "--no-atomic", "--dry-run", "--signed", "--no-signed",
+                    "--push-option", "--ipv4", "--ipv6", "--thin", "--no-thin", "--all", "--branches",
+                    "--no-force-with-lease")
+_SAFE_SHORT = set("uqvfn46")
 # Shell shapes that point git at a repository the gate cannot resolve: GIT_DIR / GIT_WORK_TREE /
 # --git-dir / --work-tree. A `cd` is resolved instead (_cd_moves_repo), because `cd <this repo> &&`
 # is the common form: the field transcript did it, and treating every `cd` as unknown brought back
 # 4 of its 7 false reminders.
 _OTHER_REPO_RE = re.compile(r"\bGIT_DIR=|\bGIT_WORK_TREE=|--git-dir\b|--work-tree\b")
-_CD_RE = re.compile(r"(?:^|[\s;&|(])(?:cd|pushd)(?:\s+([^\s;&|)]+))?")
+_CD_RE = re.compile(r"(?:^|[\s;&|(\"'])(?:cd|pushd)(?:\s+([^\s;&|)\"']+))?")
 
 
 def _toplevel(d):
@@ -642,10 +652,12 @@ def _local_tag(name, cwd):
 def push_reflog_blind(command, cwd):
     """0.55.1 — True when a `git push` in `command` may have done something the remote-tracking
     reflog cannot show, so push_landed_since() must not be read as "no push landed" for it:
-      * it names a URL or a path as its repository (no tracking ref is updated);
-      * its first positional contains `:` (scp-style `host:path`, which a remote name never has);
-      * it carries a flag that pushes or deletes without writing a tracking ref, or names the
-        repository another way (_REFLOG_BLIND_FLAGS, `=` forms included);
+      * an argument carries `$`, a backtick or a glob character (a value only the shell knew,
+        or a pattern refspec);
+      * a flag is outside _SAFE_PUSH_FLAGS / _SAFE_SHORT (an allowlist: `--mirror`, `--tags`,
+        `--delete`, `-d`, `-fd`, `--repo` and every flag not listed are blind);
+      * its repository is not a configured remote (`git remote`) and git could still push there: a
+        URL, `host:path`, or a path that exists;
       * a refspec deletes (`:feat`, `+:feat`) or targets `refs/tags/`, or names a tag that exists in
         this repo (checked with `git show-ref`, not guessed from the text);
       * the command may move to another repository first (a `cd` out of cwd's git top level,
@@ -654,13 +666,27 @@ def push_reflog_blind(command, cwd):
     if _OTHER_REPO_RE.search(command or "") or _cd_moves_repo(command, cwd):
         return True
     for d, args in git_calls(command, "push", cwd):
-        if any(a.split("=", 1)[0] in _REFLOG_BLIND_FLAGS for a in args if a.startswith("-")):
-            return True
+        if any("$" in a or "`" in a or any(c in a for c in "*?[") for a in args):
+            return True  # a value only the shell knew (`$R`, `$T`) or a pattern refspec (`v*`)
+        for a in args:
+            if a.startswith("--"):
+                if a.split("=", 1)[0] not in _SAFE_PUSH_FLAGS:
+                    return True
+            elif a.startswith("-") and a != "-":
+                if not set(a[1:]) <= _SAFE_SHORT:
+                    return True  # `-d`, `-fd`, `-o` (takes a value), any unknown short flag
         positional = [a for a in args if a and not a.startswith("-")]
         if not positional:
             continue
-        if _URL_TARGET_RE.match(positional[0]) or ":" in positional[0]:
-            return True
+        first = positional[0]
+        remotes = (_run(["git", "remote"], d) or "").split() if isinstance(d, str) and d else []
+        if first not in remotes:
+            # Not a configured remote: blind if git could still push there (a URL, `host:path`, a
+            # path that exists, `mirror.git` included). A word git cannot use as a repository (the
+            # payload text `git push of a..HEAD to origin main`) fails before pushing anything.
+            if _URL_TARGET_RE.match(first) or ":" in first or not isinstance(d, str) or not d \
+                    or os.path.exists(os.path.join(d, os.path.expanduser(first))):
+                return True
         for ref in positional[1:]:
             spec = ref.lstrip("+")
             src, _, dst = spec.partition(":")

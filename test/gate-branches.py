@@ -428,6 +428,19 @@ def _emptied_remote_reflog(work):
     return work
 
 
+def _with_bare_dir(work, name="mirror.git"):
+    """stale-26: a bare repo inside the working tree, pushable as `git push mirror.git main`."""
+    _sh(["git", "init", "-q", "--bare", name], work)
+    return work
+
+
+def _malformed_remote_reflog(work):
+    """stale-29: a real push landed, then its tracking log was replaced with a non-reflog line."""
+    with open(os.path.join(work, ".git", "logs", "refs", "remotes", "origin", "main"), "w") as fh:
+        fh.write("not a reflog line\n")
+    return work
+
+
 def _no_remote_reflog(work):
     """stale-17: a clone whose remote-tracking reflog is gone (core.logAllRefUpdates off, or logs
     pruned) cannot prove that no push landed."""
@@ -652,6 +665,36 @@ STALE_CASES = [
       {"timestamp": T2, "bash": "cd " + os.path.join(STALE_TMP, "s24", "work") + " && git commit "
                                 "-qam fix && cat > /tmp/p.txt <<EOF\n- Gated action: git push of "
                                 "a..HEAD to origin main\nEOF", "text": "committed."}],
+     "still working, no fresh review this turn"),
+    # Delta round on 0.55.1 (both backends): the denylist of push flags missed `--mirror` and a
+    # bundled `-fd`, `$T`/`$R` were read literally, and a bare repo path without `./` passed as a
+    # remote name. 0.55.1 inverts it: an allowlist of flags, `$`/glob arguments blind, and a
+    # repository that is not in `git remote` blind when git could still push there. 25-28 pin it;
+    # 29 is a real push whose tracking log was replaced by a malformed line (unknown, not "none").
+    ("stale-25-mirror-push-STALE",
+     lambda: _with_tag(stale_repo("s25", {"src/app.js": "code"}, T2, push_after=False)),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push --mirror origin", "text": "mirrored."}],
+     "still working, no fresh review this turn"),
+    ("stale-26-bare-path-without-dot-slash-STALE",
+     lambda: _with_bare_dir(stale_repo("s26", {"src/app.js": "code"}, T2, push_after=False)),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push mirror.git main", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    ("stale-27-bundled-delete-flag-STALE",
+     lambda: stale_repo("s27", {"src/app.js": "code"}, T2, push_after=False),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push -fd origin feat", "text": "deleted."}],
+     "still working, no fresh review this turn"),
+    ("stale-28-shell-variable-refspec-STALE",
+     lambda: _with_tag(stale_repo("s28", {"src/app.js": "code"}, T2, push_after=False), "v9"),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "T=v9; git push origin $T", "text": "pushed."}],
+     "still working, no fresh review this turn"),
+    ("stale-29-malformed-remote-reflog-STALE",
+     lambda: _malformed_remote_reflog(stale_repo("s29", {"src/app.js": "code"}, T2)),
+     [{"timestamp": T0, "text": SPEC}, {"timestamp": T1, "text": CR_NONE},
+      {"timestamp": T2, "bash": "git push origin main", "text": "pushed."}],
      "still working, no fresh review this turn"),
     # External round on 0.55.1: a real push, then an emptied (not removed) remote-tracking log dir.
     ("stale-23-emptied-remote-reflog-after-real-push-STALE",

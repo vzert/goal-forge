@@ -22,32 +22,43 @@ real; 0.55.1 en ninguno, y sí avisa tras el push real si no hay cierre nuevo.
 - `hooks/lib/terminal_actions.py`, `push_landed_since`: lee el reflog de las refs remotas
   (`logs/refs/remotes/**` del directorio común de git) y dice si una entrada `update by push` cayó en
   o después del cierre. Responde True, False o None (no se sabe: sin repo, sin hora, sin remoto,
-  `core.logAllRefUpdates` apagado, o alguna ref remota sin su archivo de log; un directorio de logs
-  vacío daba False en el primer corte). Nunca lanza: una excepción tumbaría
+  `core.logAllRefUpdates` apagado, alguna ref remota sin su archivo de log, o una línea del log que
+  no es una entrada de reflog; un directorio vaciado o una línea basura daban False antes). Nunca lanza: una excepción tumbaría
   el gate entero hacia el silencio, y así lo hizo el primer borrador en stale-09.
 - `hooks/gate-goal-close.sh`, paso 5b: calla solo si en TODOS los comandos marcados después del
   cierre el único tipo terminal es push (`classify_all`, no el tipo del comando: uno puede llevar un
-  push y un deploy), ninguno es un push que el reflog no puede ver (`push_reflog_blind`: URL o ruta,
-  `host:path`, `--delete`/`--tags`/`--follow-tags`/`--prune`/`--repo`, un refspec que borra o va a
-  `refs/tags/`, un tag que existe en el repo según `git show-ref`, `GIT_DIR`/`--git-dir`, o un `cd` cuyo destino
-  cae fuera de la raíz de git del cwd según `git rev-parse`), y
-  en cada repo el reflog prueba que ningún push llegó. Cualquier otro caso sigue con el chequeo de
+  push y un deploy), ninguno es un push que el reflog no puede ver, y en cada repo el reflog prueba
+  que ningún push llegó. `push_reflog_blind` decide lo segundo con una lista BLANCA de banderas
+  (`-u`, `-q`, `-v`, `-f`, `-n`, `--force-with-lease`, `--atomic`, `--all`, `--dry-run`…; cualquier
+  otra, `--mirror`, `--tags`, `--delete`, `-d` o `-fd` incluidas, hace el push ciego), más: un
+  argumento con `$`, una comilla invertida o un comodín; un repositorio que no está en `git remote`
+  y al que git igual podría empujar (URL, `host:path`, una ruta que existe); un refspec que borra o
+  va a `refs/tags/`, o un tag que existe según `git show-ref`; `GIT_DIR`/`--git-dir`; o un `cd`
+  cuyo destino cae fuera de la raíz de git del cwd según `git rev-parse`. La primera versión usaba
+  una lista negra de banderas, y la ronda delta encontró `--mirror` y `-fd` fuera de ella. Cualquier otro caso sigue con el chequeo de
   siempre, también un repo que solo el shell conoce (`-C "$VAR"`) o un reflog ilegible.
 - El mensaje dice lo que mide: "corrió un comando cuyo texto nombra un push, merge, deploy o borrado",
   que el aviso lee el texto y no lo que hizo, y la salida de escribir ese texto con Write en un
   archivo. Antes afirmaba como hecho que hubo una acción difícil de deshacer.
 - No cambia: el precheck (PreToolUse) sigue leyendo el texto entero del comando, heredocs incluidos.
   No se excluyen cuerpos de heredoc: el mismo texto es dato en un comando y código en el siguiente.
-- Lo que no ve: un push a un remoto sin refspec de fetch para esa rama, y un push hecho desde otro
-  clon sin un `cd` en el mismo comando (un script que lo hace por dentro). Los dos callan sobre un push real; el precheck, que corre antes del push, sigue siendo la
+- Lo que no ve, y por eso calla sobre un push real: un push a un remoto sin refspec de fetch para
+  esa rama; un push hecho desde otro clon dentro de un script o por `ssh` a una ruta que existe; un
+  push hecho en otro repo después de un `cd` en una llamada Bash ANTERIOR (la herramienta conserva el
+  directorio entre llamadas y el gate lee el cwd que le pasa el Stop); y un push con
+  `GIT_COMMITTER_DATE` falso, que fecha la entrada del reflog en el pasado. El precheck, que corre
+  antes del push, sigue siendo la primera línea en todos. Los dos callan sobre un push real; el precheck, que corre antes del push, sigue siendo la
   primera línea. Un push de otra sesión en el mismo clon sigue haciendo avisar, como antes.
-- Una ronda del subagente rompió el primer corte: un push encadenado a un deploy en un solo comando,
+- Tres rondas de adversario (subagente y externo cada una) dieron break; el gate llegó a su piso de
+  convergencia y la publicación la decide Víctor. La primera rompió el primer corte: un push encadenado a un deploy en un solo comando,
   un push de tag y un borrado de rama remota callaban aunque hubieran ocurrido (casos 19-22, con
   `cd <otro> && git push`).
 - `test/README.md` decía 116 casos de `terminal-precheck-branches`; son 141 desde 0.55.0.
-- `gate-branches`: casos stale-13 a stale-24 (24: `cd` al propio repo, la forma del caso real). 13 y 18 (texto sin push que llegó) fallan con 0.55.0;
-  14 a 17 y 19 a 23 son guardas que avisan con 0.55.0; 19 a 23 fallan contra el primer corte; 13, 18 y
-  24 callan y fallan con 0.55.0. `stale_repo()` fecha el push base antes del
+- `gate-branches`: casos stale-13 a stale-29 (24: `cd` al propio repo, la forma del caso real;
+  25-29: `--mirror`, ruta bare sin `./`, `-fd`, `$T` y un reflog con una línea basura). 13 y 18 (texto sin push que llegó) fallan con 0.55.0;
+  14 a 17 y 19 a 29 son guardas que avisan con 0.55.0; 19 a 23 fallan contra el primer corte y 25 a
+  29 contra el segundo; 13, 18 y 24 callan y fallan con 0.55.0. Las 19 sondas del subagente (pushes
+  reales contra un bare local) dan lo esperado. `stale_repo()` fecha el push base antes del
   cierre y empuja el commit posterior salvo `push_after=False`, porque `GIT_COMMITTER_DATE` fija
   también la hora del reflog; stale-01 a 12 conservan su decisión. `--compare` contra el gate de
   0.55.0: paridad en modo normal y con `GOAL_GATE_ENFORCE=1`. El resto de las suites sale idéntico.
