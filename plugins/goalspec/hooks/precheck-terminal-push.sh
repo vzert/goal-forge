@@ -165,10 +165,16 @@ if sig["goal_spec"]:
 else:
     # Entered through /goalspec:interview or the goalspec skill, but no ## Goal-spec was ever
     # written: the adversary has nothing to verify against, so pointing only at it is a dead end.
+    # p-d760440347 (0.55.2): 135589df (VPS, 2026-10-01) wrote the spec in the SAME message as the
+    # merge and was told none was written. That is cause B of seen_note below, for the spec.
     next_step = ("This session entered goalspec (the goalspec skill or /goalspec:interview) but no "
-                 "## Goal-spec was written: the interview hands off to the goalspec loop, and the "
-                 "loop writes the spec. Write the ## Goal-spec, spawn goal-adversary against it on "
-                 "the actual diff/outcome, get a hold, then retry this command.")
+                 "## Goal-spec was written in any earlier message: the interview hands off to the "
+                 "goalspec loop, and the loop writes the spec. Write the ## Goal-spec, spawn "
+                 "goal-adversary against it on the actual diff/outcome, get a hold, then retry this "
+                 "command. If you wrote the ## Goal-spec as visible text in the SAME message as this "
+                 "command, this hook cannot see it yet -- a message reaches the transcript only "
+                 "after its tool call runs. It counts from the next message on: leave it where it "
+                 "is and run the adversary and this command in later messages.")
 
 # The 2026-09-29 research (memory, p-87faebb038) measured two ways an executor believes it quoted a
 # hold that this hook cannot see, and executors that hit either one blamed the transcript. Cause A:

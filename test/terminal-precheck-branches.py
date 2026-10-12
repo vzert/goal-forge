@@ -19,8 +19,14 @@ reason, for eyeballing WHICH branch fired, not just that one did).
 """
 import json, os, subprocess, sys, tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import expected_check  # noqa: E402 — the --expected check every --compare suite shares
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "precheck-terminal-push.sh")
+# --compare runs this file again in a child process with this variable pointing at the other copy,
+# so each run builds its own TMP and fixtures (the cases create fixed paths under TMP).
+HOOK = os.environ.get("PRECHECK_SUITE_HOOK") or os.path.join(
+    REPO, "plugins", "goalspec", "hooks", "precheck-terminal-push.sh")
 PLUGIN_ROOT = os.path.join(REPO, "plugins", "goalspec")
 TMP = tempfile.mkdtemp(prefix="terminal-precheck-branches-")
 
@@ -516,6 +522,15 @@ case("42-interview-deny-text-says-write-the-spec-DENY", lambda: _deny_reason_has
     "42", "no ## Goal-spec was written", lambda: run_hook(
         make_repo("42", None, None), "gh pr merge",
         transcript([{"user": TYPED_INTERVIEW}], "42"))))
+
+# p-d760440347 (0.55.2): 135589df (VPS, 2026-10-01) entered through the skill, then wrote the
+# ## Goal-spec and ran `git merge` in ONE message. The message reaches the transcript only after its
+# tool call runs, so the hook sees no spec, and the deny said none was written. The transcript here
+# is what the hook reads at that moment: the skill entry and nothing else.
+case("42b-skill-entry-deny-text-names-spec-in-same-message-DENY", lambda: _deny_reason_has(
+    "42b", "If you wrote the ## Goal-spec as visible text in the SAME message as this command",
+    lambda: run_hook(make_repo("42b", None, None), "git merge feature/x",
+                     transcript([{"skill": "goalspec:goalspec"}], "42b"))))
 
 case("43-deny-text-scopes-the-waiver-DENY", lambda: _deny_reason_has(
     "43", "covers this one command", lambda: run_hook(
@@ -1030,7 +1045,42 @@ def expected(name):
     return "deny" if name.endswith("-DENY") else "allow"
 
 
+def compare(other_hook, expected, rows):
+    """Run this suite against OTHER_HOOK in a child process and diff the decision column. Only the
+    decision: the detail column holds the first 70 characters of the reason, and for a command
+    with a temp path in it the cut lands at a different place in each run. The wording cases turn
+    a missing needle into the decision `wrong-text`, so a text change still shows here."""
+    out = subprocess.run([sys.executable, os.path.abspath(__file__)], capture_output=True, text=True,
+                         env={**os.environ, "PRECHECK_SUITE_HOOK": os.path.abspath(other_hook)})
+    theirs = {}
+    for line in out.stdout.splitlines():
+        if not line.strip():
+            break
+        parts = line.split(None, 2)
+        theirs[parts[0]] = parts[1] if len(parts) > 1 else ""
+    names = [r[0] for r in rows]
+    diffs = [n for n, d, _ in rows if theirs.get(n) != d]
+    for n in diffs:
+        tag = "EXPECTED-DIFF" if any(n.startswith(p) for p in expected) else "DIFFERS"
+        print("%s %s: here %s, other %s" % (tag, n, dict((r[0], r[1]) for r in rows)[n], theirs.get(n)))
+    unexpected = [d for d in diffs if not any(d.startswith(p) for p in expected)]
+    if diffs:
+        print("\n%d decision(s) changed: %s" % (len(diffs), ", ".join(diffs)))
+    if unexpected:
+        print("REGRESSION: %d unexpected: %s" % (len(unexpected), ", ".join(unexpected)))
+    if expected_check.report(expected, names, diffs) or unexpected:
+        return 1
+    print("parity OK — %d cases, %d intended change(s)" % (len(rows), len(diffs)))
+    return 0
+
+
 def main():
+    argv = sys.argv[1:]
+    other_hook, declared = None, []
+    if "--compare" in argv:
+        other_hook = argv[argv.index("--compare") + 1]
+    if "--expected" in argv:
+        declared = [s.strip() for s in argv[argv.index("--expected") + 1].split(",") if s.strip()]
     failures = []
     rows = []
     for name, fn in CASES:
@@ -1051,9 +1101,15 @@ def main():
     for name, decision, detail in rows:
         print("%-52s %-20s %s" % (name, decision, detail))
 
+    rc = 0
+    if other_hook:
+        print()
+        rc = compare(other_hook, declared, rows)
     if failures:
         print("\nFAILURES: %d\n  %s" % (len(failures), "\n  ".join(failures)))
         return 1
+    if rc:
+        return rc
     print("\nOK — %d cases, all decisions match their name's expectation" % len(rows))
     return 0
 

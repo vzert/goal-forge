@@ -8,6 +8,22 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.55.2] - 2026-10-12
+
+### El aviso de "entraste sin spec" nombra el spec escrito en el mismo mensaje
+Sesión 135589df (VPS, 2026-10-01). El agente entró por el skill, y después escribió el
+`## Goal-spec` y lanzó `git merge` en el mismo mensaje. Un mensaje llega al transcript solo
+después de que corre su llamada a herramienta, así que el precheck no vio el spec. El aviso le dijo
+que no se había escrito ninguno (p-d760440347).
+
+- `hooks/precheck-terminal-push.sh`: en la rama sin spec, el aviso dice que no hay spec en ningún
+  mensaje anterior. Dice también que un spec escrito como texto visible en el mismo mensaje que el
+  comando todavía no se ve, y que cuenta desde el mensaje siguiente. Qué se permite y qué se niega
+  no cambia.
+- `test/terminal-precheck-branches.py`: caso 42b (falla contra 0.55.1 con `wrong-text`) y
+  `--compare`/`--expected` como en las otras suites. Solo compara la columna de decisión; el porqué
+  está en `test/README.md`.
+
 ## [0.55.1] - 2026-10-11
 
 ### El aviso de cierre viejo dice lo que mide

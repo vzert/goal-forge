@@ -837,7 +837,19 @@ in thinking is still nothing (111). Rows 01-99 are byte-identical to 0.50.0's; a
 
 ```sh
 python3 test/terminal-precheck-branches.py
+python3 test/terminal-precheck-branches.py --compare /tmp/precheck-BASELINE.sh --expected 42b  # parity vs a pre-edit copy
 ```
+
+**`--compare` (0.55.2).** It runs this file again in a child process with `PRECHECK_SUITE_HOOK`
+pointing at the other copy, because the cases build fixed paths under their own temp dir. It diffs
+the **decision column only**: the detail column is the first 70 characters of the reason, and for a
+command with a temp path in it the cut lands in a different place in each run. The wording cases
+turn a missing needle into the decision `wrong-text`, so a change to a wording that a case pins still shows.
+A change to wording that no case pins does not show. The shared `--expected` check applies as in the other
+suites. Like the gate suite, it is blind to a change in `hooks/lib/terminal_actions.py`: both copies
+import the same module. **42b** (0.55.2, p-d760440347) pins the deny in a session that entered
+goalspec with no spec: it says that a `## Goal-spec` written in the same message as the command is
+not visible yet. Against 0.55.1 it returns `wrong-text`, and every other row is unchanged.
 
 **Cases 20-22 are a regression pin for a real break, not a hypothetical.** A `goal-adversary`
 round run against this SKILL's own diff, before it shipped, found the text-only scan blind to a
