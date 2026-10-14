@@ -335,6 +335,16 @@ skip the hook and the case pass vacuously, found in adversary round 2) and requi
 marker file, else `+hook-did-not-run`. All three also require the stub to have run in the live repo. 37 and 38
 need a non-root user (root ignores the `chmod`).
 
+**The verdict is the partner's last verdict line (0.59.1)**, case **39**: the partner ends with the
+template (`break|hold`, counts filled) over a BLOCKING finding, and earlier in its run sits a filled
+`hold` it only read, mid-line in a suite row it ran. That is the saved codex round of 2026-10-12. The
+hook took the last filled match anywhere and resolved `hold`, so against 0.59.0 the case comes back
+`pass+idunresolved`. It must come back UNVERIFIED with the finding still shown and without the
+`verdict-shaped block` line, which the 0.59.0 precheck reads as an external hold (`-signature` marks
+that failure). Case **06**, the echo of the template alone, now takes the same path
+(`template-last+unverified-nofinding`; against 0.59.0 it is `unfilled`), so a `--compare` against
+0.59.0 declares `--expected 06,39`.
+
 **Reviewed-state isolation (0.44.9)**, cases **09/16/17/18/19/24**: the hook materializes the exact
 reviewed state into a private linked worktree under the repo's own `git-common-dir` before invoking
 the partner, so a concurrent writer sharing the repo (another local session's commit landing

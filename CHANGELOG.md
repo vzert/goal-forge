@@ -8,6 +8,32 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.59.1] - 2026-10-14
+
+### El revisor externo toma el veredicto solo de su última línea de veredicto
+Hasta 0.59.0, `hooks/external-adversary.sh` tomaba el último veredicto lleno en cualquier parte de la
+salida del revisor. Si el revisor terminaba con la plantilla (`break|hold` con cifras), el hook tomaba
+un veredicto lleno que el revisor solo había leído o corrido. Medido el 2026-10-14 sobre la salida
+guardada de una ronda real de codex (2026-10-12, sesión 428e1889), reproducida con un stub: codex
+terminó con la plantilla sobre un hallazgo BLOCKING (`incomplete=1`), y el hook resolvió `hold` desde
+una fila de una suite que codex corrió 1,487 líneas antes. Imprimió el aviso de bloque con forma de
+veredicto y ninguna línea UNVERIFIED. Con esa misma salida, el lector del precheck de 0.59.0
+(`_external_verdict_item`) devolvió un hold externo: citado en el checkpoint, habría dejado pasar un
+push sobre un break real.
+
+- `hooks/external-adversary.sh`: el veredicto es la última línea con `[ADVERSARY-VERDICT:` de la
+  salida. Si esa línea es la plantilla, el hook toma el camino UNVERIFIED de siempre (hold sintético
+  y línea `UNVERIFIED` al final) y no imprime el aviso que lee el precheck. Además, muestra en stderr
+  las últimas 40 líneas del revisor, donde está su respuesta, en vez de las 20 primeras. La línea del
+  veredicto que usa el piso de veredicto desnudo sale del mismo sitio.
+- Medido tras el cambio, con la misma salida: hold sintético, línea UNVERIFIED al final, el hallazgo
+  BLOCKING a la vista, sin aviso de bloque, y el lector del precheck devuelve `None`.
+  `terminal_actions.py` no cambia: solo lee una salida que lleva ese aviso.
+- `test/external-adversary-branches.py`: caso 39, con esa forma. Contra 0.59.0 sale
+  `pass+idunresolved`. El caso 06 (solo eco de la plantilla) toma ahora el mismo camino, sin hallazgo
+  que mostrar. Contra 0.59.0 sale `unfilled`. Ningún otro caso cambia (`--compare`).
+- `README.md`: nombra la última versión.
+
 ## [0.59.0] - 2026-10-14
 
 ### Los avisos dicen la causa medida, y el hold del revisor externo puede ir al checkpoint
