@@ -814,7 +814,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-179 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+180 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -879,7 +879,7 @@ in `file_waiver_line` and in the parser, the case/space normalization included, 
 and its own case went red.
 
 New in 0.59.0, the external backend's hold quoted with an Edit to this session's checkpoint (cases
-167-174, 179-186). `external-adversary.sh` appends a run record (run id, verdict line, verified) to
+167-174, 179-187). `external-adversary.sh` appends a run record (run id, verdict line, verified) to
 `.goalspec/external-runs-<session>.jsonl` on every path that prints a verdict and prints a run line
 naming that id; an external hold counts only as the last record's verified hold, same id and line.
 It allows read by Bash (167) or by Read, line numbers and all (168), with two runs in one result in
@@ -893,8 +893,12 @@ with no record (181) or with an unknown id beside a real record (186), a record 
 since 0.51.0; 177 pins it because SKILL.md now names it. The deny text names the third cause of a
 missing quote, text written in the middle of a turn stored as a summary without the marker, with the
 Edit way out (175), no longer says the next message suffices (176), and the no-spec deny names the
-checkpoint Write for the spec (178). `--compare` against 0.58.0's hook, both modes: only 175, 176 and
-178 change. Each new guard was removed in turn and a case written for it went red.
+checkpoint Write for the spec (178). A run killed while its partner runs leaves its unverified start
+record last, so an earlier hold stops counting (187, the real hook killed mid-run). `--compare`
+against 0.58.0's hook, both modes: 175, 176 and 178 change (texts) and 169, 179, 181, 182, 184, 185,
+186 and 187 (the old hook does not filter external holds). With 0.58.0's hook fixed, the module swap
+changes 70, 110, 167-169, 172, 173 and 179-187. Each new guard was removed in turn and a case written
+for it went red.
 
 ```sh
 python3 test/terminal-precheck-branches.py

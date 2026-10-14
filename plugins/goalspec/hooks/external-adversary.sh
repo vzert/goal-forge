@@ -47,6 +47,9 @@ set -euo pipefail
 # run line naming that id reached the session (terminal_actions.validate_external_relays). Recency is
 # this file's append order, so nothing depends on where a verdict sits inside a tool_result: two
 # earlier cuts that read position let a stale hold through, and an echoed run line has no record.
+# A run also appends an unverified START record before it calls the partner, so a run killed or cut
+# short (SIGPIPE from a `| head`, a Bash timeout) leaves the last record unverified and an older hold
+# stops counting (subagent round 4 on 0.59.0).
 # No session id in the environment (CLAUDE_CODE_SESSION_ID) -> no record, and the checkpoint path for
 # an external hold does not open; the visible-text quote still works. Never fatal.
 _ADV_RECORD_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -96,6 +99,8 @@ if ! command -v "$BIN" >/dev/null 2>&1; then
   echo "external-adversary: '$BIN' not found on PATH — no independent check ran; treat 'hold' as UNVERIFIED." >&2
   exit 0
 fi
+
+_adv_record false ""  # the START record (see _adv_record above)
 
 # Advisory only — never add a sandbox flag here. -s read-only was tried against a real codex partner
 # and broke it: legitimate scratch writes failed and came back disguised as `ungrounded` findings (see

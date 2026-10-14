@@ -70,8 +70,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    `python3 test/handback-verdict-branches.py` (SubagentStop + UserPromptSubmit reminder to quote a
    goal-adversary verdict that came back as a background hand-back — hermetic, per-case `TMPDIR`; new
    in 0.46.8, so run `--selftest` too), and `python3 test/spec-on-entry-branches.py` (PostToolUse(Skill)
-   reminder to post the `## Goal-spec` as visible text right after the goalspec loop loads with no
-   spec yet — hermetic, synthetic transcripts; new in 0.48.0, so run `--selftest` too), and
+   reminder to write the `## Goal-spec` to the checkpoint or post it as visible text right after the
+   goalspec loop loads with no spec yet — hermetic, synthetic transcripts; new in 0.48.0, so run `--selftest` too), and
    `python3 test/spec-brake-branches.py` (PreToolUse brake that holds Bash/Write/Edit after the loop
    loads until a `## Goal-spec` exists in visible text or in this session's checkpoint, plus the
    PostToolUse hook that shows a checkpoint-only spec to the human — hermetic, synthetic

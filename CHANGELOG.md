@@ -54,11 +54,14 @@ documentación atribuía ese caso a una cita escrita solo en el thinking.
   vía del checkpoint para el hold externo. La frase sobre las diez negaciones de merge ya no dice
   que la cita estaba solo en el thinking.
 - Los mensajes del gate de Stop no cambian: el cierre es el texto que cierra el turno.
-- `test/terminal-precheck-branches.py`: casos 167-186. Los casos 183-185 corren el hook real.
+- `test/terminal-precheck-branches.py`: casos 167-187. Los casos 183-185 y 187 corren el hook real
+  (187 lo mata a mitad: el registro de inicio basta para que un hold anterior deje de contar).
   `external-adversary-branches.py` y `claim-surface-carriers.py` quitan `CLAUDE_CODE_SESSION_ID`
   del entorno del hook, para no dejar registros de prueba en el repo. `--compare` contra el hook de 0.58.0, en los
-  dos modos: solo cambian 175, 176 y 178. Con el hook de 0.58.0 fijo, cambiar el módulo solo cambia
-  70, 110, 167, 168, 172, 173, 180 y 181. Ocho mutaciones, siete del lector nuevo y una que apaga la línea nueva del hook, y cada una pone rojo un caso escrito para ella.
+  dos modos: cambian 175, 176 y 178 (textos) y 169, 179, 181, 182, 184, 185, 186 y 187 (el hook viejo
+  no filtra los holds externos). Con el hook de 0.58.0 fijo, cambiar el módulo cambia 70, 110,
+  167-169, 172, 173 y 179-187. Trece mutaciones del lector, del registro y del hook, y cada una pone
+  rojo un caso escrito para ella.
 - `test/claim-surface-carriers.py`: 11 checks nuevos, 227 en total. Cada carrier de la regla de
   texto visible nombra la tercera causa. Ninguno dice ya que el siguiente mensaje basta. Las dos
   suites del spec (`spec-brake-branches.py` y `spec-on-entry-branches.py`) exigen la cláusula nueva,

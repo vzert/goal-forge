@@ -1343,6 +1343,33 @@ case("184-real-hook-then-missing-binary-run-DENY", _real_case("184", [GOOD_PARTN
 # 185: no session id in the hook's environment: no record, so the checkpoint path does not open.
 case("185-real-hook-without-session-id-DENY", _real_case("185", [GOOD_PARTNER], False, sid=None))
 
+
+def _case187():
+    """A good run is read, then a second run is killed while its partner runs: its START record is the
+    last one, unverified, so the first hold stops counting (subagent round 4 on 0.59.0)."""
+    import signal, time
+    LAST_MESSAGE[0] = ""
+    work = make_repo("187", None, None)
+    out = _real_hook(work, GOOD_PARTNER)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GOAL_ADVERSARY")}
+    env.update({"GOAL_ADVERSARY_CMD": "sleep 30", "CLAUDE_CODE_SESSION_ID": SID, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT})
+    pr = subprocess.Popen(["bash", os.path.join(PLUGIN_ROOT, "hooks", "external-adversary.sh")],
+                          stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                          cwd=work, env=env, start_new_session=True)
+    pr.stdin.write(b"payload\n"); pr.stdin.close()
+    recf = os.path.join(work, ".goalspec", "external-runs-%s.jsonl" % SID)
+    for _ in range(100):
+        time.sleep(0.1)
+        if os.path.exists(recf) and sum(1 for _l in open(recf)) >= 3:
+            break
+    os.killpg(pr.pid, signal.SIGKILL)
+    pr.wait()
+    events = [{"text": SPEC_TEXT}] + _tool_result("x1", out) + [_edit(CKPT, HOLD_LINE, "e187")]
+    return run_hook(work, "gh pr merge", transcript(events, "187"), session_id=SID)
+
+
+case("187-real-hook-run-killed-mid-partner-DENY", _case187)
+
 # The no-spec deny (entered goalspec, wrote no spec) names the checkpoint Write for the spec.
 case("178-no-spec-deny-names-checkpoint-write-DENY", lambda: _deny_reason_has(
     "178", "write the spec with the Write tool into " + CKPT,

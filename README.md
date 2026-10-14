@@ -561,7 +561,7 @@ goal-forge/
     hooks/watch-adversary-writes.sh       # SubagentStart/Stop: fingerprints repo content around an adversary run and records anything it changed
     hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor)
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
-    hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to post it as visible text (PostToolUse Skill)
+    hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to write it to its checkpoint or post it as visible text (PostToolUse Skill)
     hooks/precheck-spec-before-work.sh    # PreToolUse: after the goalspec loop loads, holds Bash/Write/Edit until a ## Goal-spec exists in visible text or in this session's checkpoint (reads stay free; GOAL_SPEC_BRAKE=0 turns it off)
     hooks/precheck-subagent-model.sh      # PreToolUse Task|Agent: in a goalspec session, denies once the first subagent spawn with no `model` (and the first such adversary spawn), with the model-by-task table (GOAL_SUBAGENT_MODEL_CHECK=0 turns it off)
     hooks/precheck-inline-grounding.sh    # PreToolUse Bash|Read|Grep|Glob|WebFetch|WebSearch: before the spec, denies once the 16th inline read with no subagent (GOAL_GROUNDING_CHECK=0 turns it off)
