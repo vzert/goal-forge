@@ -76,7 +76,8 @@ def run(plugin, payload_text, env_extra=None):
     # thinking does not count. A deny that drops any of them strands the agent in the observed loop.
     if (hso.get("hookEventName") == "PreToolUse" and hso.get("permissionDecision") == "deny"
             and "## Goal-spec" in reason and "LATER message" in reason
-            and "only in your thinking does not count" in reason and "Evidence:" in reason):
+            and "only in your thinking does not count" in reason and "Evidence:" in reason
+            and "can be stored as a summary without the ## Goal-spec heading" in reason):
         # Which evidence: the agent's own last visible text quoted back, or "no visible text".
         if "QUOTE-ME-BACK" in reason and "2 visible text block(s)" in reason:
             return "deny-quotes"
@@ -270,8 +271,11 @@ MUTATIONS = [
     ("reason loses the later-message clause", LIB, "call the tool again in a LATER message",
      "call the tool again"),
     ("reason loses the thinking clause", LIB,
-     "reply. A spec you wrote or planned only in your thinking does not count, even if you believe ",
-     "reply. Your plan counts, even if you believe "),
+     '"only in your thinking does not count, even if you believe "',
+     '"only in your head counts, even if you believe "'),
+    ("reason loses the mid-turn clause", LIB,
+     '"reply -- less sure: text you write in the middle of a turn can be stored as a summary without "',
+     '"reply. "'),
     ("checkpoint spec no longer releases", LIB,
      "           and spec_has_body(it[\"text\"]) for it in items):",
      "           and False for it in items):"),

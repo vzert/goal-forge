@@ -76,7 +76,7 @@ line can hold). `NO_COMMENT_FORM` also declares the negative clause of
 `nwd:emitted-account-is-a-pointer`, which reads emitted text; that check is counted among the
 positives, because its positive clauses are proven. Both lists live in the file with their
 reasons, and a check that fits none of these fails the selftest. It also fails when the number of
-checks is not `EXPECTED_CHECKS` (216), so a deleted check cannot pass silently.
+checks is not `EXPECTED_CHECKS` (227), so a deleted check cannot pass silently.
 
 **Before editing the gate, copy it somewhere and `--compare` against that copy afterwards** — in both
 modes. Exit code is non-zero if any observed cell changed that `--expected` did not declare, or if a
@@ -632,7 +632,7 @@ while no spec exists yet. It blocks nothing. 12 cases, hermetic: the nudging one
 bare skill name, a spec that lives only in a `thinking` block, no transcript), and the silent ones
 (interview, standalone adversary, another skill, another tool, a spec already in text or in the
 checkpoint file, another event, malformed input). New with no predecessor, so `--selftest` mutates
-the component (7 mutations) and requires a case to catch each.
+the component (8 mutations; 0.59.0 added the one that drops the mid-turn clause) and requires a case to catch each.
 
 The Stop-gate half of the same release lives in `gate-branches.py`, section "entered the loop,
 never wrote a spec": 10 cases run in both modes, asserting an advisory that never blocks, silence
@@ -667,8 +667,8 @@ call, interview-only, adversary-only, no goalspec, another event, malformed inpu
 `GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path (or `.goalspec/checkpoint.md` when the
 payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
 silent for no spec, another file, a spec already in text, a subagent, another event, malformed
-input). New with no predecessor, so `--selftest` mutates the components (26 mutations; 0.51.0 added the one that
-lets a failed checkpoint Write count again) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
+input). New with no predecessor, so `--selftest` mutates the components (27 mutations; 0.51.0 added the one that
+lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
 
 ```sh
 python3 test/spec-brake-branches.py
@@ -814,7 +814,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-159 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+171 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -877,6 +877,23 @@ names the checkpoint for the waiver (161). Against 0.56.0, 150, 151, 161, 163 an
 0.56.0's hook fixed, 0.57.0's module gives 0.56.0's module's decisions on every row. Each new check
 in `file_waiver_line` and in the parser, the case/space normalization included, was removed in turn
 and its own case went red.
+
+New in 0.59.0, the external backend's hold quoted with an Edit to this session's checkpoint (cases
+167-174, 177): it allows when the hold reached the session in a tool_result whose line starting with
+the hook's closing notice (`external-adversary: a verdict-shaped block was just produced above`)
+follows the verdict, read by Bash (167) or by Read, line numbers and all (168); it does not count
+when the hook marked the hold UNVERIFIED (169), when the notice sits inside the hook's own source,
+`echo "...` and all (170), when a later external break came back (171), or from an errored result
+(174). An unquoted external hold gets the deny that names its line (172), and an external break
+after a hold quoted in text is now the operative verdict (173: before 0.59.0 the precheck did not
+see it and let the command through). A foreground goal-adversary result quoted by Edit already
+passed since 0.51.0; 177 pins it because SKILL.md now names it. The deny text names the third cause
+of a missing quote, text written in the middle of a turn stored as a summary without the marker,
+with the Edit way out (175), no longer says the next message suffices (176), and the no-spec deny
+names the checkpoint Write for the spec (178). `--compare` against 0.58.0's hook, both modes: only
+175, 176 and 178 change. With 0.58.0's hook fixed, the module swap changes only 70, 110 (their deny
+text moved to the module), 167, 168, 172 and 173. Each new guard of `_external_verdict_item` was
+removed in turn and its own case went red.
 
 ```sh
 python3 test/terminal-precheck-branches.py

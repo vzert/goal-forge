@@ -630,16 +630,17 @@ HOLD_LINE = HOLD_TEXT.split("\n")[1]
 
 case("70-relayed-hold-unquoted-names-line-DENY", _relay_case(
     "70", [{"text": SPEC_TEXT}, {"text": BREAK_TEXT}] + ADV_BG + [_queued(HANDBACK)],
-    "as a subagent result, not as your own text: " + HOLD_LINE, absent="Spawn goal-adversary"))
+    "as a tool result (a subagent's report or the external reviewer's output), not as your own "
+    "text: " + HOLD_LINE, absent="Spawn goal-adversary"))
 
 case("71-relayed-hold-then-text-break-DENY", _relay_case(
     "71", [{"text": SPEC_TEXT}] + ADV_BG + [_queued(HANDBACK), {"text": BREAK_TEXT}],
-    "most recent adversary verdict on record is break", absent="as a subagent result"))
+    "most recent adversary verdict on record is break", absent="as a tool result"))
 
 case("72-hold-in-bash-result-is-not-a-relay-DENY", _relay_case(
     "72", [{"text": SPEC_TEXT}, {"bash": "grep -r ADVERSARY-VERDICT SKILL.md", "bash_id": "tb1"},
            {"user": [{"type": "tool_result", "tool_use_id": "tb1", "content": HOLD_TEXT}]}],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("73-hold-in-adversary-result-is-a-relay-DENY", _relay_case(
     "73", [{"text": SPEC_TEXT}] + _spawn(ADV, "ta1", report="report\n" + HOLD_TEXT),
@@ -648,7 +649,7 @@ case("73-hold-in-adversary-result-is-a-relay-DENY", _relay_case(
 case("74-queue-ops-ignored-then-text-break-DENY", _relay_case(
     "74", [{"text": SPEC_TEXT}] + ADV_BG + [_queue_op("enqueue", HANDBACK), _queue_op("remove", HANDBACK),
            _queued(HANDBACK), {"text": BREAK_TEXT}, _queue_op("remove", HANDBACK)],
-    "most recent adversary verdict on record is break", absent="as a subagent result"))
+    "most recent adversary verdict on record is break", absent="as a tool result"))
 
 case("75-relayed-hold-then-quoted-ALLOW", lambda: run_hook(
     make_repo("75", None, None), "gh pr merge",
@@ -659,32 +660,32 @@ case("75-relayed-hold-then-quoted-ALLOW", lambda: run_hook(
 # receipt is not the report, even when it echoes a verdict line (81).
 case("76-user-text-with-handback-tag-is-not-a-relay-DENY", _relay_case(
     "76", [{"text": SPEC_TEXT}] + ADV_BG + [{"user": HANDBACK}],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 # Only a goal-adversary's report counts. An Explore asked where the verdict format lives returns
 # SKILL.md's example lines; the deny must not then tell the executor to quote a hold nobody gave.
 case("77-hold-in-explore-result-is-not-a-relay-DENY", _relay_case(
     "77", [{"text": SPEC_TEXT}] + _spawn("Explore", "te1", report="found it:\n" + HOLD_TEXT),
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("78-handback-from-explore-is-not-a-relay-DENY", _relay_case(
     "78", [{"text": SPEC_TEXT}] + _spawn("Explore", "te2", agent_id="a644fedd9b711cae0")
     + [_queued(HANDBACK, origin="explore")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("79-handback-from-unknown-agent-is-not-a-relay-DENY", _relay_case(
     "79", [{"text": SPEC_TEXT}, _queued(HANDBACK, origin="resumed")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("80-human-typed-queued-tag-is-not-a-relay-DENY", _relay_case(
     "80", [{"text": SPEC_TEXT}] + ADV_BG + [_queued(HANDBACK, origin="human")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("81-background-launch-receipt-is-not-a-relay-DENY", _relay_case(
     "81", [{"text": SPEC_TEXT}] + _spawn(ADV, "tbg2", report="Async agent launched successfully.\n"
           "agentId: a644fedd9b711cae0\nprompt: delta round, prior verdict was " + HOLD_TEXT,
           background=True),
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("82-resumed-adversary-handback-is-a-relay-DENY", _relay_case(
     "82", [{"text": SPEC_TEXT}] + ADV_BG + [_queued(HANDBACK, origin="resumed")],
@@ -693,11 +694,11 @@ case("82-resumed-adversary-handback-is-a-relay-DENY", _relay_case(
 # Delta round on 0.46.7: the agent type is matched exactly, not as a substring, in both places.
 case("83-lookalike-origin-name-is-not-a-relay-DENY", _relay_case(
     "83", [{"text": SPEC_TEXT}, _queued(HANDBACK, origin="lookalike")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("84-lookalike-spawn-type-is-not-a-relay-DENY", _relay_case(
     "84", [{"text": SPEC_TEXT}] + _spawn("not-goal-adversary-example", "tl1", report="r\n" + HOLD_TEXT),
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("85-bare-goal-adversary-type-is-a-relay-DENY", _relay_case(
     "85", [{"text": SPEC_TEXT}] + _spawn("goal-adversary", "tb3", report="r\n" + HOLD_TEXT),
@@ -735,11 +736,11 @@ case("86-idle-handback-hold-names-line-DENY", _relay_case(
 case("87-idle-handback-from-explore-is-not-a-relay-DENY", _relay_case(
     "87", [{"text": SPEC_TEXT}] + _spawn("Explore", "te3", agent_id="a644fedd9b711cae0")
     + [_handback_user("explore")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("88-idle-handback-lookalike-name-is-not-a-relay-DENY", _relay_case(
     "88", [{"text": SPEC_TEXT}, _handback_user("lookalike")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("89-idle-handback-resumed-adversary-is-a-relay-DENY", _relay_case(
     "89", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user("resumed")],
@@ -747,15 +748,15 @@ case("89-idle-handback-resumed-adversary-is-a-relay-DENY", _relay_case(
 
 case("90-idle-handback-unknown-agent-is-not-a-relay-DENY", _relay_case(
     "90", [{"text": SPEC_TEXT}, _handback_user("resumed")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("91-human-origin-with-body-is-not-a-relay-DENY", _relay_case(
     "91", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user("human")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("92-idle-handback-without-flag-is-not-a-relay-DENY", _relay_case(
     "92", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user("no-flag")],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 case("93-idle-handback-then-quoted-ALLOW", lambda: run_hook(
     make_repo("93", None, None), "gh pr merge",
@@ -763,14 +764,14 @@ case("93-idle-handback-then-quoted-ALLOW", lambda: run_hook(
 
 case("94-idle-handback-then-text-break-DENY", _relay_case(
     "94", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user(), {"text": BREAK_TEXT}],
-    "most recent adversary verdict on record is break", absent="as a subagent result"))
+    "most recent adversary verdict on record is break", absent="as a tool result"))
 
 # The verdict is read from origin.body, never from the message text: a hold only in the message
 # (a body without one) is not a relay.
 case("95-hold-only-in-message-text-is-not-a-relay-DENY", _relay_case(
     "95", [{"text": SPEC_TEXT}] + ADV_BG + [_handback_user(body="[Subagent hand-back] report, no verdict",
                                                           content="Another Claude session\n" + HOLD_TEXT)],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 
 # Live transcripts (2026-10-05): `git merge-base` (read-only) was denied as a merge, because the
@@ -877,13 +878,13 @@ case("109-checkpoint-in-another-root-DENY", _fq(
     needle="not as your own text: " + HOLD_LINE))
 
 case("110-deny-text-names-the-checkpoint-to-write-DENY", _fq(
-    "110", HB_REL, False, needle="use the Write or Edit tool to put that exact line, on a line of its "
-                                 "own, in " + CKPT))
+    "110", HB_REL, False, needle="Use the Edit tool to append that exact line, on a line of its "
+                                 "own, to " + CKPT))
 
 case("111-hold-quoted-only-in-thinking-DENY", _relay_case(
     "111", [{"text": SPEC_TEXT}, {"raw": {"type": "assistant", "message": {"content": [
         {"type": "thinking", "thinking": "cito el veredicto: " + HOLD_TEXT}]}}}],
-    "Spawn goal-adversary", absent="as a subagent result"))
+    "Spawn goal-adversary", absent="as a tool result"))
 
 
 # 112: a later hand-back HOLD after the file quote does not undo it (as with a visible-text quote).
@@ -1129,6 +1130,103 @@ case("166-spent-waiver-rewritten-with-other-spacing-DENY", _fw(
                         {"write": (CKPT, FW_LINE.replace("WAIVED reason", "WAIVED  reason")
                                    .replace(" this merge", "  this merge")), "write_id": "w166b"}],
     False, command="gh pr merge 13"))
+
+
+# 167-178 (0.59.0, p-959ceedcca + p-840fef19be): the external backend's hold quoted with an Edit to
+# the checkpoint, and the deny text naming the third cause. hooks/external-adversary.sh prints its
+# closing notice (EXT_SIG) on stderr after a well-formed partner verdict; the report reaches the
+# session in the tool_result of the Bash that ran it or of a later Bash/Read of its redirected output.
+EXT_SIG = ("external-adversary: a verdict-shaped block was just produced above -- whether it reflects "
+           "genuine adversarial work is still yours to judge.")
+EXT_OUT = "[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- probe: evidence\n" + HOLD_LINE + "\n" + EXT_SIG + "\n"
+EXT_UNV = ("UNVERIFIED (goalspec external adversary): the partner's verdict above came with no "
+           "evidence of work. It is NOT a pass.")
+
+
+def _tool_result(tid, text, is_error=False, read=False):
+    """A Bash (or Read) call and its tool_result carrying `text`. Read numbers each line."""
+    if read:
+        text = "\n".join("%6d→%s" % (i + 1, l) for i, l in enumerate(text.split("\n")))
+        use = {"type": "tool_use", "name": "Read", "id": tid, "input": {"file_path": "/tmp/s/ext1.out"}}
+    else:
+        use = {"type": "tool_use", "name": "Bash", "id": tid, "input": {"command": "tail -40 /tmp/s/ext1.out"}}
+    return [{"raw": {"type": "assistant", "message": {"content": [use]}}},
+            {"user": [{"type": "tool_result", "tool_use_id": tid, "content": text, "is_error": is_error}]}]
+
+
+EXT_REL = [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT)
+
+case("167-external-hold-in-bash-output-quoted-by-edit-ALLOW", _fq(
+    "167", EXT_REL + [_edit(CKPT, "verdict:\n" + HOLD_LINE, "e167")], True))
+
+case("168-external-hold-read-with-line-numbers-quoted-by-edit-ALLOW", _fq(
+    "168", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT, read=True)
+    + [_edit(CKPT, HOLD_LINE, "e168")], True))
+
+# The hook marked the hold UNVERIFIED: no relayed verdict, so the Edit has nothing to quote.
+case("169-external-unverified-hold-quoted-by-edit-DENY", _fq(
+    "169", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT + EXT_UNV + "\n")
+    + [_edit(CKPT, HOLD_LINE, "e169")], False, needle="Spawn goal-adversary"))
+
+# A cat/grep of the hook's source carries the notice inside `echo "...`, never at a line start.
+case("170-hook-source-in-output-is-not-a-report-DENY", _fq(
+    "170", [{"text": SPEC_TEXT}] + _tool_result("x1", HOLD_LINE + "\necho \"" + EXT_SIG + "\" >&2\n")
+    + [_edit(CKPT, HOLD_LINE, "e170")], False, needle="Spawn goal-adversary"))
+
+# A later external break: the quoted hold is no longer the latest verdict.
+EXT_BREAK = "[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- probe: a defect\n" + BREAK_TEXT + "\n" + EXT_SIG + "\n"
+case("171-external-hold-then-external-break-edit-hold-DENY", _fq(
+    "171", EXT_REL + _tool_result("x2", EXT_BREAK) + [_edit(CKPT, HOLD_LINE, "e171")], False))
+
+# Unquoted external hold: the deny names its exact line and the Edit way out.
+case("172-external-hold-unquoted-names-line-DENY", _fq(
+    "172", EXT_REL, False, needle="the external reviewer's output), not as your own text: " + HOLD_LINE))
+
+# A hold quoted in text, then an external break nobody quoted: the latest verdict is the break.
+# Before 0.59.0 the external break was invisible here and the merge passed (declared in --expected).
+case("173-text-hold-then-unquoted-external-break-DENY", _relay_case(
+    "173", [{"text": SPEC_TEXT}, {"text": HOLD_TEXT}] + _tool_result("x2", EXT_BREAK),
+    "most recent adversary verdict on record is break"))
+
+case("174-external-output-in-error-result-DENY", _fq(
+    "174", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT, is_error=True)
+    + [_edit(CKPT, HOLD_LINE, "e174")], False, needle="Spawn goal-adversary"))
+
+# p-840fef19be: the generic deny names the third cause and the Edit way out, and no longer says that
+# the next message is enough.
+case("175-deny-names-mid-turn-cause-and-edit-DENY", _fq(
+    "175", [{"text": SPEC_TEXT}], False,
+    needle="(3) The quote is visible text written in the middle of a turn: text you write in the "
+           "middle of a turn can be stored as a summary without the marker line"))
+
+
+def _no_next_message_claim():
+    LAST_MESSAGE[0] = ""
+    decision, detail = run_hook(make_repo("176", None, None), "gh pr merge",
+                                transcript([{"text": SPEC_TEXT}], "176"), session_id=SID)
+    if decision != "deny":
+        return decision, "expected a deny"
+    for bad in ("the next message is enough", "turn does not need to end"):
+        if bad in LAST_REASON[0]:
+            return "wrong-text", "still says: " + bad
+    if "Use the Edit tool" not in LAST_REASON[0] and "use the Edit" not in LAST_REASON[0]:
+        return "wrong-text", "no Edit way out"
+    return decision, detail
+
+
+case("176-deny-drops-next-message-claim-DENY", _no_next_message_claim)
+
+# A foreground goal-adversary result (not a hand-back) quoted by Edit: covered since 0.51.0, pinned
+# here because SKILL.md now names it.
+case("177-foreground-adversary-hold-quoted-by-edit-ALLOW", _fq(
+    "177", [{"text": SPEC_TEXT}] + _spawn(ADV, "tfg1", report="- probe: evidence\n" + HOLD_TEXT)
+    + [_edit(CKPT, HOLD_LINE, "e177")], True))
+
+# The no-spec deny (entered goalspec, wrote no spec) names the checkpoint Write for the spec.
+case("178-no-spec-deny-names-checkpoint-write-DENY", lambda: _deny_reason_has(
+    "178", "write the spec with the Write tool into " + CKPT,
+    lambda: run_hook(make_repo("178", None, None), "git merge feature/x",
+                     transcript([{"skill": "goalspec:goalspec"}], "178"), session_id=SID)))
 
 
 def run_hook_raw(payload):

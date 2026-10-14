@@ -132,10 +132,14 @@ breaks; a non-terminal claim with no streak closes on the subagent alone.
 ## 5. Report the verdict — verbatim, then judge it
 
 - Quote the `[ADVERSARY-MODEL: …]` and `[ADVERSARY-VERDICT: …]` lines **verbatim** in your own
-  next turn — each on its own line, in plain text, nothing before it and nothing after the
+  visible text — each on its own line, in plain text, nothing before it and nothing after the
   closing `]` on that line (no bold, no code-span, no trailing citation). "Your own turn" means a
   visible text block you emit — a quote you only write or plan in your thinking does not count:
-  thinking is not read, even when your screen shows it like a message.
+  thinking is not read, even when your screen shows it like a message. And text you write in the
+  middle of a turn can be stored as a summary without the marker line: the text that ends your
+  turn and a `Write` or `Edit` to your `.goalspec` checkpoint are stored as written. Before a push,
+  merge or deploy, also append the verdict line to the checkpoint with `Edit` — the terminal-push
+  precheck accepts it there.
 - A **bare `hold`** — no evidence bullets above it — is **UNVERIFIED, not a pass**: re-run it or
   route to the other backend, and never cite a bare hold as your verification. **Read it
   per-angle too**: if the payload listed hypotheses to try, one that appears in *zero* bullets

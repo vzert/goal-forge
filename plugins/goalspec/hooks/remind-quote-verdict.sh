@@ -165,7 +165,7 @@ if verdicts:
         "whether it reflects genuine adversarial work is still yours to judge (a bare verdict with "
         "no evidence above it is UNVERIFIED, not a pass; treat it the same way regardless of this "
         "nudge). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and "
-        "[ADVERSARY-VERDICT: ...] lines VERBATIM in your very next assistant message (not a "
+        "[ADVERSARY-VERDICT: ...] lines VERBATIM in your own visible text (not a "
         "paraphrase) -- each on its OWN line, in plain text, nothing before it and nothing after "
         "the closing bracket on that same line: no bold or code-span wrapping, no trailing "
         "citation. It must be a visible text block you emit -- a quote you only write or plan in "
@@ -174,7 +174,11 @@ if verdicts:
         "decorating it while quoting degrades a genuine model=different to model=same, silently. "
         "The Stop gate cannot see this tool result directly -- it only reads your own "
         "assistant-authored text, this run and all prior turns -- so it stays invisible until you "
-        "do this, and it is far easier to forget once you move on to other work."
+        "do this, and it is far easier to forget once you move on to other work. Two places are "
+        "stored as written: the text that ends your turn, and a Write or Edit to your .goalspec "
+        "checkpoint; text you write in the middle of a turn can be stored as a summary without the marker line. So before any push, merge "
+        "or deploy, also append the verdict line to your checkpoint with the Edit tool -- the "
+        "terminal-push precheck accepts it there."
     )
 elif models:
     msg = (
@@ -194,11 +198,13 @@ else:
         "because the subagent runs in the background, so this result is a handle and the verdict "
         "arrives later. Two things follow. (1) The Stop gate reads ONLY your own assistant-authored "
         "text, never a tool result: when the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] "
-        "lines come back, quote them VERBATIM in your own next message, each alone on its own "
+        "lines come back, quote them VERBATIM in your own visible text, each alone on its own "
         "line and unformatted (no bold, no trailing text after the marker), in a visible text block "
         "you emit -- a quote you only write or plan in your thinking does not count: thinking is not "
         "read, even when your screen shows it like a message. Otherwise they do not exist "
-        "as far as the gate is concerned. (2) Do not declare a completion-review over a verdict "
+        "as far as the gate is concerned. Two places are stored as written: the text that ends "
+        "your turn, and a Write or Edit to your .goalspec checkpoint; text you write in the middle of a turn can be stored as a summary without the marker line -- before a push, merge or deploy, append "
+        "the verdict line to your checkpoint with the Edit tool too. (2) Do not declare a completion-review over a verdict "
         "you have not actually read yet -- a spawn is not a verification."
     )
 

@@ -525,6 +525,21 @@ def main():
     check("visible:skill-names-both-causes",
           "before blaming the log" in skill and "reaches the transcript only after its tool call runs" in skill)
     check("visible:adversary-skill", VIS in adv_skill)
+    # 0.59.0 (p-840fef19be): the third cause, measured 2026-10-14 -- text written in the middle of a
+    # turn can be stored as a narration summary without the marker -- and the two places that are
+    # stored as written. Every verdict carrier names it; none may still say the next message suffices.
+    MID = "text you write in the middle of a turn can be stored as a summary without the marker line"
+    MID_SPEC = "can be stored as a summary without the ## Goal-spec heading"
+    check("visible:skill-names-mid-turn-cause", MID in " ".join(skill.split())
+          and "the text that ends your turn" in skill)
+    check("visible:adversary-skill-names-mid-turn-cause", MID in adv_skill)
+    _raws = [read(os.path.join(P, *f.split("/"))) for f in (
+        "skills/goalspec/SKILL.md", "skills/adversary/SKILL.md", "hooks/lib/terminal_actions.py",
+        "hooks/precheck-terminal-push.sh", "hooks/remind-quote-verdict.sh",
+        "hooks/remind-handback-verdict.sh", "hooks/external-adversary.sh")]
+    check("visible:no-carrier-says-next-message-is-enough",
+          all(absent("the next message is enough", " ".join(t.split())) for t in _raws)
+          and all(absent("turn does not need to end", " ".join(t.split())) for t in _raws))
 
     # remind-quote-verdict.sh, both message branches, driven.
     out, _ = emit("remind-quote-verdict.sh", {"tool_name": "Task",
@@ -532,9 +547,11 @@ def main():
                   "tool_response": {"content": [{"type": "text", "text":
                       "[ADVERSARY-MODEL: X / x]\n- probe: evidence\n" + hold}]}})
     check("visible:nudge-verdict-branch-emits", "just came back" in out and VIS in out)
+    check("visible:nudge-verdict-branch-names-mid-turn-cause", MID in out)
     out, _ = emit("remind-quote-verdict.sh", {"tool_name": "Task",
                   "tool_input": {"subagent_type": "goal-adversary"}, "tool_response": {}})
     check("visible:nudge-launched-branch-emits", "no adversary output" in out and VIS in out)
+    check("visible:nudge-launched-branch-names-mid-turn-cause", MID in out)
 
     # external-adversary.sh stderr reminder, driven through a stub partner with a real verdict.
     xrepo = os.path.join(vt, "xrepo"); os.makedirs(xrepo)
@@ -549,6 +566,7 @@ def main():
                        cwd=xrepo, env=external_env(GOAL_ADVERSARY_CMD="cat " + fixture))
     check("visible:external-stderr-emits", "verdict-shaped block was just produced" in r.stderr
           and VIS in r.stderr)
+    check("visible:external-stderr-names-mid-turn-cause", MID in r.stderr)
 
     # precheck-terminal-push.sh deny, driven: spec on record, no verdict, non-diffable merge.
     out, _ = emit("precheck-terminal-push.sh", {"tool_name": "Bash",
@@ -556,6 +574,8 @@ def main():
                   "transcript_path": jsonl("pre", [spec])})
     check("visible:precheck-deny-emits", '"deny"' in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)
+    check("visible:precheck-deny-names-mid-turn-cause",
+          "(3) The quote is visible text written in the middle of a turn: " + MID in out)
     # The 0.46.7 branch: a hold that arrived as a subagent result. Its text lives in the shared lib,
     # split across string literals, which a grep of the phrase never saw (0.46.9).
     import importlib.util
@@ -564,6 +584,11 @@ def main():
     ta_mod = importlib.util.module_from_spec(spec_ta)
     spec_ta.loader.exec_module(ta_mod)
     check("visible:precheck-relayed-hold-note", VIS in getattr(ta_mod, "RELAYED_HOLD_NOTE", ""))
+    check("visible:precheck-relayed-hold-note-names-mid-turn-cause",
+          MID in getattr(ta_mod, "RELAYED_HOLD_NOTE", ""))
+    check("visible:spec-brake-names-mid-turn-cause", MID_SPEC in getattr(ta_mod, "SPEC_BRAKE_REASON", ""))
+    check("visible:spec-entry-nudge-names-mid-turn-cause",
+          MID_SPEC in getattr(ta_mod, "SPEC_ON_ENTRY_NUDGE", ""))
 
     # remind-handback-verdict.sh (0.46.8), driven: record on SubagentStop, then remind on
     # UserPromptSubmit. It carries the visible-text rule AND the role-fixity audience line, since an
@@ -582,6 +607,7 @@ def main():
                   args=["remind"])
     check("visible:handback-remind-emits", hold in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)
+    check("visible:handback-remind-names-mid-turn-cause", MID in out)
     check("role:handback-remind-audience-line", "ADDRESSED TO THE EXECUTOR OF THIS SESSION" in out
           and "you verify, you do not repair" in out)
 
@@ -759,7 +785,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 216  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 227  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",

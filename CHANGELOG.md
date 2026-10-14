@@ -8,6 +8,48 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-10-14
+
+### Los avisos dicen la causa medida, y el hold del revisor externo puede ir al checkpoint
+Hasta 0.58.0, la negación del precheck daba dos causas para una cita que no ve: la cita está solo en
+el thinking, o va en el mismo mensaje que el comando. Y aconsejaba: "the next message is enough, the
+turn does not need to end". Ese consejo es falso. Hay una tercera causa, medida el 2026-10-14 (en la
+investigación del proyecto): el texto que el agente escribe a mitad de turno, en una respuesta que
+luego llama a una herramienta, a veces queda en el transcript como un resumen sin la línea del
+marcador. Todo texto escrito a mitad de turno va seguido de una llamada, así que "el siguiente
+mensaje" lleva justo a esa causa. Solo dos sitios se guardan tal cual: el texto que cierra el turno
+y una llamada a herramienta. Caso real: en 6fd1cbfa (claude-vzert) el precheck negó tres veces el
+mismo merge. Otro caso: en b30f155f (agente-coordinador, 2026-10-05) el agente escribió que volvía a
+citar el hold. La línea 1322 del transcript guarda solo ese resumen, y el push se negó. Hasta hoy, la
+documentación atribuía ese caso a una cita escrita solo en el thinking.
+
+- `hooks/precheck-terminal-push.sh`: la negación nombra la tercera causa. Da como salida un Edit
+  que añade la línea del veredicto al checkpoint de la sesión, o el texto que cierra el turno. La
+  negación sin spec pide escribir el spec con Write en el checkpoint.
+- `hooks/lib/terminal_actions.py`: el precheck lee también la salida del revisor externo
+  (`external-adversary.sh`). Cuenta cualquier resultado de herramienta, Bash o Read, donde una línea
+  empiece con el aviso final del hook (`external-adversary: a verdict-shaped block was just produced
+  above`). El veredicto es la última línea de veredicto antes de ese aviso. Así, su hold puede
+  citarse con Edit en el checkpoint, como el del subagente desde 0.51.0. No cuenta un hold que el
+  hook marcó UNVERIFIED, ni el aviso dentro del código fuente del hook, ni un resultado con error.
+  También cambia una decisión: un break del revisor externo que nadie citó, llegado después de un
+  hold citado en texto, ahora niega el comando. Antes el precheck no lo veía y lo dejaba pasar.
+- Los textos que le dan al agente una salida dicen la tercera causa y las dos salidas fiables: la
+  nota del hold recibido, los dos recordatorios de cita (`remind-quote-verdict.sh`,
+  `remind-handback-verdict.sh`), el aviso de `external-adversary.sh`, el aviso de entrada al loop y
+  el freno del spec. Ya no piden la cita "en tu siguiente mensaje".
+- `skills/goalspec/SKILL.md` y `skills/adversary/SKILL.md`: la tercera causa, las dos salidas, y la
+  vía del checkpoint para el hold externo. La frase sobre las diez negaciones de merge ya no dice
+  que la cita estaba solo en el thinking.
+- Los mensajes del gate de Stop no cambian: el cierre es el texto que cierra el turno.
+- `test/terminal-precheck-branches.py`: casos 167-178. `--compare` contra el hook de 0.58.0, en los
+  dos modos: solo cambian 175, 176 y 178. Con el hook de 0.58.0 fijo, cambiar el módulo solo cambia
+  70, 110, 167, 168, 172 y 173. Cinco mutaciones, una por guarda nueva, y cada una pone rojo su caso.
+- `test/claim-surface-carriers.py`: 11 checks nuevos, 227 en total. Cada carrier de la regla de
+  texto visible nombra la tercera causa. Ninguno dice ya que el siguiente mensaje basta. Las dos
+  suites del spec (`spec-brake-branches.py` y `spec-on-entry-branches.py`) exigen la cláusula nueva,
+  con una mutación más cada una.
+
 ## [0.58.0] - 2026-10-14
 
 ### Antes de cada ronda, el ejecutor pone al día el goal-spec vivo y la tabla de cobertura

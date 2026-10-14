@@ -619,6 +619,39 @@ SPAWN_TOOLS = ("Agent", "Task")
 RELAY_FROM_RE = re.compile(r'^\s*<agent-message\s+from="([^"]+)"|^\s*<task-notification>\s*<task-id>([^<]+)</task-id>')
 AGENT_ID_RE = re.compile(r"agentId:\s*([A-Za-z0-9_-]+)")
 
+# 0.59.0 (p-959ceedcca) — the external backend's report, read as a relayed verdict so its hold can be
+# quoted with a Write/Edit to the checkpoint (file_quoted_hold), as a subagent's can since 0.51.0.
+# hooks/external-adversary.sh prints EXT_SIGNATURE_RE's line on stderr after a well-formed partner
+# verdict, hold or break, and on no synthetic-hold path; every path that marks a hold UNVERIFIED ends
+# in EXT_UNVERIFIED_RE's line. The report reaches the session in a tool_result: the Bash call that ran
+# the hook (8 of 263 runs in the maintainer's transcripts, 2026-10-14) or, far more often, a later
+# Bash or Read of the file its output was redirected to (232 of 263 redirected it). So no command is
+# parsed: any tool_result counts when one of its lines BEGINS with the signature. The hook's source
+# carries the same words inside `echo "...`, so a cat, sed or grep -n of the source does not count.
+# Read prefixes each line with its number, stripped here. Threat model: an honest executor copying a
+# stale or invented hold; a tool_result fabricated to carry the signature is not in it.
+EXT_SIGNATURE_RE = re.compile(r"^external-adversary: a verdict-shaped block was just produced above", re.M)
+EXT_UNVERIFIED_RE = re.compile(r"^UNVERIFIED \(goalspec external adversary\):", re.M)
+READ_LINE_PREFIX_RE = re.compile(r"^[ \t]*\d+(?:\t|→)", re.M)
+
+
+def _external_verdict_item(text, ts):
+    """-> a "relayed_verdict" item for the last verdict line ABOVE the external hook's signature in a
+    tool_result, or None (no signature, an UNVERIFIED hold, no verdict above it)."""
+    text = READ_LINE_PREFIX_RE.sub("", text)
+    sig = None
+    for m in EXT_SIGNATURE_RE.finditer(text):
+        sig = m
+    if sig is None:
+        return None
+    before = text[:sig.start()]
+    after = text[sig.start():]
+    rv = _relayed_verdict_item(before, ts)
+    if rv is None or (rv["verdict"] == "hold" and EXT_UNVERIFIED_RE.search(after)):
+        return None
+    rv["source"] = "external"
+    return rv
+
 
 def is_adversary_type(name):
     """Exact agent-type match: `goal-adversary`, or it namespaced by a plugin (`goalspec:goal-adversary`).
@@ -722,6 +755,12 @@ def _collect_event(ev, items, state=None):
                 # carries (external adversary round on the Write quote, which this now gates).
                 failed = blk.get("is_error") is True
                 rv = None if (is_async or failed) else _relayed_verdict_item(rtext, ev.get("timestamp"))
+                if rv:
+                    items.append(rv)
+            elif isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is not True:
+                # 0.59.0: the external backend's report, wherever the executor read it (see
+                # EXT_SIGNATURE_RE). An errored result delivered nothing.
+                rv = _external_verdict_item(_tool_result_text(blk.get("content")), ev.get("timestamp"))
                 if rv:
                     items.append(rv)
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
@@ -974,12 +1013,18 @@ INTERVIEW_HANDOFF_NUDGE = (
 # 0.48.0 — emitted by hooks/nudge-spec-on-entry.sh right after the goalspec loop is loaded through
 # the Skill tool in a session with no spec yet. Measured: 25 of 275 real sessions loaded the loop
 # and never posted a visible spec; one wrote it only in its thinking, another went straight to tools.
+# 0.59.0 offers the checkpoint Write first: text in the middle of a turn can be stored as a narration
+# summary without the heading (memory research 2026-10-14), and a tool call is stored as written.
 SPEC_ON_ENTRY_NUDGE = (
     "goalspec: the loop is loaded and this session has no ## Goal-spec yet. Before your next tool "
-    "call, post the ## Goal-spec as a visible text block (Asked line, then the six answers). A spec "
-    "you only plan in your thinking does not count: thinking is not read, even when your screen "
-    "shows it like a message. A brief or ticket that already lists criteria is input to the spec, "
-    "not the spec. If you ask clarifying questions first, write the spec right after the answers."
+    "call, write the ## Goal-spec (Asked line, then the six answers) with the Write tool into this "
+    "session's .goalspec checkpoint (the path announced at session start; it is shown to the human "
+    "as you write it), or post it as visible text -- but text you write in the middle of a turn can "
+    "be stored as a summary without the ## Goal-spec heading, and a hook then does not see it; a "
+    "tool call is stored as written. A spec you only plan in your thinking does not count: thinking "
+    "is not read, even when your screen shows it like a message. A brief or ticket that already "
+    "lists criteria is input to the spec, not the spec. If you ask clarifying questions first, "
+    "write the spec right after the answers."
 )
 
 
@@ -989,7 +1034,9 @@ SPEC_ON_ENTRY_NUDGE = (
 # and in 1 of 6 on 0.48.0 — the nudge above fired in all 6 and changed nothing at entry. Two of
 # those agents then wrote "I already posted the Goal-spec at the start; the hook does not see it":
 # false, no visible text held one (where they wrote it cannot be seen: thinking is redacted in
-# those transcripts). Without a shell the same agents posted it 6 of 6.
+# those transcripts). Without a shell the same agents posted it 6 of 6. Re-read 2026-10-14: in those
+# runs some specs were stored as a narration summary of text the agent did write in the middle of a
+# turn, so "I already posted it" was not always a false belief (0.59.0 says so in the reason).
 # A reminder cannot fix an agent that believes it already complied; holding the work can.
 SPEC_BRAKE_REASON = (
     "goalspec: the loop is loaded and this session has no ## Goal-spec yet, so this tool call is "
@@ -997,7 +1044,9 @@ SPEC_BRAKE_REASON = (
     "message reaches the transcript only after its tool calls run): (1) use the Write tool to "
     "create {path} with the ## Goal-spec in it (Asked line, then the six answers) -- it is shown "
     "to the human as soon as you write it; or (2) post the ## Goal-spec as a text block in your "
-    "reply. A spec you wrote or planned only in your thinking does not count, even if you believe "
+    "reply -- less sure: text you write in the middle of a turn can be stored as a summary without "
+    "the ## Goal-spec heading, while a tool call is stored as written. A spec you wrote or planned "
+    "only in your thinking does not count, even if you believe "
     "you already posted it: this hook reads your visible text and your Write calls, and neither "
     "has a spec. Read, Grep and Glob are not held -- use them if you need to ground the spec first."
 )
@@ -1231,8 +1280,10 @@ def relayed_hold_line(items):
     It never makes `verdict` a hold: per SKILL.md the executor quotes the verdict in its own text,
     where the user sees it. Its one use is the deny text, which then gives the exact line to quote.
     Field case (agente-coordinador b30f155f, 2026-10-05): two holds arrived as background hand-backs
-    while an AskUserQuestion was open, the executor quoted them only in its thinking, four pushes
-    were denied, and it told the user the transcript was dropping its quotes."""
+    while an AskUserQuestion was open, the executor believed it had quoted them, four pushes were
+    denied, and it told the user the transcript was dropping its quotes. Re-read 2026-10-14: at L1322
+    the transcript holds a narration summary ("lo cito de nuevo") where the agent wrote the quote in
+    the middle of a turn -- not thinking, as this docstring said until 0.58."""
     last_relay = last_text = None
     for i, it in enumerate(items):
         if it["kind"] == "relayed_verdict":
@@ -1258,7 +1309,8 @@ def file_quoted_hold(items, session_id=None, cwd=None):
     later changes (operative_verdict does neither).
 
     Field case (2026-10-08, VPS session f8f10a20, 0.50.0): four holds arrived as hand-backs, the
-    executor wrote the quote only in its thinking, the precheck denied ten `gh pr merge` calls with a
+    executor believed it had quoted them (in thinking, or in mid-turn text stored as a narration
+    summary -- research 2026-10-14), the precheck denied ten `gh pr merge` calls with a
     deny text that already said thinking does not count, and the executor concluded the tool was
     deleting its messages; the PRs were merged by hand, outside the gate. Precedent for the way out:
     the spec brake (0.49.0 v3) stopped trapping agents that believed they had posted a spec once a
@@ -1316,7 +1368,8 @@ def checkpoint_name_for(session_id):
 # to a file, so the hook puts the line in front of them.
 FILE_QUOTE_ALLOW = (
     "goalspec terminal-push precheck: proceeding on a goal-adversary hold that reached this session "
-    "as a subagent result and that the agent quoted into its checkpoint ({path}): {line}"
+    "as a tool result (a subagent's report or the external reviewer's output) and that the agent "
+    "quoted into its checkpoint ({path}): {line}"
 )
 
 # 0.57.0 — what the human sees when the precheck passes on a waiver written into the checkpoint
@@ -1343,16 +1396,16 @@ WAIVER_DENY_NOTE = (
 # apostrophe reason as INTERVIEW_HANDOFF_NUDGE. 0.51.0 adds way (1): the field executor read the
 # visible-text way ten times and never took it.
 RELAYED_HOLD_NOTE = (
-    "A goal-adversary hold DID reach this session, but as a subagent result, not as your own "
-    "text: {line} -- a subagent result is not a quote. Thinking does not count either: thinking is "
-    "not read, even when your screen shows it like a message. Your own visible text has no hold "
-    "after it. Do ONE of these, then run this command again in a LATER message: (1) use the Write or "
-    "Edit tool to put that exact line, on a line of its own, in {path}, after any older verdict "
-    "line in it -- a tool call is "
-    "on record even when a quote you believe you wrote is not; or (2) write that exact line as visible "
-    "text in one message. The next message is enough, the turn does not need to end. You do not need "
-    "a new adversary round, unless the change moved after that hold. The transcript is not losing "
-    "your text."
+    "A goal-adversary hold DID reach this session, but as a tool result (a subagent's report or "
+    "the external reviewer's output), not as your own text: {line} -- a tool result is not a quote. "
+    "Thinking does not count either: thinking is not read, even when your screen shows it like a "
+    "message. Your own visible text has no hold after it. Use the Edit tool to append that exact "
+    "line, on a line of its own, to {path} (after any older verdict line in it; a Write replaces "
+    "the whole file), then run this command again in a LATER message: a tool call is stored as "
+    "written, while text you write in the middle of a turn can be stored as a summary without the "
+    "marker line. Quoting it as visible text works for this hook only in the text that ends your "
+    "turn, and then the command waits for the next prompt. You do not need a new adversary round, "
+    "unless the change moved after that hold."
 )
 
 

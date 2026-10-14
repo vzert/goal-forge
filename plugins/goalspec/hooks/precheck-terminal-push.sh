@@ -180,21 +180,33 @@ else:
                  "goal-adversary against it on the actual diff/outcome, get a hold, then retry this "
                  "command. If you wrote the ## Goal-spec as visible text in the SAME message as this "
                  "command, this hook cannot see it yet -- a message reaches the transcript only "
-                 "after its tool call runs. It counts from the next message on: leave it where it "
-                 "is and run the adversary and this command in later messages.")
+                 "after its tool call runs. And text you write in the middle of a turn can be stored "
+                 "as a summary without the ## Goal-spec heading: write the spec with the Write tool "
+                 "into " + ta.checkpoint_name_for(sid) + ", where a tool call is stored as written, "
+                 "then run the adversary and this command in later messages.")
 
 # The 2026-09-29 research (memory, p-87faebb038) measured two ways an executor believes it quoted a
 # hold that this hook cannot see, and executors that hit either one blamed the transcript. Cause A:
 # the quote lived only in thinking and was never emitted. Cause B: the quote was a visible text block
 # in the SAME message as this command, and a message reaches the transcript only after its tool call
-# runs. Name both, so an executor that did emit visible text is not sent to hunt for cause A.
-seen_note = (" If you believe you already quoted a hold, two causes are measured. (1) The quote is "
+# runs. Cause C (p-840fef19be, 0.59.0; research 2026-10-14): the quote was visible text written in
+# the middle of a turn, in a response that then called a tool, and the transcript stored a narration
+# summary of it without the marker line -- in 6fd1cbfa this hook denied the same merge three times
+# while the agent believed it had written the waiver. Until 0.58 this note told the executor that a
+# quote in its following message was enough, which sends it straight into cause C. The way out
+# that holds is a tool call (file_quoted_hold); text holds only when it ends the turn.
+seen_note = (" If you believe you already quoted a hold, three causes are measured. (1) The quote is "
              "only in your thinking -- a quote you only write or plan in your thinking does not "
              "count: thinking is not read, even when your screen shows it like a message. (2) The quote is a visible "
              "text block in the SAME message as this command -- a message reaches the transcript "
-             "only after its tool call runs, so this hook cannot see it yet. Quote the "
-             "[ADVERSARY-VERDICT: hold ...] line as visible text in one message and run the command "
-             "in a later message; the next message is enough, the turn does not need to end.")
+             "only after its tool call runs, so this hook cannot see it yet. (3) The quote is "
+             "visible text written in the middle of a turn: text you write in the middle of a turn "
+             "can be stored as a summary without the marker line. The way that holds: use the Edit "
+             "tool to append the exact [ADVERSARY-VERDICT: hold ...] line the adversary returned to "
+             + ta.checkpoint_name_for(sid) + " (a Write replaces the whole file) and run the command "
+             "in a later message -- a tool call is stored as written, and this hook accepts that line "
+             "when it is the latest verdict a goal-adversary returned. Visible text holds only as the "
+             "text that ends your turn.")
 
 # p-473ba7b48b (2026-09-30): a heredoc or -c string that only MENTIONS a push/merge is denied too.
 # The body is not stripped on purpose: the same text is data in one command and code in the next

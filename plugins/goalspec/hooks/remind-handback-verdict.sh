@@ -6,7 +6,8 @@
 # background spawn that moment is the LAUNCH, before any verdict exists. When the report arrives
 # later as a hand-back, nothing reminded the executor that the gate and the precheck read only its
 # own text. Field case: agente-coordinador b30f155f (2026-10-05) — two holds arrived while an
-# AskUserQuestion was open, were quoted only in thinking, and four pushes were denied. Across the
+# AskUserQuestion was open, the agent believed it had quoted them (re-read 2026-10-14: L1322 is a
+# narration summary of mid-turn text, not thinking), and four pushes were denied. Across the
 # maintainer's transcripts, 4 of 75 adversary hold/break hand-backs were never quoted; the 3 that
 # arrived while the session was busy were all among them.
 #
@@ -260,12 +261,14 @@ msg = ("ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary r
        "assistant-authored text, so its verdict does not exist for it until you quote it (the "
        "terminal-push precheck also accepts the line written with a Write or Edit at the end of your "
        "own .goalspec checkpoint). If you judge it genuine (a bare verdict with no evidence above it is "
-       "UNVERIFIED, not a pass), quote these lines VERBATIM in your next message, each alone on its own "
+       "UNVERIFIED, not a pass), quote these lines VERBATIM in your visible text, each alone on its own "
        "line and unformatted -- no bold, no code span, nothing after the closing bracket -- in a "
        "visible text block you emit. A quote you only write or plan in your thinking does not count: "
-       "thinking is not read, even when your screen shows it like a message. Do it in a message BEFORE any push, merge or "
-       "deploy command, not in the same one: a message reaches the transcript only after its tool call "
-       "runs. If a question to the user is still open, quote them anyway, now.\n\n" + lines)
+       "thinking is not read, even when your screen shows it like a message. Two places are stored as "
+       "written: the text that ends your turn, and a Write or Edit to your checkpoint; text you write in the middle of a turn can be stored as a summary without the marker line. So BEFORE any push, merge or deploy, "
+       "append the verdict line to your checkpoint with the Edit tool and run the command in a later "
+       "message, not the same one: a message reaches the transcript only after its tool call runs. If "
+       "a question to the user is still open, quote them anyway, now.\n\n" + lines)
 if breaks:
     msg += ("\n\nA break is among them: quote it too -- the gate reads it -- and address its findings "
             "before you close.")

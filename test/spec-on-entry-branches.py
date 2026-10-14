@@ -53,8 +53,10 @@ def run(plugin, payload_text):
         return "unparseable"
     hso = d.get("hookSpecificOutput") or {}
     ctx = hso.get("additionalContext") or ""
-    # The two claims the line exists to make: post it visibly, and thinking does not count.
-    if "## Goal-spec" in ctx and "thinking does not count" in ctx and "visible" in ctx:
+    # The claims the line exists to make: post it visibly, thinking does not count, and (0.59.0)
+    # mid-turn text can be stored as a summary without the heading, so the checkpoint Write is surer.
+    if ("## Goal-spec" in ctx and "thinking does not count" in ctx and "visible" in ctx
+            and "can be stored as a summary without the ## Goal-spec heading" in ctx):
         return "nudge:" + str(hso.get("hookEventName"))
     return "other-output"
 
@@ -108,8 +110,11 @@ MUTATIONS = [
     ("wrong hookEventName", HOOK, '{"hookEventName": "PostToolUse",', '{"hookEventName": "Stop",'),
     ("event filter dropped", HOOK, 'data.get("hook_event_name") != "PostToolUse" or ', ""),
     ("line loses the thinking clause", LIB,
-     '"you only plan in your thinking does not count: thinking is not read, even when your screen "',
-     '"you only plan in your head is fine: even when your screen "'),
+     '"tool call is stored as written. A spec you only plan in your thinking does not count: thinking "',
+     '"tool call is stored as written. A spec you only plan in your head is fine: "'),
+    ("line loses the mid-turn clause", LIB,
+     '"as you write it), or post it as visible text -- but text you write in the middle of a turn can "',
+     '"as you write it), or post it as visible text. "'),
     ("checkpoint spec ignored by the lib", LIB,
      'goal_spec = has_goal_spec(text) or any(it["kind"] == "goal_spec_file" for it in items)',
      "goal_spec = has_goal_spec(text)"),
