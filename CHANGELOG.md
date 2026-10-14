@@ -28,7 +28,7 @@ en la investigación del proyecto. No van aquí porque se clasificaron a mano.
   vía.
 - El cierre con waiver del gate de Stop no cambia: lee texto visible. El texto que cierra el turno
   casi nunca queda como narration. En la Mac, 1 de unas 4.100 respuestas con narration cierra
-  turno; las demás terminan en una llamada a herramienta.
+  turno.
 - Réplica real: sesión 6fd1cbfa (claude-vzert). El waiver quedó como narration y el merge se negó
   tres veces. Con un Write del waiver agregado al transcript truncado, 0.56.0 niega y 0.57.0 deja
   pasar.
