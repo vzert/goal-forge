@@ -837,6 +837,18 @@ def _collect_event(ev, items, state=None):
                         items.append({"kind": "verdict_file", "timestamp": ts, "text": "",
                                       "path": fp.replace("\\", "/"), "id": blk.get("id"),
                                       "verdict": last_v.group(1).lower(), "line": last_v.group(0)})
+                # 0.57.0 (p-83e65d6b6f): a waiver written with a tool call into the checkpoint
+                # (file_waiver_line). An Edit counts only the waiver lines its old_string did not
+                # already hold; a Write that re-writes an old one is filtered there. Never tagged
+                # as text: the Stop gate's has_waiver still reads only visible text.
+                old = ti.get("old_string") if isinstance(ti.get("old_string"), str) else ""
+                for key in ("content", "new_string"):
+                    v = ti.get(key)
+                    for mw in re.finditer(WAIVER_RE, v if isinstance(v, str) else "", re.I):
+                        if mw.group(0) not in old:
+                            items.append({"kind": "waiver_file", "timestamp": ts, "text": "",
+                                          "path": fp.replace("\\", "/"), "id": blk.get("id"),
+                                          "line": mw.group(0)})
 
 
 def read_transcript_items(transcript_path):
@@ -873,7 +885,7 @@ def read_transcript_items(transcript_path):
         return []
     failed = state.get("failed_tool_uses") or set()
     return [it for it in items
-            if not (it["kind"] in ("goal_spec_file", "verdict_file")
+            if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file")
                     and it.get("id") is not None and it["id"] in failed)]
 
 
@@ -1117,6 +1129,14 @@ def waiver_covers_command(items, command, tool_use_id=None):
 
     The Stop gate's waiver (has_waiver, below) is a DIFFERENT contract — close the goal over a
     residual break — and stays transcript-wide. Do not route it through this."""
+    seq, start = _waiver_window(items, command, tool_use_id)
+    return any(it["kind"] == "text" and re.search(WAIVER_RE, it["text"], re.I)
+               for it in seq[start:])
+
+
+def _waiver_window(items, command, tool_use_id):
+    """-> (seq, start): the items with the call being decided dropped, and the index after the last
+    terminal Bash call or user prompt. The one scope both waiver paths share."""
     seq = list(items)
     if tool_use_id:
         seq = [it for it in seq if not (it["kind"] == "bash" and it.get("id") == tool_use_id)]
@@ -1126,8 +1146,48 @@ def waiver_covers_command(items, command, tool_use_id=None):
     for i, it in enumerate(seq):
         if it["kind"] == "user_prompt" or (it["kind"] == "bash" and classify(it["command"]) is not None):
             last_terminal = i
-    return any(it["kind"] == "text" and re.search(WAIVER_RE, it["text"], re.I)
-               for it in seq[last_terminal + 1:])
+    return seq, last_terminal + 1
+
+
+def file_waiver_line(items, command, tool_use_id=None, session_id=None, cwd=None):
+    """0.57.0 (p-83e65d6b6f) — a `[GOAL-CLOSE-WAIVED ...]` written with a Write/Edit to THIS
+    session's checkpoint, in place of visible text. -> the waiver line, or None. Same scope as
+    waiver_covers_command: one terminal command, in the same turn.
+
+    Why: text the agent writes in the middle of a turn (followed by a tool call in the same
+    response) is sometimes stored as a thinking block signed `narration`, a paraphrase without the
+    marker line. Measured 2026-10-14 over Mac and VPS transcripts: 13 of 65 waivers written in the
+    middle of a turn were stored that way, the highest rate of any marker, and 7 precheck denials on
+    the VPS followed one. A tool call's input is stored as written, so a waiver in the checkpoint
+    survives where the text did not (memory/research/2026-10-14-narration-sin-marcador.md).
+
+    Counts only when all hold:
+      * a waiver_file in this session's checkpoint (own_checkpoint_re, under the cwd or the git top
+        level -- as file_quoted_hold), from a Write/Edit whose result was not an error;
+      * written after the last terminal Bash call and the last user prompt (_waiver_window);
+      * its line is new: not in any earlier waiver_file or visible text of the session. A Write
+        re-writes the whole checkpoint, so an old waiver kept in it would otherwise pass again on
+        every later rewrite -- the session-wide waiver 0.45.0 removed. Cost: a new waiver needs a
+        reason worded differently from every earlier one."""
+    seq, start = _waiver_window(items, command, tool_use_id)
+    own = own_checkpoint_re(session_id)
+    roots = None
+    seen = set()
+    for i, it in enumerate(seq):
+        if it["kind"] == "text":
+            seen.update(m.group(0) for m in re.finditer(WAIVER_RE, it["text"], re.I))
+            continue
+        if it["kind"] != "waiver_file":
+            continue
+        line = it["line"]
+        if i >= start and line not in seen:
+            if roots is None:
+                roots = own_checkpoint_roots(cwd)
+            path = it.get("path") or ""
+            if own.search(path) and _in_own_root(path, cwd, roots):
+                return line
+        seen.add(line)
+    return None
 
 
 def operative_verdict(text):
@@ -1250,6 +1310,26 @@ def checkpoint_name_for(session_id):
 FILE_QUOTE_ALLOW = (
     "goalspec terminal-push precheck: proceeding on a goal-adversary hold that reached this session "
     "as a subagent result and that the agent quoted into its checkpoint ({path}): {line}"
+)
+
+# 0.57.0 — what the human sees when the precheck passes on a waiver written into the checkpoint
+# (file_waiver_line): the waiver went to a file, so the hook puts the line in front of them.
+FILE_WAIVER_ALLOW = (
+    "goalspec terminal-push precheck: proceeding on a waiver the agent wrote into its checkpoint "
+    "({path}) in this turn, after the last terminal command: {line} -- it covers this one command "
+    "only; the next terminal command needs an adversary hold or a new waiver."
+)
+
+# 0.57.0 — the waiver sentence of the precheck deny, kept here for the apostrophe reason above.
+# It names the checkpoint route because text written in the middle of a turn can be stored as a
+# narration paraphrase without the marker (file_waiver_line).
+WAIVER_DENY_NOTE = (
+    " The waiver is not the default way past this: use [GOAL-CLOSE-WAIVED reason=<>=20 chars>] "
+    "only when the user explicitly authorized skipping the adversary for this command, and it "
+    "covers this one command in this turn, not the rest of the session. Write that line with the "
+    "Write or Edit tool into {path}, worded differently from any earlier waiver: a tool call is "
+    "stored as written, while text you write in the middle of a turn can be stored as a summary "
+    "without the marker line."
 )
 
 # Agent-facing deny text for an unquoted hand-back hold. Kept here, not in the hook, for the same

@@ -17,7 +17,7 @@ with a crafted PreToolUse payload and reads back its `permissionDecision`.
 Columns: case | decision (`deny` / `allow` / `unparseable`) | detail (first ~60 chars of the deny
 reason, for eyeballing WHICH branch fired, not just that one did).
 """
-import json, os, subprocess, sys, tempfile
+import base64, json, os, subprocess, sys, tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
@@ -1013,6 +1013,106 @@ case("137-mktemp-dir-only-in-an-error-result-DENY", lambda: _tc(
     "137", "rm -rf " + MKT, printed={"bash": "rm -rf " + MKT, "bash_id": "t2",
                                      "result": "PreToolUse:Bash hook error: ... (`rm -rf %s`)" % MKT,
                                      "result_error": True}))
+
+
+# 0.57.0 (p-83e65d6b6f) — the waiver written with a Write/Edit into this session's checkpoint.
+# Measured 2026-10-14: text written in the middle of a turn is sometimes stored as a thinking block
+# signed `narration`, a paraphrase without the marker; 13 of 65 mid-turn waivers were lost that way.
+# The file waiver keeps the text waiver's scope -- one terminal command, in the same turn (150-153) --
+# and counts only in this session's own checkpoint (154, 155, 160), from a Write that did not fail
+# (156), with a real reason (157), and only when the line is new: an old waiver re-written by a later
+# Write, or kept by an Edit, does not pass again (158, 159). A waiver only in narration is nothing
+# (162). Like the text waiver, it does not look at verdicts (163, as case 06 for text).
+FW_LINE = "[GOAL-CLOSE-WAIVED reason=user authorized this merge in writing, adversary skipped]"
+FW_LINE2 = "[GOAL-CLOSE-WAIVED reason=user authorized the second merge too, adversary skipped]"
+
+
+def _fw(name, events, want_allow, needle=None, command="gh pr merge 12", sid=SID, tool_use_id=None):
+    def fn():
+        LAST_MESSAGE[0] = ""
+        decision, detail = run_hook(make_repo(name, None, None), command, transcript(events, name),
+                                    session_id=sid, tool_use_id=tool_use_id)
+        if not want_allow:
+            if decision != "deny":
+                return decision, "expected a deny"
+            if needle and needle not in LAST_REASON[0]:
+                return "wrong-text", LAST_REASON[0][:70]
+            return decision, detail
+        if decision != "allow-with-message":
+            return decision, "expected an allow with the line: " + detail
+        return (decision, FW_LINE[:40]) if FW_LINE in LAST_MESSAGE[0] else ("wrong-text", LAST_MESSAGE[0][:70])
+    return fn
+
+
+def _narration(text):
+    sig = base64.b64encode(b"\x08\x04\x12\x10\n\x11\x08\x12\x18\x028\x01B\tnarration").decode()
+    return {"raw": {"type": "assistant", "message": {"content": [
+        {"type": "thinking", "thinking": text, "signature": sig}]}}}
+
+
+FW_DENIED = [{"text": SPEC_TEXT}, {"bash": "gh pr merge 12", "bash_id": "t1"}]
+
+case("150-waiver-by-write-to-own-checkpoint-ALLOW", _fw(
+    "150", FW_DENIED + [{"write": (CKPT, SPEC_TEXT + "\nWaiver:\n" + FW_LINE + "\n"), "write_id": "w150"}],
+    True))
+
+case("151-waiver-by-edit-to-own-checkpoint-ALLOW", _fw(
+    "151", FW_DENIED + [_edit(CKPT, "Waiver:\n" + FW_LINE, "e151")], True))
+
+case("152-file-waiver-then-merge-ran-then-second-merge-DENY", _fw(
+    "152", FW_DENIED + [{"write": (CKPT, FW_LINE), "write_id": "w152"},
+                        {"bash": "gh pr merge 12", "bash_id": "t2"}], False, command="gh pr merge 13"))
+
+case("153-file-waiver-then-user-prompt-DENY", _fw(
+    "153", FW_DENIED + [{"write": (CKPT, FW_LINE), "write_id": "w153"},
+                        {"user": "ok, sigue con lo otro"}], False))
+
+case("154-waiver-in-another-sessions-checkpoint-DENY", _fw(
+    "154", FW_DENIED + [{"write": (".goalspec/checkpoint-other-session.md", FW_LINE), "write_id": "w154"}],
+    False))
+
+case("155-waiver-in-a-non-checkpoint-file-DENY", _fw(
+    "155", FW_DENIED + [{"write": ("notes/waiver.md", FW_LINE), "write_id": "w155"}], False))
+
+case("156-failed-waiver-write-DENY", _fw(
+    "156", FW_DENIED + [{"write": (CKPT, FW_LINE), "write_id": "w156"},
+                        {"user": [{"type": "tool_result", "tool_use_id": "w156", "is_error": True,
+                                   "content": "Error: denied by hook"}]}], False))
+
+case("157-file-waiver-reason-too-short-DENY", _fw(
+    "157", FW_DENIED + [{"write": (CKPT, "[GOAL-CLOSE-WAIVED reason=ok, go]"), "write_id": "w157"}], False))
+
+# The reopen 0.45.0 closed for text: a later Write that keeps the first waiver in the file.
+case("158-old-waiver-rewritten-after-its-merge-DENY", _fw(
+    "158", FW_DENIED + [{"write": (CKPT, FW_LINE), "write_id": "w158a"},
+                        {"bash": "gh pr merge 12", "bash_id": "t2"},
+                        {"write": (CKPT, SPEC_TEXT + FW_LINE + "\nRounds: merged 12"), "write_id": "w158b"}],
+    False, command="gh pr merge 13"))
+
+case("159-edit-whose-old-string-held-the-waiver-DENY", _fw(
+    "159", FW_DENIED + [{"raw": {"type": "assistant", "message": {"content": [
+        {"type": "tool_use", "name": "Edit", "id": "e159",
+         "input": {"file_path": CKPT, "old_string": FW_LINE, "new_string": FW_LINE + "\nmore"}}]}}}],
+    False))
+
+case("160-waiver-checkpoint-in-another-root-DENY", _fw(
+    "160", FW_DENIED + [{"write": ("/tmp/elsewhere/" + CKPT, FW_LINE), "write_id": "w160"}], False))
+
+case("161-deny-text-names-the-checkpoint-for-the-waiver-DENY", _fw(
+    "161", FW_DENIED, False, needle="Write or Edit tool into " + CKPT))
+
+case("162-waiver-only-in-narration-DENY", _fw(
+    "162", FW_DENIED + [_narration("Registro el waiver: el usuario autorizo este merge.")], False))
+
+case("163-break-then-file-waiver-ALLOW", _fw(
+    "163", FW_DENIED + [{"text": BREAK_TEXT}, {"write": (CKPT, FW_LINE), "write_id": "w163"}], True))
+
+# A second, differently worded waiver after the first one was spent passes the next command.
+case("164-new-file-waiver-for-second-merge-ALLOW", _fw(
+    "164", FW_DENIED + [{"write": (CKPT, FW_LINE2), "write_id": "w164a"},
+                        {"bash": "gh pr merge 12", "bash_id": "t2"},
+                        {"write": (CKPT, FW_LINE2 + "\n" + FW_LINE), "write_id": "w164b"}],
+    True, command="gh pr merge 13"))
 
 
 def run_hook_raw(payload):

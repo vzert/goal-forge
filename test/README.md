@@ -814,7 +814,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-142 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+157 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -864,6 +864,18 @@ history after a break (107); a failed adversary spawn result is no report (113);
 after a hold quoted in text now wins (108); the deny names the checkpoint to write (110); a quote only
 in thinking is still nothing (111). Rows 01-99 are byte-identical to 0.50.0's; against 0.50.0, 100,
 101, 108, 110, 112, 113 and 115 fail.
+
+New in 0.57.0, a `[GOAL-CLOSE-WAIVED ...]` written with a Write/Edit into this session's own
+checkpoint in place of visible text (cases 150-164): it allows, with the line in the allow message,
+by Write or by Edit (150, 151), over a break as the text waiver does (163), and a second waiver
+worded differently passes the next command (164); it keeps the text waiver's scope, one terminal
+command in the same turn (152, 153); it does not count in another session's checkpoint, another file
+or another root (154, 155, 160), from a failed Write (156), with a reason under 20 characters (157),
+or when the line is not new: an old waiver re-written by a later Write, or held by an Edit's
+`old_string` (158, 159); a waiver only in a `narration` thinking block is nothing (162); the deny
+names the checkpoint for the waiver (161). Against 0.56.0, 150, 151, 161, 163 and 164 change; with
+0.56.0's hook fixed, 0.57.0's module gives 0.56.0's module's decisions on every row. Each new check
+in `file_waiver_line` and in the parser was removed in turn and its own case went red.
 
 ```sh
 python3 test/terminal-precheck-branches.py

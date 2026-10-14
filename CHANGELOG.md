@@ -8,6 +8,33 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-10-14
+
+### Un waiver puede escribirse en el checkpoint
+A veces el agente escribe texto y, en la misma respuesta, llama a una herramienta. Ese texto a veces
+queda en el transcript como un bloque `thinking` con firma `narration`: un resumen con otras
+palabras y sin la línea del marcador. Ningún hook lo ve. Medido el 2026-10-14 en Mac y VPS: 44 de
+1.317 marcadores escritos así se perdieron. El waiver es el más afectado: 13 de 65. En el VPS hubo
+7 negaciones del precheck justo después de uno.
+
+- `hooks/lib/terminal_actions.py` (`file_waiver_line`) y `hooks/precheck-terminal-push.sh`: el
+  precheck acepta un `[GOAL-CLOSE-WAIVED reason=…]` escrito con Write o Edit en el checkpoint de
+  esta sesión, como acepta el waiver en texto. Vale para un comando terminal, en el mismo turno.
+  Cuenta solo si la línea es nueva, sin aparecer antes en la sesión: un Write reescribe el
+  checkpoint entero, y sin esa regla un waiver viejo volvería a pasar. Un Edit cuenta solo las
+  líneas que su `old_string` no tenía. El hook muestra la línea al humano. La negación nombra esta
+  vía.
+- El cierre con waiver del gate de Stop no cambia: lee texto visible. El texto que cierra el turno
+  casi nunca queda como narration (1 de 4.080 respuestas con narration en la Mac y 0 de 7.822 en el
+  VPS cierran turno).
+- Réplica real: sesión 6fd1cbfa (claude-vzert). El waiver quedó como narration y el merge se negó
+  tres veces. Con un Write del waiver agregado al transcript truncado, 0.56.0 niega y 0.57.0 deja
+  pasar.
+- `skills/goalspec/SKILL.md`: la vía, junto a la cita de holds en el checkpoint de 0.51.0.
+- `test/terminal-precheck-branches.py`: casos 150-164. `--compare` contra 0.56.0 en los dos modos:
+  solo cambian 150, 151, 161, 163 y 164. Con el hook de 0.56.0 fijo, el módulo nuevo da las mismas
+  decisiones que el viejo. Seis mutaciones, una por guarda nueva, y cada una pone rojo su caso.
+
 ## [0.56.0] - 2026-10-14
 
 ### La sesión toma el nombre de su tarea

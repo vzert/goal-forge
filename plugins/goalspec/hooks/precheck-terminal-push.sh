@@ -135,6 +135,13 @@ if ta.waiver_covers_command(sig.get("items") or [], command, data.get("tool_use_
           "in this turn after the last terminal command. It covers this one command only; the next "
           "terminal command needs an adversary hold or a new waiver.")
 
+# 0.57.0 (p-83e65d6b6f): the same waiver, written with a Write/Edit into this session checkpoint
+# (terminal_actions.file_waiver_line has the measurement and the rule). The human sees the line here.
+sid = data.get("session_id")
+fw = ta.file_waiver_line(sig.get("items") or [], command, data.get("tool_use_id"), sid, cwd)
+if fw:
+    allow(ta.FILE_WAIVER_ALLOW.format(line=fw, path=ta.checkpoint_name_for(sid)))
+
 verdict = sig["verdict"]
 items = sig.get("items") or []
 # 0.51.0: a break that came back as an adversary report after the quoted hold is the most recent
@@ -227,10 +234,8 @@ reason = (
     command.strip()[:200] + "`) in a goalspec-tracked session, and no operative "
     "[ADVERSARY-VERDICT: hold ...] is on record for it yet" + verdict_note + ". Per SKILL.md, a "
     "terminal/irreversible action must be reviewed by the goal-adversary BEFORE it runs, not after "
-    "the whole task closes. " + next_step + seen_note + temp_note + text_note + " The waiver is not the default way past this: use "
-    "[GOAL-CLOSE-WAIVED reason=<>=20 chars>] only when the user explicitly authorized skipping the "
-    "adversary for this command, and it covers this one command in this turn, not the rest of the "
-    "session."
+    "the whole task closes. " + next_step + seen_note + temp_note + text_note +
+    ta.WAIVER_DENY_NOTE.format(path=ta.checkpoint_name_for(sid))
 )
 deny(reason)
 ' 2>/dev/null)
