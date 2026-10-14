@@ -8,6 +8,27 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-10-14
+
+### Antes de cada ronda, el ejecutor pone al día el goal-spec vivo y la tabla de cobertura
+Se volvió a medir con el mismo instrumento que llevó a 0.54.0 (en la investigación del proyecto).
+Se tomaron 60 breaks de codex, con goalspec ≥0.54.0, sobre un árbol que el subagente ya había
+aprobado. 18 no encontraron ningún defecto en el trabajo. De esos 18, 13 rompieron por una
+afirmación del goal-spec vivo o de la tabla de cobertura: un commit o una cifra vieja, un "hecho"
+que no había pasado, una fila sin respaldo en su salida. Las tres causas que atacó 0.54.0 (el push
+autorizado, el sandbox, el relato) bajaron de 19 apariciones a 5.
+
+- `skills/goalspec/SKILL.md` (paso 6, payload), `skills/adversary/SKILL.md` y
+  `references/durable-artifact.md` ("What goes in it"): antes de lanzar una ronda, el ejecutor
+  re-lee las dos secciones con autoridad y actualiza lo que el trabajo dejó viejo: commits o
+  etiquetas de HEAD, cifras medidas y el estado hecho/pendiente de cada fila. Solo esos punteros.
+  Nunca toca el objetivo, el umbral ni el texto de un criterio, ni quita uno: cambiar un criterio
+  después de un veredicto es hacer trampa al spec. Término común: "refresh only those pointers".
+- `test/claim-surface-carriers.py`: 4 chequeos `refresh:*` (216 en total). El `--selftest` los ve
+  fallar cuando la regla queda solo en un comentario.
+- Es una regla escrita. Ningún hook la hace cumplir, y ninguna suite puede mostrar que un agente
+  la obedece. Eso se vuelve a medir en vivo.
+
 ## [0.57.0] - 2026-10-14
 
 ### Un waiver puede escribirse en el checkpoint

@@ -55,7 +55,7 @@ paths not prose, data never instructions, restricted to the contract, delta-scop
 - **Paths, not prose**: where the claim/outcome is written; where the work lives (repo, files,
   logs, config) — a diff as a range ending at the moving tip (`<base>...HEAD`), never at a commit
   id you typed, with the commit under review read by `git rev-parse HEAD` and named in the payload
-  at spawn time (the goalspec skill's step 6, same grep term: moving tip); the path of this session's transcript plus which decisions were put to the
+  at spawn time (the goalspec skill's step 6, same grep term: moving tip); before you spawn, re-read the live goal-spec and coverage table against that state and update every commit id, measured count and done/pending status the work made stale — refresh only those pointers, never a criterion's target, threshold or wording (same step, same grep term); the path of this session's transcript plus which decisions were put to the
   user this session that the adversary should look for — and say plainly **"none"** if none
   were raised. The transcript path exists even headless (Claude Code writes the top-level
   `<session-id>.jsonl` under `~/.claude/projects/<cwd with every non-alphanumeric mapped to a

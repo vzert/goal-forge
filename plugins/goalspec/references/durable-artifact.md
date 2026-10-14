@@ -233,6 +233,15 @@ VPS: a checkpoint said `diff a3dc32e c2cda2e` after the fix had landed as `8c82f
 round refuted every code and test claim and still broke, correctly, on that line, and the correction
 cost one more round. Written against the tip, that line never goes stale.
 
+**Before each round, sections 1 and 2 are refreshed against the state the round reviews (0.58.0).** A
+commit id or HEAD label, a measured count, a row's done/pending status ("pushed", "merged", "CI green"):
+each is a claim the adversary attacks as written, and the work makes them stale between rounds. So
+re-read both sections before you spawn and update what is no longer true. Refresh only those pointers —
+never a criterion's target, threshold or wording, and never drop a criterion; changing one after a
+verdict is specification gaming. Measured 2026-10-14 on 60 codex breaks over a tree the subagent had
+held: 13 of the 18 that found no defect in the work broke on a claim in one of these two sections.
+The step that owns it: the goalspec skill's step 6, same grep term.
+
 ### Never write a running count of the run's own process into sections 1 or 2 (v0.39.0)
 
 There is one class of figure that goes stale **by construction**, and it burned three adversary

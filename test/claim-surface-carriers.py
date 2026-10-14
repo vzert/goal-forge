@@ -692,6 +692,20 @@ def main():
           and "made stale (2 rounds)" in fl(setup)
           and absent("cover 13 of", fl(setup_raw)) and absent("cover 14 of", fl(setup_raw)))
 
+    # --- REFRESH BEFORE A ROUND (0.58.0): the executor updates the live goal-spec's and coverage
+    # table's pointers before it spawns, and never a criterion's target. Measured 2026-10-14
+    # (memory/research/codex-rompe-sobre-el-registro.md): 13 of 18 no-work codex breaks with
+    # goalspec >=0.54.0 broke on a claim in one of those two sections. Text only: whether an
+    # executor then refreshes is a live observation, not something this file can show.
+    for name, t in (("skill", fs_.lower()), ("adversary-skill", fk_.lower()), ("durable", fl(durable).lower())):
+        check("refresh:%s-pointers-not-targets" % name,
+              "refresh only those pointers" in t and "never a criterion's target, threshold or wording" in t
+              and "before you spawn" in t)
+    check("refresh:skill-and-durable-figure",
+          "13 of those broke on a claim in the live goal-spec or the coverage table" in fs_
+          and "13 of the 18 that found no defect in the work broke on a claim in one of these two sections"
+          in fl(durable))
+
     # --- CLOSE SHAPE (0.53.0): the plain-language close is two tables between bold lines ---
     # Text only: no hook reads the close, so these pin the written rule across its carriers and
     # cannot show that an agent then copies the shape (that stays a live observation).
@@ -744,7 +758,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 212  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 216  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",
