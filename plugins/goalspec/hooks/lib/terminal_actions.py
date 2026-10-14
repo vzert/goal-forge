@@ -619,79 +619,6 @@ SPAWN_TOOLS = ("Agent", "Task")
 RELAY_FROM_RE = re.compile(r'^\s*<agent-message\s+from="([^"]+)"|^\s*<task-notification>\s*<task-id>([^<]+)</task-id>')
 AGENT_ID_RE = re.compile(r"agentId:\s*([A-Za-z0-9_-]+)")
 
-# 0.59.0 (p-959ceedcca) — the external backend's report, read as a relayed verdict so its hold can be
-# quoted with a Write/Edit to the checkpoint (file_quoted_hold), as a subagent's can since 0.51.0.
-# hooks/external-adversary.sh prints EXT_RUN_VERDICT_RE's line on stderr (this run's id and verdict,
-# brackets stripped) when the partner returned a well-formed verdict, and appends a run record to
-# .goalspec/external-runs-<session>.jsonl on every path that prints a verdict, synthetic ones marked
-# unverified. The line reaches the session in a tool_result: the Bash call that ran the hook or a later
-# Bash or Read of the file its output was redirected to (most runs redirect it). So no command is
-# parsed: any tool_result counts when one of its lines BEGINS with the prefix. Which of those verdicts
-# may count is decided against the run record, never by position in the text
-# (validate_external_relays): two earlier cuts read position, and codex and the subagent passed a
-# stale hold through each, and an echoed line through the second. Read prefixes each line with its
-# number, stripped here. Threat model: an honest executor copying a stale or invented hold, or reading
-# several runs at once; writing the run record by hand is not in it.
-EXT_RUN_VERDICT_RE = re.compile(
-    r"^external-adversary: verdict of this run \(run ([0-9a-f]{8,64})\), for a checkpoint quote: "
-    r"(ADVERSARY-VERDICT:[ \t]*(break|hold)[ \t]+ungrounded=\d+[ \t]+unfalsified=\d+[ \t]+incomplete=\d+"
-    r"[ \t]+autonomy-violations=\d+[ \t]+unsafe=\d+[ \t]*)$", re.M)
-READ_LINE_PREFIX_RE = re.compile(r"^[ \t]*\d+(?:\t|\u2192)", re.M)
-
-
-def _external_verdict_items(text, ts):
-    """-> one "relayed_verdict" item per run line of the external hook in a tool_result, in order,
-    each carrying its run id; validate_external_relays decides which of them may count."""
-    text = READ_LINE_PREFIX_RE.sub("", text.replace("\r\n", "\n"))
-    return [{"kind": "relayed_verdict", "timestamp": ts, "text": "", "verdict": m.group(3).lower(),
-             "line": "[" + m.group(2) + "]", "source": "external", "run": m.group(1)}
-            for m in EXT_RUN_VERDICT_RE.finditer(text)]
-
-
-def external_run_records(session_id, cwd=None):
-    """-> the run records hooks/external-adversary.sh appended for this session, in append order,
-    read from .goalspec/external-runs-<session>.jsonl in the working directory or the git top level
-    above it (own_checkpoint_roots). [] when there is no usable session id or no file."""
-    sid = session_id if isinstance(session_id, str) and SESSION_ID_RE.fullmatch(session_id) else None
-    if not sid:
-        return []
-    best = []
-    for root in sorted(own_checkpoint_roots(cwd)):
-        p = os.path.join(root, ".goalspec", "external-runs-%s.jsonl" % sid)
-        recs = []
-        try:
-            with open(p, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    try:
-                        r = json.loads(line)
-                    except Exception:
-                        continue
-                    if isinstance(r, dict) and isinstance(r.get("run"), str):
-                        recs.append(r)
-        except Exception:
-            continue
-        if len(recs) > len(best):
-            best = recs
-    return best
-
-
-def validate_external_relays(items, session_id=None, cwd=None):
-    """0.59.0 — `items` without the external holds that may not count. An external relayed hold stays
-    only when its run id is the LAST run record of this session, that record is verified, and its line
-    is the same line. A later run of the hook, synthetic or not, writes a later record, so an older
-    hold stops counting wherever it sits in what the executor read; a run line with no record (typed,
-    echoed, another session's) never counts. External breaks always stay: a break only denies."""
-    recs = external_run_records(session_id, cwd)
-    last = recs[-1] if recs else None
-    out = []
-    for it in items:
-        if it.get("kind") == "relayed_verdict" and it.get("source") == "external" and it["verdict"] == "hold":
-            if not (last and last.get("run") == it.get("run") and last.get("verified") is True
-                    and last.get("line") == it["line"]):
-                continue
-        out.append(it)
-    return out
-
 
 def is_adversary_type(name):
     """Exact agent-type match: `goal-adversary`, or it namespaced by a plugin (`goalspec:goal-adversary`).
@@ -797,11 +724,6 @@ def _collect_event(ev, items, state=None):
                 rv = None if (is_async or failed) else _relayed_verdict_item(rtext, ev.get("timestamp"))
                 if rv:
                     items.append(rv)
-            elif isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is not True:
-                # 0.59.0: the external backend's report, wherever the executor read it (see
-                # EXT_RUN_VERDICT_RE). An errored result delivered nothing.
-                items.extend(_external_verdict_items(_tool_result_text(blk.get("content")),
-                                                     ev.get("timestamp")))
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
         # user event, as the harness's own `<command-name>` tag. Only that exact tag
         # counts — never prose, and never a tool_result (which can carry any text,
@@ -1407,8 +1329,7 @@ def checkpoint_name_for(session_id):
 # to a file, so the hook puts the line in front of them.
 FILE_QUOTE_ALLOW = (
     "goalspec terminal-push precheck: proceeding on a goal-adversary hold that reached this session "
-    "as a tool result (a subagent's report or the external reviewer's output) and that the agent "
-    "quoted into its checkpoint ({path}): {line}"
+    "as a subagent result and that the agent quoted into its checkpoint ({path}): {line}"
 )
 
 # 0.57.0 — what the human sees when the precheck passes on a waiver written into the checkpoint
@@ -1435,8 +1356,8 @@ WAIVER_DENY_NOTE = (
 # apostrophe reason as INTERVIEW_HANDOFF_NUDGE. 0.51.0 adds way (1): the field executor read the
 # visible-text way ten times and never took it.
 RELAYED_HOLD_NOTE = (
-    "A goal-adversary hold DID reach this session, but as a tool result (a subagent's report or "
-    "the external reviewer's output), not as your own text: {line} -- a tool result is not a quote. "
+    "A goal-adversary hold DID reach this session, but as a subagent result, not as your own "
+    "text: {line} -- a subagent result is not a quote. "
     "Thinking does not count either: thinking is not read, even when your screen shows it like a "
     "message. Your own visible text has no hold after it. Use the Edit tool to append that exact "
     "line, on a line of its own, to {path} (after any older verdict line in it; a Write replaces "

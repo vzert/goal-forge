@@ -10,7 +10,7 @@ version bump are never delivered to already-installed users.
 
 ## [0.59.0] - 2026-10-14
 
-### Los avisos dicen la causa medida, y el hold del revisor externo puede ir al checkpoint
+### Los avisos dicen la causa medida de una cita que el precheck no ve
 Hasta 0.58.0, la negación del precheck daba dos causas para una cita que no ve: la cita está solo en
 el thinking, o va en el mismo mensaje que el comando. Y aconsejaba: "the next message is enough, the
 turn does not need to end". Ese consejo es falso. Hay una tercera causa, medida el 2026-10-14 (en la
@@ -27,41 +27,24 @@ mismo merge. Otro caso: en b30f155f (agente-coordinador, 2026-10-05) el agente e
 citar el hold. La línea 1322 del transcript guarda solo ese resumen, y el push se negó. Hasta hoy, la
 documentación atribuía ese caso a una cita escrita solo en el thinking.
 
-- `hooks/precheck-terminal-push.sh`: la negación nombra la tercera causa. Da como salida un Edit
-  que añade la línea del veredicto al checkpoint de la sesión, o el texto que cierra el turno. La
-  negación sin spec pide escribir el spec con Write en el checkpoint.
-- `hooks/external-adversary.sh`: cada corrida que imprime un veredicto, real o sintético, añade un
-  registro a `.goalspec/external-runs-<sesión>.jsonl`: un id de corrida, la línea del veredicto y si
-  está verificado. Los holds sintéticos y UNVERIFIED quedan como no verificados. El id de sesión lo
-  toma de `CLAUDE_CODE_SESSION_ID`; sin esa variable no registra. Además imprime, tras su aviso final,
-  una línea con el id y el veredicto de esa corrida, sin corchetes.
-- `hooks/lib/terminal_actions.py` y `hooks/precheck-terminal-push.sh`: el precheck lee también la
-  salida del revisor externo, en cualquier resultado de herramienta, Bash o Read. Un hold externo
-  cuenta solo si es el hold verificado del último registro de la sesión, con el mismo id y la misma
-  línea. Así, ese hold puede citarse con Edit en el checkpoint, como el del subagente desde 0.51.0.
-  Lo que es más reciente lo decide el orden del registro, no la posición en lo leído. Dos versiones
-  anteriores decidían por la posición, y los dos revisores hicieron pasar un hold viejo por cada una
-  (y codex, un `echo` de la línea). Los breaks externos cuentan siempre, porque solo niegan.
-- `hooks/watch-adversary-writes.sh` y la huella de `external-adversary.sh` no cuentan ese registro
-  como escritura de un revisor.
-  También cambia una decisión: un break del revisor externo que nadie citó, llegado después de un
-  hold citado en texto, ahora niega el comando. Antes el precheck no lo veía y lo dejaba pasar.
+- `hooks/precheck-terminal-push.sh`: la negación nombra la tercera causa. Como salida da un Edit que
+  añade al checkpoint de la sesión la línea del veredicto de un subagente goal-adversary, o el texto
+  que cierra el turno. La negación sin spec pide escribir el spec con Write en el checkpoint.
 - Los textos que le dan al agente una salida dicen la tercera causa y las dos salidas fiables: la
   nota del hold recibido, los dos recordatorios de cita (`remind-quote-verdict.sh`,
   `remind-handback-verdict.sh`), el aviso de `external-adversary.sh`, el aviso de entrada al loop y
   el freno del spec. Ya no piden la cita "en tu siguiente mensaje".
-- `skills/goalspec/SKILL.md` y `skills/adversary/SKILL.md`: la tercera causa, las dos salidas, y la
-  vía del checkpoint para el hold externo. La frase sobre las diez negaciones de merge ya no dice
-  que la cita estaba solo en el thinking.
+- El veredicto del revisor externo sigue contando para el precheck solo en texto visible, no desde
+  el checkpoint. Su aviso y los dos SKILL.md lo dicen: antes de un push, se cita como el texto que
+  cierra el turno. Se probó una vía por el checkpoint también para ese veredicto, y los revisores le
+  encontraron huecos ronda tras ronda. Se quedó en la rama `feat/external-hold-records`, sin
+  publicar.
+- `skills/goalspec/SKILL.md` y `skills/adversary/SKILL.md`: la tercera causa y las dos salidas. La
+  frase sobre las diez negaciones de merge ya no dice que la cita estaba solo en el thinking.
 - Los mensajes del gate de Stop no cambian: el cierre es el texto que cierra el turno.
-- `test/terminal-precheck-branches.py`: casos 167-187. Los casos 183-185 y 187 corren el hook real
-  (187 lo mata a mitad: el registro de inicio basta para que un hold anterior deje de contar).
-  `external-adversary-branches.py` y `claim-surface-carriers.py` quitan `CLAUDE_CODE_SESSION_ID`
-  del entorno del hook, para no dejar registros de prueba en el repo. `--compare` contra el hook de 0.58.0, en los
-  dos modos: cambian 175, 176 y 178 (textos) y 169, 179, 181, 182, 184, 185, 186 y 187 (el hook viejo
-  no filtra los holds externos). Con el hook de 0.58.0 fijo, cambiar el módulo cambia 70, 110,
-  167-169, 172, 173 y 179-187. Trece mutaciones del lector, del registro y del hook, y cada una pone
-  rojo un caso escrito para ella.
+- `test/terminal-precheck-branches.py`: casos 175-178. `--compare` contra el hook de 0.58.0, en los
+  dos modos: solo cambian 175, 176 y 178. Con el hook de 0.58.0 fijo, cambiar el módulo solo cambia
+  110, cuyo texto de negación vive en el módulo.
 - `test/claim-surface-carriers.py`: 11 checks nuevos, 227 en total. Cada carrier de la regla de
   texto visible nombra la tercera causa. Ninguno dice ya que el siguiente mensaje basta. Las dos
   suites del spec (`spec-brake-branches.py` y `spec-on-entry-branches.py`) exigen la cláusula nueva,

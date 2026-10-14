@@ -143,9 +143,7 @@ if fw:
     allow(ta.FILE_WAIVER_ALLOW.format(line=fw, path=ta.checkpoint_name_for(sid)))
 
 verdict = sig["verdict"]
-# 0.59.0 (p-959ceedcca): external holds count only as the last verified run record of this session
-# (terminal_actions.validate_external_relays), for every use below.
-items = ta.validate_external_relays(sig.get("items") or [], sid, cwd)
+items = sig.get("items") or []
 # 0.51.0: a break that came back as an adversary report after the quoted hold is the most recent
 # verdict, and it wins (before, the quoted hold passed over it).
 if verdict == "hold" and not ta.relayed_break_after_text_hold(items):
@@ -204,10 +202,11 @@ seen_note = (" If you believe you already quoted a hold, three causes are measur
              "only after its tool call runs, so this hook cannot see it yet. (3) The quote is "
              "visible text written in the middle of a turn: text you write in the middle of a turn "
              "can be stored as a summary without the marker line. The way that holds: use the Edit "
-             "tool to append the exact [ADVERSARY-VERDICT: hold ...] line the adversary returned to "
-             + ta.checkpoint_name_for(sid) + " (a Write replaces the whole file) and run the command "
-             "in a later message -- a tool call is stored as written, and this hook accepts that line "
-             "when it is the latest verdict a goal-adversary returned. Visible text is stored as "
+             "tool to append the exact [ADVERSARY-VERDICT: hold ...] line a goal-adversary subagent returned "
+             "to " + ta.checkpoint_name_for(sid) + " (a Write replaces the whole file) and run the "
+             "command in a later message -- a tool call is stored as written, and this hook accepts "
+             "that line when it is the latest verdict a goal-adversary subagent returned; a verdict from the "
+             "external backend counts only in your visible text. Visible text is stored as "
              "written almost always when it ends your turn, and not reliably in the middle of one.")
 
 # p-473ba7b48b (2026-09-30): a heredoc or -c string that only MENTIONS a push/merge is denied too.
@@ -221,7 +220,7 @@ seen_note = (" If you believe you already quoted a hold, three causes are measur
 # p-64783f8057 (0.46.7): a hold that arrived as a subagent result and was never quoted. That is the
 # cause, so it replaces both the spawn-the-adversary step and the list of possible causes, and gives
 # the exact line to quote, and since 0.51.0 the checkpoint path to Write it into. The break note goes too: the break in your text is older than this hold.
-relayed = ta.relayed_hold_line(items)
+relayed = sig.get("relayed_hold")
 if relayed:
     verdict_note = ""
     next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed, path=ta.checkpoint_name_for(sid))
