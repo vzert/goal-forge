@@ -1156,10 +1156,9 @@ def file_waiver_line(items, command, tool_use_id=None, session_id=None, cwd=None
 
     Why: text the agent writes in the middle of a turn (followed by a tool call in the same
     response) is sometimes stored as a thinking block signed `narration`, a paraphrase without the
-    marker line. Measured 2026-10-14 over Mac and VPS transcripts: 13 of 65 waivers written in the
-    middle of a turn were stored that way, the highest rate of any marker, and 8 precheck denials (4
-    Mac, 4 VPS) came right after one. A tool call's input is stored as written, so a waiver in the checkpoint
-    survives where the text did not (memory/research/2026-10-14-narration-sin-marcador.md).
+    marker line. Field case: session 6fd1cbfa (claude-vzert, 2026-10) wrote its waiver that way and
+    the precheck denied the same merge three times in a row. A tool call's input is stored as
+    written, so a waiver in the checkpoint survives where the text did not.
 
     Counts only when all hold:
       * a waiver_file in this session's checkpoint (own_checkpoint_re, under the cwd or the git top

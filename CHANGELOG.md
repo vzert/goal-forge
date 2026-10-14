@@ -13,21 +13,22 @@ version bump are never delivered to already-installed users.
 ### Un waiver puede escribirse en el checkpoint
 A veces el agente escribe texto y, en la misma respuesta, llama a una herramienta. Ese texto a veces
 queda en el transcript como un bloque `thinking` con firma `narration`: un resumen con otras
-palabras y sin la línea del marcador. Ningún hook lo ve. Medido el 2026-10-14 en Mac y VPS: 44 de
-1.317 marcadores escritos así se perdieron. El waiver es el más afectado: 13 de 65. 8 negaciones del precheck
-vinieron justo después de un waiver que quedó así: 4 en la Mac y 4 en el VPS.
+palabras y sin la línea del marcador. Ningún hook lo ve. Caso real: en la sesión 6fd1cbfa
+(claude-vzert) el waiver quedó así y el precheck negó el merge tres veces seguidas. El agente
+creía haberlo escrito. Las cifras de cuántos marcadores se perdieron así en la Mac y el VPS están
+en la investigación del proyecto. No van aquí porque se clasificaron a mano.
 
 - `hooks/lib/terminal_actions.py` (`file_waiver_line`) y `hooks/precheck-terminal-push.sh`: el
   precheck acepta un `[GOAL-CLOSE-WAIVED reason=…]` escrito con Write o Edit en el checkpoint de
   esta sesión, como acepta el waiver en texto. Vale para un comando terminal, en el mismo turno.
   Cuenta solo si la línea es nueva, sin aparecer antes en la sesión: un Write reescribe el
-  checkpoint entero, y sin esa regla un waiver viejo volvería a pasar. Cambiar mayúsculas o espacios
-  no la hace nueva. Un Edit cuenta solo las
+  checkpoint entero, y sin esa regla un waiver viejo volvería a pasar. Cambiar mayúsculas, o la
+  cantidad de espacios entre palabras, no la hace nueva. Un Edit cuenta solo las
   líneas que su `old_string` no tenía. El hook muestra la línea al humano. La negación nombra esta
   vía.
 - El cierre con waiver del gate de Stop no cambia: lee texto visible. El texto que cierra el turno
-  casi nunca queda como narration (1 de 4.080 respuestas con narration en la Mac y 0 de 7.822 en el
-  VPS cierran turno).
+  casi nunca queda como narration. En la Mac, 1 de unas 4.100 respuestas con narration cierra
+  turno; las demás terminan en una llamada a herramienta.
 - Réplica real: sesión 6fd1cbfa (claude-vzert). El waiver quedó como narration y el merge se negó
   tres veces. Con un Write del waiver agregado al transcript truncado, 0.56.0 niega y 0.57.0 deja
   pasar.

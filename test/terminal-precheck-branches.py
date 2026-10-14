@@ -1017,7 +1017,7 @@ case("137-mktemp-dir-only-in-an-error-result-DENY", lambda: _tc(
 
 # 0.57.0 (p-83e65d6b6f) — the waiver written with a Write/Edit into this session's checkpoint.
 # Measured 2026-10-14: text written in the middle of a turn is sometimes stored as a thinking block
-# signed `narration`, a paraphrase without the marker; 13 of 65 mid-turn waivers were lost that way.
+# signed `narration`, a paraphrase without the marker (field case 6fd1cbfa: three merges denied).
 # The file waiver keeps the text waiver's scope -- one terminal command, in the same turn (150-153) --
 # and counts only in this session's own checkpoint (154, 155, 160), from a Write that did not fail
 # (156), with a real reason (157), and only when the line is new: an old waiver re-written by a later
