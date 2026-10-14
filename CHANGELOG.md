@@ -8,6 +8,27 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-10-14
+
+### La sesión toma el nombre de su tarea
+Con varios agentes abiertos, cada sesión de goalspec ahora muestra qué hace, y `SendMessage`
+la alcanza por ese nombre. El agente no puede correr `/rename`, pero un hook sí puede poner el
+nombre (`sessionTitle`, mismo efecto).
+
+- `skills/goalspec/SKILL.md`: el `## Goal-spec` lleva, después de `Asked`, una línea
+  `Session name: <slug>` (proyecto + tarea corta, minúsculas, dígitos y guiones, ≤60).
+- `hooks/name-session.sh` (UserPromptSubmit, nuevo) y `terminal_actions.session_title_to_set`:
+  en el siguiente mensaje del usuario ponen como nombre el slug del spec más reciente. Un nombre
+  que pusieron el usuario, lookout o `--name` no se toca. Un nombre que puso un spec anterior de la
+  misma sesión sí se reemplaza cuando llega un spec nuevo con otro nombre. Un slug mal formado se
+  ignora, no se repara.
+- Medido el 2026-10-14 con `claude -p` y un plugin de prueba: el campo funciona dentro de
+  `hookSpecificOutput` y se ignora en el nivel superior; la entrada del hook trae `session_title`
+  cuando un hook o `--name` puso uno, y no lo trae si no. El hook real, cargado con `--plugin-dir`,
+  nombró una sesión real en su segundo mensaje.
+- `test/session-name-branches.py`: 21 casos y `--selftest` con 9 mutaciones. Conteos de suites al
+  día en `CLAUDE.md`, `test/README.md` y el workflow.
+
 ## [0.55.2] - 2026-10-12
 
 ### El aviso de "entraste sin spec" nombra el spec escrito en el mismo mensaje

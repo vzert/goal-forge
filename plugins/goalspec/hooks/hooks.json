@@ -182,6 +182,11 @@
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/remind-handback-verdict.sh remind",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/name-session.sh",
+            "timeout": 10
           }
         ]
       }

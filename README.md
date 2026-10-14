@@ -567,6 +567,7 @@ goal-forge/
     hooks/precheck-inline-grounding.sh    # PreToolUse Bash|Read|Grep|Glob|WebFetch|WebSearch: before the spec, denies once the 16th inline read with no subagent (GOAL_GROUNDING_CHECK=0 turns it off)
     hooks/show-checkpoint-spec.sh         # PostToolUse Write|Edit: when the spec reaches the session only through the checkpoint file, shows it to the user
     hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
+    hooks/name-session.sh                 # UserPromptSubmit: names the session after the spec's `Session name:` line (same effect as /rename); never overwrites a name it did not set
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
 ```

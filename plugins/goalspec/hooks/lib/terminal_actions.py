@@ -1267,3 +1267,43 @@ RELAYED_HOLD_NOTE = (
     "a new adversary round, unless the change moved after that hold. The transcript is not losing "
     "your text."
 )
+
+
+# 0.56.0 — the session name a `## Goal-spec` asks for (hooks/name-session.sh). The spec carries one
+# line `Session name: <slug>`; the hook hands it to Claude Code as `sessionTitle`, which has the same
+# effect as /rename (the agent cannot run /rename itself). Only a clean slug counts: anything else on
+# the line and the line is ignored, never repaired, so a malformed name renames nothing.
+SESSION_NAME_LINE_RE = re.compile(
+    r"^[ \t]*(?:[-*][ \t]+)?\**[ \t]*Session name[ \t]*\**[ \t]*:[ \t]*\**[ \t]*`?"
+    r"([A-Za-z0-9][A-Za-z0-9-]{0,59})`?[ \t]*\**[ \t]*$", re.M)
+
+
+def spec_session_names(items):
+    """Every `Session name:` slug written after a `## Goal-spec` heading, in transcript order, from
+    visible text and from this session's checkpoint writes (the two places a spec lives). Lowercased."""
+    names = []
+    for it in items:
+        if it["kind"] not in ("text", "goal_spec_file"):
+            continue
+        m = re.search(GOAL_SPEC_RE, it.get("text") or "", re.I)
+        if not m:
+            continue
+        names.extend(n.lower() for n in SESSION_NAME_LINE_RE.findall(it["text"][m.end():]))
+    return names
+
+
+def session_title_to_set(items, current_title):
+    """-> the title to set, or None. The newest spec's name wins. A title already on the session is
+    left alone unless it is one an earlier spec of this session asked for (goalspec put it there), so
+    a name the user, lookout or --name set is never overwritten. Measured 2026-10-14 (claude -p): the
+    hook input carries `session_title` when a hook or --name set one, and omits it otherwise."""
+    names = spec_session_names(items)
+    if not names:
+        return None
+    want = names[-1]
+    cur = current_title.strip().lower() if isinstance(current_title, str) else ""
+    if not cur:
+        return want
+    if cur == want or cur not in names:
+        return None
+    return want

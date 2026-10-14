@@ -1,6 +1,6 @@
 # test/
 
-**Sixteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Seventeen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -728,6 +728,32 @@ python3 test/inline-grounding-branches.py --selftest
 python3 test/subagent-model-branches.py
 python3 test/subagent-model-branches.py --selftest
 ```
+
+## `session-name-branches.py` — name the session from the spec (0.56.0)
+
+For `hooks/name-session.sh`. The agent cannot run `/rename`, but a UserPromptSubmit hook can set
+`sessionTitle`, with the same effect. The `## Goal-spec` carries one line `Session name: <slug>`;
+on the next user message the hook sets the newest such slug as the session's name
+(`terminal_actions.session_title_to_set`). A title already on the session is kept unless an earlier
+spec of this session asked for it. 21 cases, hermetic: the setting ones (name in text, in the
+checkpoint, newest spec wins, the session's own old name replaced, bold/backtick/bullet forms,
+uppercase lowered) and the silent ones (no spec, no name line, a foreign title, the same title, a
+name line outside the spec, in another file, in thinking or in user text, a malformed or 61-char
+slug, another event, malformed input, no transcript).
+
+```sh
+python3 test/session-name-branches.py
+python3 test/session-name-branches.py --selftest
+```
+
+The hook is new, so `--selftest` applies nine mutations to the component (event filter dropped,
+field renamed, foreign title overwritten, oldest spec wins, spec heading not required, checkpoint
+ignored, either side not lowercased, slug check loosened) and requires a case to fail under each.
+Two facts it rests on were measured, not read, on 2026-10-14 with `claude -p` and a probe plugin:
+`sessionTitle` works inside `hookSpecificOutput` and is ignored at the top level, and the hook
+input carries `session_title` when a hook or `--name` set one and omits it otherwise. Then the real
+hook, loaded with `--plugin-dir`, named a real session on its second message (`custom-title` in the
+JSONL). What no suite can show: that an agent writes the `Session name:` line.
 
 ## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)
 
