@@ -1157,8 +1157,8 @@ def file_waiver_line(items, command, tool_use_id=None, session_id=None, cwd=None
     Why: text the agent writes in the middle of a turn (followed by a tool call in the same
     response) is sometimes stored as a thinking block signed `narration`, a paraphrase without the
     marker line. Measured 2026-10-14 over Mac and VPS transcripts: 13 of 65 waivers written in the
-    middle of a turn were stored that way, the highest rate of any marker, and 7 precheck denials on
-    the VPS followed one. A tool call's input is stored as written, so a waiver in the checkpoint
+    middle of a turn were stored that way, the highest rate of any marker, and 8 precheck denials (4
+    Mac, 4 VPS) came right after one. A tool call's input is stored as written, so a waiver in the checkpoint
     survives where the text did not (memory/research/2026-10-14-narration-sin-marcador.md).
 
     Counts only when all hold:
@@ -1167,27 +1167,35 @@ def file_waiver_line(items, command, tool_use_id=None, session_id=None, cwd=None
       * written after the last terminal Bash call and the last user prompt (_waiver_window);
       * its line is new: not in any earlier waiver_file or visible text of the session. A Write
         re-writes the whole checkpoint, so an old waiver kept in it would otherwise pass again on
-        every later rewrite -- the session-wide waiver 0.45.0 removed. Cost: a new waiver needs a
-        reason worded differently from every earlier one."""
+        every later rewrite -- the session-wide waiver 0.45.0 removed. Case and runs of whitespace
+        do not make a line new (_waiver_key). Cost: a new waiver needs a reason worded differently
+        from every earlier one."""
     seq, start = _waiver_window(items, command, tool_use_id)
     own = own_checkpoint_re(session_id)
     roots = None
     seen = set()
     for i, it in enumerate(seq):
         if it["kind"] == "text":
-            seen.update(m.group(0) for m in re.finditer(WAIVER_RE, it["text"], re.I))
+            seen.update(_waiver_key(m.group(0)) for m in re.finditer(WAIVER_RE, it["text"], re.I))
             continue
         if it["kind"] != "waiver_file":
             continue
-        line = it["line"]
-        if i >= start and line not in seen:
+        line, key = it["line"], _waiver_key(it["line"])
+        if i >= start and key not in seen:
             if roots is None:
                 roots = own_checkpoint_roots(cwd)
             path = it.get("path") or ""
             if own.search(path) and _in_own_root(path, cwd, roots):
                 return line
-        seen.add(line)
+        seen.add(key)
     return None
+
+
+def _waiver_key(line):
+    """What makes two waiver lines the same waiver: WAIVER_RE matches without case, so case and
+    runs of whitespace do not make a spent waiver new (codex round 1 on 0.57.0 passed a second push
+    with the marker in lower case, and with a doubled space)."""
+    return " ".join(line.lower().split())
 
 
 def operative_verdict(text):
@@ -1326,10 +1334,10 @@ FILE_WAIVER_ALLOW = (
 WAIVER_DENY_NOTE = (
     " The waiver is not the default way past this: use [GOAL-CLOSE-WAIVED reason=<>=20 chars>] "
     "only when the user explicitly authorized skipping the adversary for this command, and it "
-    "covers this one command in this turn, not the rest of the session. Write that line with the "
-    "Write or Edit tool into {path}, worded differently from any earlier waiver: a tool call is "
-    "stored as written, while text you write in the middle of a turn can be stored as a summary "
-    "without the marker line."
+    "covers this one command in this turn, not the rest of the session. Put that line in {path} "
+    "with the Edit tool (append it; a Write replaces the whole file), worded differently from any "
+    "earlier waiver, then retry the command in a later message: a tool call is stored as written, "
+    "while text you write in the middle of a turn can be stored as a summary without the marker line."
 )
 
 # Agent-facing deny text for an unquoted hand-back hold. Kept here, not in the hook, for the same

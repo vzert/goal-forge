@@ -1099,7 +1099,7 @@ case("160-waiver-checkpoint-in-another-root-DENY", _fw(
     "160", FW_DENIED + [{"write": ("/tmp/elsewhere/" + CKPT, FW_LINE), "write_id": "w160"}], False))
 
 case("161-deny-text-names-the-checkpoint-for-the-waiver-DENY", _fw(
-    "161", FW_DENIED, False, needle="Write or Edit tool into " + CKPT))
+    "161", FW_DENIED, False, needle="Put that line in " + CKPT + " with the Edit tool"))
 
 case("162-waiver-only-in-narration-DENY", _fw(
     "162", FW_DENIED + [_narration("Registro el waiver: el usuario autorizo este merge.")], False))
@@ -1113,6 +1113,22 @@ case("164-new-file-waiver-for-second-merge-ALLOW", _fw(
                         {"bash": "gh pr merge 12", "bash_id": "t2"},
                         {"write": (CKPT, FW_LINE2 + "\n" + FW_LINE), "write_id": "w164b"}],
     True, command="gh pr merge 13"))
+
+
+# Codex round 1 on 0.57.0: a spent waiver re-written in another case or with other spacing is not new.
+case("165-spent-waiver-rewritten-in-other-case-DENY", _fw(
+    "165", FW_DENIED + [{"write": (CKPT, FW_LINE), "write_id": "w165a"},
+                        {"bash": "gh pr merge 12", "bash_id": "t2"},
+                        {"write": (CKPT, FW_LINE.replace("GOAL-CLOSE-WAIVED", "goal-close-waived")
+                                   .replace("user authorized", "User Authorized")), "write_id": "w165b"}],
+    False, command="gh pr merge 13"))
+
+case("166-spent-waiver-rewritten-with-other-spacing-DENY", _fw(
+    "166", FW_DENIED + [{"write": (CKPT, FW_LINE), "write_id": "w166a"},
+                        {"bash": "gh pr merge 12", "bash_id": "t2"},
+                        {"write": (CKPT, FW_LINE.replace("WAIVED reason", "WAIVED  reason")
+                                   .replace(" this merge", "  this merge")), "write_id": "w166b"}],
+    False, command="gh pr merge 13"))
 
 
 def run_hook_raw(payload):
