@@ -814,7 +814,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-171 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+173 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -884,7 +884,8 @@ the hook's closing notice (`external-adversary: a verdict-shaped block was just 
 follows the verdict, read by Bash (167) or by Read, line numbers and all (168); it does not count
 when the hook marked the hold UNVERIFIED (169), when the notice sits inside the hook's own source,
 `echo "...` and all (170), when a later external break came back (171), or from an errored result
-(174). An unquoted external hold gets the deny that names its line (172), and an external break
+(174), or when the verdict comes after the notice (179); with two reports in one result the
+last notice decides (180). An unquoted external hold gets the deny that names its line (172), and an external break
 after a hold quoted in text is now the operative verdict (173: before 0.59.0 the precheck did not
 see it and let the command through). A foreground goal-adversary result quoted by Edit already
 passed since 0.51.0; 177 pins it because SKILL.md now names it. The deny text names the third cause

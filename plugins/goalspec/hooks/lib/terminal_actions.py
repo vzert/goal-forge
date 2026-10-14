@@ -624,8 +624,9 @@ AGENT_ID_RE = re.compile(r"agentId:\s*([A-Za-z0-9_-]+)")
 # hooks/external-adversary.sh prints EXT_SIGNATURE_RE's line on stderr after a well-formed partner
 # verdict, hold or break, and on no synthetic-hold path; every path that marks a hold UNVERIFIED ends
 # in EXT_UNVERIFIED_RE's line. The report reaches the session in a tool_result: the Bash call that ran
-# the hook (8 of 263 runs in the maintainer's transcripts, 2026-10-14) or, far more often, a later
-# Bash or Read of the file its output was redirected to (232 of 263 redirected it). So no command is
+# the hook or, far more often, a later Bash or Read of the file its output was redirected to (of the
+# Bash calls that ran the hook in the maintainer's last 600 transcripts, 2026-10-14, 8 of 263 carried a
+# verdict in their own result and 232 redirected their output; a looser count gives other totals). So no command is
 # parsed: any tool_result counts when one of its lines BEGINS with the signature. The hook's source
 # carries the same words inside `echo "...`, so a cat, sed or grep -n of the source does not count.
 # Read prefixes each line with its number, stripped here. Threat model: an honest executor copying a

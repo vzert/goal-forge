@@ -1222,6 +1222,16 @@ case("177-foreground-adversary-hold-quoted-by-edit-ALLOW", _fq(
     "177", [{"text": SPEC_TEXT}] + _spawn(ADV, "tfg1", report="- probe: evidence\n" + HOLD_TEXT)
     + [_edit(CKPT, HOLD_LINE, "e177")], True))
 
+# 179-180 (subagent round 1, surviving mutants): the verdict counts only ABOVE the notice, and with
+# two reports in one result the last notice decides.
+case("179-verdict-after-the-notice-is-not-a-report-DENY", _fq(
+    "179", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_SIG + "\n" + HOLD_LINE + "\n")
+    + [_edit(CKPT, HOLD_LINE, "e179")], False, needle="Spawn goal-adversary"))
+
+case("180-two-reports-the-last-notice-decides-ALLOW", _fq(
+    "180", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_BREAK + EXT_OUT)
+    + [_edit(CKPT, HOLD_LINE, "e180")], True))
+
 # The no-spec deny (entered goalspec, wrote no spec) names the checkpoint Write for the spec.
 case("178-no-spec-deny-names-checkpoint-write-DENY", lambda: _deny_reason_has(
     "178", "write the spec with the Write tool into " + CKPT,
