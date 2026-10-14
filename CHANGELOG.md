@@ -22,15 +22,19 @@ veredicto y ninguna línea UNVERIFIED. Con esa misma salida, el lector del prech
 push sobre un break real.
 
 - `hooks/external-adversary.sh`: el veredicto es la última línea con `[ADVERSARY-VERDICT:` de la
-  salida. Si esa línea es la plantilla, el hook toma el camino UNVERIFIED de siempre (hold sintético
-  y línea `UNVERIFIED` al final) y no imprime el aviso que lee el precheck. Además, muestra en stderr
-  las últimas 40 líneas del revisor, donde está su respuesta, en vez de las 20 primeras. La línea del
-  veredicto que usa el piso de veredicto desnudo sale del mismo sitio.
+  salida. Si el revisor dio su línea `[ADVERSARY-MODEL:]`, esa línea del veredicto tiene que venir
+  después de la última de ellas, donde empieza su respuesta. Si esa línea es la plantilla, o si la
+  respuesta no trae ninguna línea de veredicto, el hook toma el camino UNVERIFIED de siempre (hold
+  sintético y línea `UNVERIFIED` al final) y no imprime el aviso que lee el precheck. En esos dos
+  casos muestra en stderr las últimas 40 líneas del revisor, donde está su respuesta. Sin ninguna
+  línea de veredicto sigue mostrando las 20 primeras, como antes. La línea del veredicto que usa el
+  piso de veredicto desnudo sale del mismo sitio.
 - Medido tras el cambio, con la misma salida: hold sintético, línea UNVERIFIED al final, el hallazgo
   BLOCKING a la vista, sin aviso de bloque, y el lector del precheck devuelve `None`.
   `terminal_actions.py` no cambia: solo lee una salida que lleva ese aviso.
-- `test/external-adversary-branches.py`: caso 39, con esa forma. Contra 0.59.0 sale
-  `pass+idunresolved`. El caso 06 (solo eco de la plantilla) toma ahora el mismo camino, sin hallazgo
+- `test/external-adversary-branches.py`: caso 39, con esa forma, y caso 40, la misma salida sin
+  ninguna línea de veredicto en la respuesta (lo encontró la ronda del revisor sobre el primer corte,
+  que aún tomaba la fila). Contra 0.59.0 los dos salen `pass+idunresolved`. El caso 06 (solo eco de la plantilla) toma ahora el mismo camino, sin hallazgo
   que mostrar. Contra 0.59.0 sale `unfilled`. Ningún otro caso cambia (`--compare`).
 - `README.md`: nombra la última versión.
 

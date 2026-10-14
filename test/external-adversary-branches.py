@@ -292,6 +292,15 @@ CASES = [
      "autonomy-violations=0 unsafe=0]\ntokens used\n120,343\n" + MODEL_UNKNOWN + "\n\n" + FINDING
      + "\n[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
      "autonomy-violations=0 unsafe=0]\n", {}, None, "template-last+unverified+finding"),
+    # 40: the same run, but the partner's answer carries NO verdict line at all -- only the read hold
+    # in the suite row above its [ADVERSARY-MODEL:] line. Found by the adversary round on 0.59.1's
+    # first cut, which still resolved that hold. Against 0.59.0: `pass+idunresolved`.
+    ("40-no-verdict-in-answer-ignores-read-hold",
+     NOISE + "exec bash -lc python3 test/terminal-precheck-branches.py\n"
+     "82-resumed-adversary-handback-is-a-relay-DENY        deny                 not as your own text: "
+     + HOLD + "\n" + "".join("%02d-other-case   allow\n" % i for i in range(30))
+     + "codex\n" + MODEL_UNKNOWN + "\n\n" + FINDING + BULLETS + "tokens used\n120,343\n",
+     {}, None, "no-verdict-in-answer+unverified+finding"),
 ]
 
 
@@ -474,12 +483,15 @@ def classify(res, case_name, repo=REPO):
         return "recursion"
     if "not found on PATH" in err:
         return "not-found"
-    if "unfilled template ('break|hold'" in err:
-        # Case 39. Each part is required: a synthetic hold on stdout with nothing of the partner's,
+    for marker, name in (("unfilled template ('break|hold'", "template-last"),
+                         ("carries no [ADVERSARY-VERDICT:] line", "no-verdict-in-answer")):
+        if marker not in err:
+            continue
+        # Cases 39 and 40. Each part is required: a synthetic hold on stdout, nothing of the partner's,
         # the filter-proof UNVERIFIED line last, the partner's finding still shown, and no signature
         # line (terminal_actions.EXT_SIGNATURE_RE), which the precheck would read as an external hold.
         lines = err.strip().splitlines()
-        b = "template-last"
+        b = name
         b += "+unverified" if lines and UNV in lines[-1] else "-nounverified"
         b += "+finding" if "BLOCKING - incomplete" in err else "-nofinding"
         if "verdict-shaped block was just produced" in err:

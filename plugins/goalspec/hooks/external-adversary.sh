@@ -599,6 +599,16 @@ VERDICT=""
 VLINE=""
 TEMPLATE_LAST=0
 _ADV_LAST_VLINE=$(printf '%s\n' "$OUT" | grep -n '\[ADVERSARY-VERDICT:' | tail -1 | cut -d: -f1 || true)
+# When the partner self-reported its model, its answer starts at its LAST real [ADVERSARY-MODEL:]
+# line, so a verdict line above that is text it read or ran, not its answer -- e.g. an answer with no
+# verdict line at all under a suite row that carries a filled hold (adversary round on 0.59.1; case
+# 40). Without a self-report there is no anchor, and the last verdict line stands alone.
+_ADV_ANSWER_START=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 | cut -d: -f1 || true)
+NO_VERDICT_IN_ANSWER=0
+if [ -n "$_ADV_LAST_VLINE" ] && [ -n "$_ADV_ANSWER_START" ] && [ "$_ADV_LAST_VLINE" -lt "$_ADV_ANSWER_START" ]; then
+  _ADV_LAST_VLINE=""
+  NO_VERDICT_IN_ANSWER=1
+fi
 if [ -n "$_ADV_LAST_VLINE" ]; then
   VERDICT=$(printf '%s\n' "$OUT" | sed -n "${_ADV_LAST_VLINE}p" | grep -Eo "$VERDICT_RE" | tail -1 || true)
   if [ -n "$VERDICT" ]; then VLINE=$_ADV_LAST_VLINE; else TEMPLATE_LAST=1; fi
@@ -684,6 +694,12 @@ if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; the
       echo "unfilled template ('break|hold' or '<n>'), not a verdict. Any filled verdict line earlier in"
       echo "its run is text it read or ran (a file, a suite), not its answer. Treat this 'hold' as"
       echo "UNVERIFIED, not as a pass; a BLOCKING finding it lists below still stands. End of its output:"
+      printf '%s\n' "$OUT" 2>/dev/null | tail -40
+    elif [ "$NO_VERDICT_IN_ANSWER" = 1 ]; then
+      echo "external-adversary: '$EXT_CMD' exited $RC and its answer (from its last [ADVERSARY-MODEL:]"
+      echo "line on) carries no [ADVERSARY-VERDICT:] line. A verdict line above that is text it read or"
+      echo "ran (a file, a suite), not its answer. Treat this 'hold' as UNVERIFIED, not as a pass; a"
+      echo "BLOCKING finding it lists below still stands. End of its output:"
       printf '%s\n' "$OUT" 2>/dev/null | tail -40
     else
       echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
