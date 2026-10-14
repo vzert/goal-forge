@@ -20,13 +20,16 @@ nombre (`sessionTitle`, mismo efecto).
 - `hooks/name-session.sh` (UserPromptSubmit, nuevo) y `terminal_actions.session_title_to_set`:
   en el siguiente mensaje del usuario ponen como nombre el slug del spec más reciente. Un nombre
   que pusieron el usuario, lookout o `--name` no se toca. Un nombre que puso un spec anterior de la
-  misma sesión sí se reemplaza cuando llega un spec nuevo con otro nombre. Un slug mal formado se
-  ignora, no se repara.
+  misma sesión sí se reemplaza cuando llega un spec nuevo con otro nombre. Un slug mal formado (con
+  mayúsculas, espacios o más de 60) se ignora, no se repara. Un spec repartido en dos bloques de
+  texto del mismo turno cuenta.
 - Medido el 2026-10-14 con `claude -p` y un plugin de prueba: el campo funciona dentro de
   `hookSpecificOutput` y se ignora en el nivel superior; la entrada del hook trae `session_title`
-  cuando un hook o `--name` puso uno, y no lo trae si no. El hook real, cargado con `--plugin-dir`,
-  nombró una sesión real en su segundo mensaje.
-- `test/session-name-branches.py`: 21 casos y `--selftest` con 9 mutaciones. Conteos de suites al
+  cuando un hook, `--name` o un `/rename` tecleado puso uno (también dentro de un mismo proceso
+  vivo, desde el mensaje siguiente), y no lo trae si no. El hook real, cargado con `--plugin-dir`,
+  nombró una sesión real en su segundo mensaje y respetó un `/rename` posterior. La herramienta
+  Skill rechaza `rename` ("a UI command, not a skill"); por eso es un hook.
+- `test/session-name-branches.py`: 23 casos y `--selftest` con 11 mutaciones. Conteos de suites al
   día en `CLAUDE.md`, `test/README.md` y el workflow.
 
 ## [0.55.2] - 2026-10-12

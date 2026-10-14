@@ -101,8 +101,9 @@ CASES = [
     ("12-backticks-and-list-bullet-accepted",
      lambda: prompt([{"text": spec("- **Session name:** `goalspec-con-ticks`")}], "12"),
      "title:goalspec-con-ticks"),
-    ("13-uppercase-lowered",
-     lambda: prompt([{"text": spec("Session name: GoalSpec-Mayus")}], "13"), "title:goalspec-mayus"),
+    # The rule is lowercase only; a malformed name is ignored, never repaired.
+    ("13-uppercase-ignored",
+     lambda: prompt([{"text": spec("Session name: GoalSpec-Mayus")}], "13"), "silent"),
     ("14-name-only-in-thinking-silent",
      lambda: prompt([{"thinking": A["text"]}], "14"), "silent"),
     ("15-name-only-in-user-text-silent", lambda: prompt([{"user": A["text"]}], "15"), "silent"),
@@ -116,6 +117,14 @@ CASES = [
     # The own old name, in another case, is still ours to replace.
     ("21-own-old-title-other-case-replaced",
      lambda: prompt([A, B], "21", title="GoalSpec-Renombrar-Sesion"), "title:goalspec-otra-tarea"),
+    # One spec, two text blocks of the same turn (heading in one, the name line in the next).
+    ("22-spec-split-across-blocks-sets",
+     lambda: prompt([{"text": "## Goal-spec\n\n**Asked (your words):** \"x\""},
+                     {"text": "**Session name:** goalspec-partido"}], "22"), "title:goalspec-partido"),
+    # A name line in a later turn, after the user spoke, is not part of that spec.
+    ("23-name-after-user-prompt-silent",
+     lambda: prompt([{"text": "## Goal-spec\n\nObjective: x."}, {"user": "sigue"},
+                     {"text": "Session name: goalspec-otro-turno"}], "23"), "silent"),
     ("20-slug-over-60-chars-silent",
      lambda: prompt([{"text": spec("Session name: " + "a" * 61)}], "20"), "silent"),
 ]
@@ -131,13 +140,15 @@ MUTATIONS = [
      "if cur == want or cur not in names:", "if cur == want:"),
     ("oldest spec wins", LIB, "want = names[-1]", "want = names[0]"),
     ("spec heading not required", LIB,
-     'if not m:\n            continue\n        names.extend(n.lower() for n in '
-     'SESSION_NAME_LINE_RE.findall(it["text"][m.end():]))',
-     'names.extend(n.lower() for n in SESSION_NAME_LINE_RE.findall(it["text"]))'),
+     'names.extend(SESSION_NAME_LINE_RE.findall(text[m.end():]))',
+     'names.extend(SESSION_NAME_LINE_RE.findall(text))'),
     ("checkpoint ignored", LIB,
      'if it["kind"] not in ("text", "goal_spec_file"):', 'if it["kind"] not in ("text",):'),
-    ("name not lowercased", LIB, "names.extend(n.lower() for n in", "names.extend(n for n in"),
-    ("slug check loosened", LIB, "([A-Za-z0-9][A-Za-z0-9-]{0,59})", "(.+?)"),
+    ("uppercase accepted", LIB, "([a-z0-9][a-z0-9-]{0,59})", "([A-Za-z0-9][A-Za-z0-9-]{0,59})"),
+    ("slug check loosened", LIB, "([a-z0-9][a-z0-9-]{0,59})", "(.+?)"),
+    ("split spec ignored", LIB, 'elif open_spec and it["kind"] == "text":', "elif False:"),
+    ("spec stays open across prompts", LIB,
+     'open_spec = False\n            continue', 'continue'),
     ("current title not lowercased", LIB,
      "cur = current_title.strip().lower() if", "cur = current_title.strip() if"),
 ]
