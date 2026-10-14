@@ -2,7 +2,8 @@
 # name-session.sh — UserPromptSubmit hook (0.56.0).
 #
 # Why: with several agents open, each session should show what it is doing, and SendMessage
-# addresses a session by that same name. The agent cannot run /rename itself, but a hook can set
+# addresses a session by that same name. The Skill tool refuses /rename ("a UI command, not a
+# skill", measured 2026-10-14), but a hook can set
 # `sessionTitle`, which has the same effect. The goalspec loop asks the agent to put one line in the
 # `## Goal-spec`, `Session name: <slug>` (project + short task), and this hook applies it on the next
 # user message.

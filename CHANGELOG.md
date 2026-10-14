@@ -12,7 +12,7 @@ version bump are never delivered to already-installed users.
 
 ### La sesión toma el nombre de su tarea
 Con varios agentes abiertos, cada sesión de goalspec ahora muestra qué hace, y `SendMessage`
-la alcanza por ese nombre. El agente no puede correr `/rename`, pero un hook sí puede poner el
+la alcanza por ese nombre. La herramienta Skill rechaza `/rename`, pero un hook sí puede poner el
 nombre (`sessionTitle`, mismo efecto).
 
 - `skills/goalspec/SKILL.md`: el `## Goal-spec` lleva, después de `Asked`, una línea

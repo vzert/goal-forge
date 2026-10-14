@@ -731,7 +731,7 @@ python3 test/subagent-model-branches.py --selftest
 
 ## `session-name-branches.py` — name the session from the spec (0.56.0)
 
-For `hooks/name-session.sh`. The agent cannot run `/rename`, but a UserPromptSubmit hook can set
+For `hooks/name-session.sh`. The Skill tool refuses `/rename`, but a UserPromptSubmit hook can set
 `sessionTitle`, with the same effect. The `## Goal-spec` carries one line `Session name: <slug>`;
 on the next user message the hook sets the newest such slug as the session's name
 (`terminal_actions.session_title_to_set`). A title already on the session is kept unless an earlier

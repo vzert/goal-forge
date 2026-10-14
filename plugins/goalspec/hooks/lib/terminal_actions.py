@@ -1271,7 +1271,7 @@ RELAYED_HOLD_NOTE = (
 
 # 0.56.0 — the session name a `## Goal-spec` asks for (hooks/name-session.sh). The spec carries one
 # line `Session name: <slug>`; the hook hands it to Claude Code as `sessionTitle`, which has the same
-# effect as /rename (the agent cannot run /rename itself). Only a clean slug counts: anything else on
+# effect as /rename (the Skill tool refuses /rename as a UI command, measured 2026-10-14). Only a clean slug counts: anything else on
 # the line and the line is ignored, never repaired, so a malformed name renames nothing.
 SESSION_NAME_LINE_RE = re.compile(
     r"^[ \t]*(?:[-*][ \t]+)?\**[ \t]*Session name[ \t]*\**[ \t]*:[ \t]*\**[ \t]*`?"
