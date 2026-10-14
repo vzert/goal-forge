@@ -632,6 +632,9 @@ def suite(hook, workdir):
         env.pop("GOAL_ADVERSARY_ACTIVE", None)
         env.pop("GOAL_ADVERSARY_CMD", None)
         env.pop("GOAL_CONFIG_PATH", None)
+        # 0.59.0: most cases run with cwd=REPO, and the hook appends a run record for the session id
+        # it inherits -- the session running this suite would collect test records in its own file.
+        env.pop("CLAUDE_CODE_SESSION_ID", None)
         env["PATH"] = fakebin + os.pathsep + env.get("PATH", "")
         stubs = {"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD, "STUB_WRAP": STUB_WRAP,
                  "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,

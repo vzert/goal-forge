@@ -143,7 +143,9 @@ if fw:
     allow(ta.FILE_WAIVER_ALLOW.format(line=fw, path=ta.checkpoint_name_for(sid)))
 
 verdict = sig["verdict"]
-items = sig.get("items") or []
+# 0.59.0 (p-959ceedcca): external holds count only as the last verified run record of this session
+# (terminal_actions.validate_external_relays), for every use below.
+items = ta.validate_external_relays(sig.get("items") or [], sid, cwd)
 # 0.51.0: a break that came back as an adversary report after the quoted hold is the most recent
 # verdict, and it wins (before, the quoted hold passed over it).
 if verdict == "hold" and not ta.relayed_break_after_text_hold(items):
@@ -219,7 +221,7 @@ seen_note = (" If you believe you already quoted a hold, three causes are measur
 # p-64783f8057 (0.46.7): a hold that arrived as a subagent result and was never quoted. That is the
 # cause, so it replaces both the spawn-the-adversary step and the list of possible causes, and gives
 # the exact line to quote, and since 0.51.0 the checkpoint path to Write it into. The break note goes too: the break in your text is older than this hold.
-relayed = sig.get("relayed_hold")
+relayed = ta.relayed_hold_line(items)
 if relayed:
     verdict_note = ""
     next_step = ta.RELAYED_HOLD_NOTE.format(line=relayed, path=ta.checkpoint_name_for(sid))

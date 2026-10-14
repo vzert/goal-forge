@@ -621,41 +621,76 @@ AGENT_ID_RE = re.compile(r"agentId:\s*([A-Za-z0-9_-]+)")
 
 # 0.59.0 (p-959ceedcca) — the external backend's report, read as a relayed verdict so its hold can be
 # quoted with a Write/Edit to the checkpoint (file_quoted_hold), as a subagent's can since 0.51.0.
-# hooks/external-adversary.sh prints EXT_RUN_VERDICT_RE's line on stderr, after its closing notice,
-# carrying the verdict line of THIS run without its brackets, on every path where the partner returned
-# a well-formed verdict (hold or break) and on no synthetic-hold path; every path that marks a hold
-# UNVERIFIED ends in EXT_UNVERIFIED_RE's line. The report reaches the session in a tool_result: the
-# Bash call that ran the hook or, far more often, a later Bash or Read of the file its output was
-# redirected to (in the maintainer's transcripts most runs redirect it; the counts are in the project's
-# research, not here). So no command is parsed: any tool_result counts when one of its lines
-# BEGINS with that prefix, and the verdict is read from that line only, never from the text above it
-# -- a first cut took the last verdict line above the closing notice, and codex (round 2 on 0.59.0)
-# passed a stale hold put before a notice whose own report was missing. The hook's source carries the
-# prefix inside `printf '...`, so a cat, sed or grep -n of the source does not count. Read prefixes
-# each line with its number, stripped here. Threat model: an honest executor copying a stale or
-# invented hold; a tool_result fabricated to carry the line is not in it.
+# hooks/external-adversary.sh prints EXT_RUN_VERDICT_RE's line on stderr (this run's id and verdict,
+# brackets stripped) when the partner returned a well-formed verdict, and appends a run record to
+# .goalspec/external-runs-<session>.jsonl on every path that prints a verdict, synthetic ones marked
+# unverified. The line reaches the session in a tool_result: the Bash call that ran the hook or a later
+# Bash or Read of the file its output was redirected to (most runs redirect it). So no command is
+# parsed: any tool_result counts when one of its lines BEGINS with the prefix. Which of those verdicts
+# may count is decided against the run record, never by position in the text
+# (validate_external_relays): two earlier cuts read position, and codex and the subagent passed a
+# stale hold through each, and an echoed line through the second. Read prefixes each line with its
+# number, stripped here. Threat model: an honest executor copying a stale or invented hold, or reading
+# several runs at once; writing the run record by hand is not in it.
 EXT_RUN_VERDICT_RE = re.compile(
-    r"^external-adversary: verdict of this run, for a checkpoint quote: "
+    r"^external-adversary: verdict of this run \(run ([0-9a-f]{8,64})\), for a checkpoint quote: "
     r"(ADVERSARY-VERDICT:[ \t]*(break|hold)[ \t]+ungrounded=\d+[ \t]+unfalsified=\d+[ \t]+incomplete=\d+"
     r"[ \t]+autonomy-violations=\d+[ \t]+unsafe=\d+[ \t]*)$", re.M)
-EXT_UNVERIFIED_RE = re.compile(r"^UNVERIFIED \(goalspec external adversary\):", re.M)
 READ_LINE_PREFIX_RE = re.compile(r"^[ \t]*\d+(?:\t|\u2192)", re.M)
 
 
-def _external_verdict_item(text, ts):
-    """-> a "relayed_verdict" item for the verdict the external hook printed as THIS run's on its last
-    EXT_RUN_VERDICT_RE line in a tool_result, or None (no such line, or an UNVERIFIED hold after it)."""
+def _external_verdict_items(text, ts):
+    """-> one "relayed_verdict" item per run line of the external hook in a tool_result, in order,
+    each carrying its run id; validate_external_relays decides which of them may count."""
     text = READ_LINE_PREFIX_RE.sub("", text.replace("\r\n", "\n"))
-    run = None
-    for m in EXT_RUN_VERDICT_RE.finditer(text):
-        run = m
-    if run is None:
-        return None
-    verdict = run.group(2).lower()
-    if verdict == "hold" and EXT_UNVERIFIED_RE.search(text[run.end():]):
-        return None
-    return {"kind": "relayed_verdict", "timestamp": ts, "text": "", "verdict": verdict,
-            "line": "[" + run.group(1) + "]", "source": "external"}
+    return [{"kind": "relayed_verdict", "timestamp": ts, "text": "", "verdict": m.group(3).lower(),
+             "line": "[" + m.group(2) + "]", "source": "external", "run": m.group(1)}
+            for m in EXT_RUN_VERDICT_RE.finditer(text)]
+
+
+def external_run_records(session_id, cwd=None):
+    """-> the run records hooks/external-adversary.sh appended for this session, in append order,
+    read from .goalspec/external-runs-<session>.jsonl in the working directory or the git top level
+    above it (own_checkpoint_roots). [] when there is no usable session id or no file."""
+    sid = session_id if isinstance(session_id, str) and SESSION_ID_RE.fullmatch(session_id) else None
+    if not sid:
+        return []
+    best = []
+    for root in sorted(own_checkpoint_roots(cwd)):
+        p = os.path.join(root, ".goalspec", "external-runs-%s.jsonl" % sid)
+        recs = []
+        try:
+            with open(p, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    try:
+                        r = json.loads(line)
+                    except Exception:
+                        continue
+                    if isinstance(r, dict) and isinstance(r.get("run"), str):
+                        recs.append(r)
+        except Exception:
+            continue
+        if len(recs) > len(best):
+            best = recs
+    return best
+
+
+def validate_external_relays(items, session_id=None, cwd=None):
+    """0.59.0 — `items` without the external holds that may not count. An external relayed hold stays
+    only when its run id is the LAST run record of this session, that record is verified, and its line
+    is the same line. A later run of the hook, synthetic or not, writes a later record, so an older
+    hold stops counting wherever it sits in what the executor read; a run line with no record (typed,
+    echoed, another session's) never counts. External breaks always stay: a break only denies."""
+    recs = external_run_records(session_id, cwd)
+    last = recs[-1] if recs else None
+    out = []
+    for it in items:
+        if it.get("kind") == "relayed_verdict" and it.get("source") == "external" and it["verdict"] == "hold":
+            if not (last and last.get("run") == it.get("run") and last.get("verified") is True
+                    and last.get("line") == it["line"]):
+                continue
+        out.append(it)
+    return out
 
 
 def is_adversary_type(name):
@@ -765,9 +800,8 @@ def _collect_event(ev, items, state=None):
             elif isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is not True:
                 # 0.59.0: the external backend's report, wherever the executor read it (see
                 # EXT_RUN_VERDICT_RE). An errored result delivered nothing.
-                rv = _external_verdict_item(_tool_result_text(blk.get("content")), ev.get("timestamp"))
-                if rv:
-                    items.append(rv)
+                items.extend(_external_verdict_items(_tool_result_text(blk.get("content")),
+                                                     ev.get("timestamp")))
         # 0.45.0: a TYPED `/goalspec:interview` or `/goalspec:goalspec` lives only in a
         # user event, as the harness's own `<command-name>` tag. Only that exact tag
         # counts — never prose, and never a tool_result (which can carry any text,

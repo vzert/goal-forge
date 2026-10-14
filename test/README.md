@@ -814,7 +814,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-174 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+179 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -879,22 +879,22 @@ in `file_waiver_line` and in the parser, the case/space normalization included, 
 and its own case went red.
 
 New in 0.59.0, the external backend's hold quoted with an Edit to this session's checkpoint (cases
-167-174, 177): it allows when the hold reached the session in a tool_result with the hook's own line for that
-run (`external-adversary: verdict of this run, for a checkpoint quote: …`), read by Bash (167) or by
-Read, line numbers and all (168), and from the real hook's output for a stub partner (181); it does not count
-when the hook marked the hold UNVERIFIED (169), when that line sits inside the hook's own source,
-`printf '...` and all (170), when a later external break came back (171), or from an errored result
-(174), or for a stale hold above a closing notice with no run line (179, codex round 2 on 0.59.0); with
-two reports in one result the last run line decides (180). An unquoted external hold gets the deny that names its line (172), and an external break
-after a hold quoted in text is now the operative verdict (173: before 0.59.0 the precheck did not
-see it and let the command through). A foreground goal-adversary result quoted by Edit already
-passed since 0.51.0; 177 pins it because SKILL.md now names it. The deny text names the third cause
-of a missing quote, text written in the middle of a turn stored as a summary without the marker,
-with the Edit way out (175), no longer says the next message suffices (176), and the no-spec deny
-names the checkpoint Write for the spec (178). `--compare` against 0.58.0's hook, both modes: only
-175, 176 and 178 change. With 0.58.0's hook fixed, the module swap changes only 70, 110 (their deny
-text moved to the module), 167, 168, 172, 173, 180 and 181. Each new guard of `_external_verdict_item` was
-removed in turn and its own case went red.
+167-174, 179-186). `external-adversary.sh` appends a run record (run id, verdict line, verified) to
+`.goalspec/external-runs-<session>.jsonl` on every path that prints a verdict and prints a run line
+naming that id; an external hold counts only as the last record's verified hold, same id and line.
+It allows read by Bash (167) or by Read, line numbers and all (168), with two runs in one result in
+either order (180), and from the real hook end to end (183); it denies an unverified record (169), the
+hook's own source (170), a later external break (171), an errored result (174), a stale hold after a
+later synthetic run (179) or after the real hook run with its binary missing (184), an echoed run line
+with no record (181) or with an unknown id beside a real record (186), a record whose line differs
+(182), and a run with no session id (185). An unquoted external hold gets the deny that names its line
+(172), and an external break after a hold quoted in text is now the operative verdict (173: before
+0.59.0 the precheck did not see it). A foreground goal-adversary result quoted by Edit already passed
+since 0.51.0; 177 pins it because SKILL.md now names it. The deny text names the third cause of a
+missing quote, text written in the middle of a turn stored as a summary without the marker, with the
+Edit way out (175), no longer says the next message suffices (176), and the no-spec deny names the
+checkpoint Write for the spec (178). `--compare` against 0.58.0's hook, both modes: only 175, 176 and
+178 change. Each new guard was removed in turn and a case written for it went red.
 
 ```sh
 python3 test/terminal-precheck-branches.py

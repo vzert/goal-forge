@@ -40,7 +40,30 @@
 
 set -euo pipefail
 
+# 0.59.0 (p-959ceedcca) — the run record. Every path that prints a verdict, real or synthetic, appends
+# one line to .goalspec/external-runs-<session>.jsonl at the executor's git top level (or its working
+# directory): this run's id, its verdict line and whether it is verified. The terminal-push precheck
+# accepts a hold quoted into the checkpoint only when it is the LAST record's verified hold and the
+# run line naming that id reached the session (terminal_actions.validate_external_relays). Recency is
+# this file's append order, so nothing depends on where a verdict sits inside a tool_result: two
+# earlier cuts that read position let a stale hold through, and an echoed run line has no record.
+# No session id in the environment (CLAUDE_CODE_SESSION_ID) -> no record, and the checkpoint path for
+# an external hold does not open; the visible-text quote still works. Never fatal.
+_ADV_RECORD_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+_ADV_RUN_ID=$(od -An -N8 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n' || true)
+[ -n "$_ADV_RUN_ID" ] || _ADV_RUN_ID=$(printf '%x%x%x' "$$" "${RANDOM:-0}" "$(date +%s)")
+_adv_record() {  # $1 = true|false (verified), $2 = the bracketed verdict line printed
+  local sid="${CLAUDE_CODE_SESSION_ID:-}"
+  case "$sid" in ''|*[!A-Za-z0-9-]*) return 0 ;; esac
+  mkdir -p "$_ADV_RECORD_ROOT/.goalspec" 2>/dev/null || return 0
+  printf '{"run":"%s","verified":%s,"line":"%s"}\n' "$_ADV_RUN_ID" "$1" "$2" \
+    >> "$_ADV_RECORD_ROOT/.goalspec/external-runs-$sid.jsonl" 2>/dev/null || true
+  return 0
+}
+_ADV_SYNTH_HOLD="[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
+
 if [ "${GOAL_ADVERSARY_ACTIVE:-}" = "1" ]; then
+  _adv_record false "$_ADV_SYNTH_HOLD"
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]" >&2
   echo "external-adversary: recursion guard tripped (GOAL_ADVERSARY_ACTIVE=1) — refusing to re-enter." >&2
   exit 0
@@ -68,6 +91,7 @@ if [ -z "$EXT_CMD" ] && [ -n "${HOME:-}" ] && [ -f "$GLOBAL_CONFIG" ]; then EXT_
 # Verify the external binary exists — else fail-open with a hold + a note (never block the host).
 BIN=$(printf '%s' "$EXT_CMD" | awk '{print $1}')
 if ! command -v "$BIN" >/dev/null 2>&1; then
+  _adv_record false "$_ADV_SYNTH_HOLD"
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
   echo "external-adversary: '$BIN' not found on PATH — no independent check ran; treat 'hold' as UNVERIFIED." >&2
   exit 0
@@ -423,6 +447,7 @@ _adv_fingerprint() {
   # Run state: gitignored (see .gitignore), so the scan above never lists it.
   for _f in "$1"/.goalspec/*; do
     [ -f "$_f" ] || continue
+    case "$_f" in */external-runs-*.jsonl) continue ;; esac  # this hook's own run records (0.59.0)
     printf '%s %s\n' "$(git -C "$1" hash-object -- "$_f" 2>/dev/null || echo unreadable)" "${_f#"$1"/}"
   done
 }
@@ -660,6 +685,7 @@ _adv_unverified_last_line() {
   echo "UNVERIFIED (goalspec external adversary): $1 It is NOT a pass. Re-run the round or route it to the other backend." >&2
 }
 if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; then
+  _adv_record false "$_ADV_SYNTH_HOLD"
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
   {
     echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
@@ -716,6 +742,7 @@ _adv_print_other_writer_hedge() {
 }
 if [ -n "$MUTATED" ]; then
   if printf '%s' "$VERDICT" | grep -qE '\[ADVERSARY-VERDICT:[[:space:]]*hold'; then
+    _adv_record false "$_ADV_SYNTH_HOLD"
     echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
     {
       echo "external-adversary: the partner MODIFIED the repository during its own review, then"
@@ -873,12 +900,17 @@ fi
 # limitation this method already documents everywhere else (the bare-verdict floor above is a
 # floor, not proof of diligence) -- caught by adversary review when this line still said "a real
 # verdict." Judging genuineness stays the executor's job, same as for every other self-report.
-echo "external-adversary: a verdict-shaped block was just produced above -- whether it reflects genuine adversarial work is still yours to judge (see the bare-verdict-floor note above). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM in your own visible text -- each on its OWN line, in plain text, nothing before it and nothing after the closing bracket on that same line: no bold or code-span wrapping, no trailing citation. It must be a visible text block you emit -- a quote you only write or plan in your thinking does not count: thinking is not read, even when your screen shows it like a message. The gate matches the marker only when its line ends at that bracket, so decorating it while quoting degrades a genuine model=different to model=same, silently. The Stop gate cannot see this script's stdout directly, only text you personally author — this is far easier to forget once you move on to other work than it is right now. A Write or Edit to your .goalspec checkpoint is stored as written, and the text that ends your turn almost always is; text you write in the middle of a turn can be stored as a summary without the marker line. So before any push, merge or deploy, also append the verdict line to your checkpoint with the Edit tool -- the terminal-push precheck accepts it there when this output, with the line below that names this run's verdict, reached your session." >&2
-# 0.59.0 (p-959ceedcca): this run's verdict on a line of its own, brackets stripped (a bracketed
-# marker here would feed the verdict nudge), so the terminal-push precheck can tie a hold quoted into
-# the checkpoint to THIS run and not to an older verdict above it (terminal_actions.EXT_RUN_VERDICT_RE).
+echo "external-adversary: a verdict-shaped block was just produced above -- whether it reflects genuine adversarial work is still yours to judge (see the bare-verdict-floor note above). If you judge it genuine, quote the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM in your own visible text -- each on its OWN line, in plain text, nothing before it and nothing after the closing bracket on that same line: no bold or code-span wrapping, no trailing citation. It must be a visible text block you emit -- a quote you only write or plan in your thinking does not count: thinking is not read, even when your screen shows it like a message. The gate matches the marker only when its line ends at that bracket, so decorating it while quoting degrades a genuine model=different to model=same, silently. The Stop gate cannot see this script's stdout directly, only text you personally author — this is far easier to forget once you move on to other work than it is right now. A Write or Edit to your .goalspec checkpoint is stored as written, and the text that ends your turn almost always is; text you write in the middle of a turn can be stored as a summary without the marker line. So before any push, merge or deploy, also append the verdict line to your checkpoint with the Edit tool -- the terminal-push precheck accepts it there when it is the verdict of the latest run this hook recorded for your session and the line below, which names this run, reached your session." >&2
+# 0.59.0 (p-959ceedcca): this run's id and verdict on a line of its own, brackets stripped (a
+# bracketed marker here would feed the verdict nudge), and the run record (_adv_record, above). A bare
+# hold is recorded unverified, like every other path that marks a hold UNVERIFIED.
+if [ "$VERDICT_IS_BREAK" -eq 1 ] || [ "$EVIDENCE_LINES" -gt 0 ]; then
+  _adv_record true "$VERDICT"
+else
+  _adv_record false "$VERDICT"
+fi
 _RUN_V="${VERDICT#\[}"
-printf 'external-adversary: verdict of this run, for a checkpoint quote: %s\n' "${_RUN_V%\]}" >&2
+printf 'external-adversary: verdict of this run (run %s), for a checkpoint quote: %s\n' "$_ADV_RUN_ID" "${_RUN_V%\]}" >&2
 # Bare verdict: the partner's own line is printed and stays well-formed, so only the filter-proof
 # last line is added here (case 35) — the prefixed floor warning above is the one the grep deletes.
 if [ "$EVIDENCE_LINES" -eq 0 ]; then

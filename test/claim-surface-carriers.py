@@ -93,6 +93,7 @@ def external_env(**extra):
     env = dict(os.environ, **extra)
     env.pop("GOAL_ADVERSARY_ACTIVE", None)
     env.pop("GOAL_CONFIG_PATH", None)
+    env.pop("CLAUDE_CODE_SESSION_ID", None)  # 0.59.0: no run record from a test run
     return env
 DURABLE = os.path.join(P, "references", "durable-artifact.md")
 

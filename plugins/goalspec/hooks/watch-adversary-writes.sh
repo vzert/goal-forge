@@ -114,6 +114,9 @@ fingerprint() {
       done
   for f in "$REPO_ROOT"/.goalspec/*; do
     [ -f "$f" ] || continue
+    # 0.59.0: the external hook's own run records (external-adversary.sh, _adv_record), not a write
+    # by any adversary; an external round running beside a subagent round appends to it.
+    case "$f" in */external-runs-*.jsonl) continue ;; esac
     printf '%s %s\n' "$(git -C "$REPO_ROOT" hash-object -- "$f" 2>/dev/null || echo unreadable)" "${f#"$REPO_ROOT"/}"
   done
 }

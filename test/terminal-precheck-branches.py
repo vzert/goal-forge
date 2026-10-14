@@ -1132,17 +1132,26 @@ case("166-spent-waiver-rewritten-with-other-spacing-DENY", _fw(
     False, command="gh pr merge 13"))
 
 
-# 167-178 (0.59.0, p-959ceedcca + p-840fef19be): the external backend's hold quoted with an Edit to
-# the checkpoint, and the deny text naming the third cause. hooks/external-adversary.sh prints its
-# closing notice (EXT_SIG) on stderr after a well-formed partner verdict; the report reaches the
-# session in the tool_result of the Bash that ran it or of a later Bash/Read of its redirected output.
+# 167-174 (0.59.0, p-959ceedcca): the external backend's hold quoted with an Edit to the checkpoint.
+# hooks/external-adversary.sh prints a run line (this run's id and verdict) and appends a run record
+# to .goalspec/external-runs-<session>.jsonl; an external hold counts only as the LAST record's
+# verified hold (terminal_actions.validate_external_relays), wherever it sits in what was read.
 EXT_SIG = ("external-adversary: a verdict-shaped block was just produced above -- whether it reflects "
            "genuine adversarial work is still yours to judge.")
-EXT_RUN = "external-adversary: verdict of this run, for a checkpoint quote: "
-EXT_OUT = ("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- probe: evidence\n" + HOLD_LINE + "\n" + EXT_SIG + "\n"
-           + EXT_RUN + HOLD_LINE[1:-1] + "\n")
-EXT_UNV = ("UNVERIFIED (goalspec external adversary): the partner's verdict above came with no "
-           "evidence of work. It is NOT a pass.")
+
+
+def EXT_RUN(run):
+    return "external-adversary: verdict of this run (run %s), for a checkpoint quote: " % run
+
+
+def ext_out(run, line=None, model="- probe: evidence\n"):
+    line = line or HOLD_LINE
+    return ("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n" + model + line + "\n" + EXT_SIG + "\n"
+            + EXT_RUN(run) + line[1:-1] + "\n")
+
+
+def rec(run, verified=True, line=None):
+    return {"run": run, "verified": verified, "line": line or HOLD_LINE}
 
 
 def _tool_result(tid, text, is_error=False, read=False):
@@ -1156,45 +1165,74 @@ def _tool_result(tid, text, is_error=False, read=False):
             {"user": [{"type": "tool_result", "tool_use_id": tid, "content": text, "is_error": is_error}]}]
 
 
-EXT_REL = [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT)
+def _write_records(work, records, sid=SID):
+    if records is None:
+        return
+    os.makedirs(os.path.join(work, ".goalspec"), exist_ok=True)
+    with open(os.path.join(work, ".goalspec", "external-runs-%s.jsonl" % sid), "w") as fh:
+        for r in records:
+            fh.write(json.dumps(r) + "\n")
 
-case("167-external-hold-in-bash-output-quoted-by-edit-ALLOW", _fq(
-    "167", EXT_REL + [_edit(CKPT, "verdict:\n" + HOLD_LINE, "e167")], True))
 
-case("168-external-hold-read-with-line-numbers-quoted-by-edit-ALLOW", _fq(
-    "168", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT, read=True)
-    + [_edit(CKPT, HOLD_LINE, "e168")], True))
+def _fx(name, events, want_allow, records, needle=None, command="gh pr merge"):
+    """Like _fq, with this session's external run records written into the repo first."""
+    def fn():
+        LAST_MESSAGE[0] = ""
+        work = make_repo(name, None, None)
+        _write_records(work, records)
+        decision, detail = run_hook(work, command, transcript(events, name), session_id=SID)
+        if not want_allow:
+            if decision != "deny":
+                return decision, "expected a deny"
+            if needle and needle not in LAST_REASON[0]:
+                return "wrong-text", LAST_REASON[0][:70]
+            return decision, detail
+        if decision != "allow-with-message":
+            return decision, "expected an allow with the line: " + detail
+        return (decision, HOLD_LINE[:40]) if HOLD_LINE in LAST_MESSAGE[0] else ("wrong-text", LAST_MESSAGE[0][:70])
+    return fn
 
-# The hook marked the hold UNVERIFIED: no relayed verdict, so the Edit has nothing to quote.
-case("169-external-unverified-hold-quoted-by-edit-DENY", _fq(
-    "169", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT + EXT_UNV + "\n")
-    + [_edit(CKPT, HOLD_LINE, "e169")], False, needle="Spawn goal-adversary"))
 
-# A cat/grep of the hook's source carries the run line inside `printf '...`, never at a line start.
-case("170-hook-source-in-output-is-not-a-report-DENY", _fq(
-    "170", [{"text": SPEC_TEXT}] + _tool_result("x1", HOLD_LINE + "\nprintf '" + EXT_RUN + "%s\\n' x >&2\n"
-                                                + "  echo " + EXT_RUN + HOLD_LINE[1:-1] + "\n")
-    + [_edit(CKPT, HOLD_LINE, "e170")], False, needle="Spawn goal-adversary"))
+R1, R2 = "a1a1a1a1a1a1a1a1", "b2b2b2b2b2b2b2b2"
+EXT_REL = [{"text": SPEC_TEXT}] + _tool_result("x1", ext_out(R1))
 
-# A later external break: the quoted hold is no longer the latest verdict.
-EXT_BREAK = ("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- probe: a defect\n" + BREAK_TEXT + "\n" + EXT_SIG + "\n"
-             + EXT_RUN + BREAK_TEXT[1:-1] + "\n")
-case("171-external-hold-then-external-break-edit-hold-DENY", _fq(
-    "171", EXT_REL + _tool_result("x2", EXT_BREAK) + [_edit(CKPT, HOLD_LINE, "e171")], False))
+case("167-external-hold-in-bash-output-quoted-by-edit-ALLOW", _fx(
+    "167", EXT_REL + [_edit(CKPT, "verdict:\n" + HOLD_LINE, "e167")], True, [rec(R1)]))
+
+case("168-external-hold-read-with-line-numbers-quoted-by-edit-ALLOW", _fx(
+    "168", [{"text": SPEC_TEXT}] + _tool_result("x1", ext_out(R1), read=True)
+    + [_edit(CKPT, HOLD_LINE, "e168")], True, [rec(R1)]))
+
+# The hook recorded the run unverified (a bare or synthetic hold): it never counts.
+case("169-external-unverified-record-quoted-by-edit-DENY", _fx(
+    "169", EXT_REL + [_edit(CKPT, HOLD_LINE, "e169")], False, [rec(R1, verified=False)],
+    needle="Spawn goal-adversary"))
+
+# A cat/grep of the hook's source carries the run line inside `printf '...` or indented.
+case("170-hook-source-in-output-is-not-a-report-DENY", _fx(
+    "170", [{"text": SPEC_TEXT}] + _tool_result("x1", HOLD_LINE + "\nprintf '" + EXT_RUN(R1) + "%s\\n' x\n"
+                                                + "  echo " + EXT_RUN(R1) + HOLD_LINE[1:-1] + "\n")
+    + [_edit(CKPT, HOLD_LINE, "e170")], False, [rec(R1)], needle="Spawn goal-adversary"))
+
+# A later external break: the quoted hold is no longer the latest record.
+case("171-external-hold-then-external-break-edit-hold-DENY", _fx(
+    "171", EXT_REL + _tool_result("x2", ext_out(R2, BREAK_TEXT)) + [_edit(CKPT, HOLD_LINE, "e171")],
+    False, [rec(R1), rec(R2, line=BREAK_TEXT)]))
 
 # Unquoted external hold: the deny names its exact line and the Edit way out.
-case("172-external-hold-unquoted-names-line-DENY", _fq(
-    "172", EXT_REL, False, needle="the external reviewer's output), not as your own text: " + HOLD_LINE))
+case("172-external-hold-unquoted-names-line-DENY", _fx(
+    "172", EXT_REL, False, [rec(R1)],
+    needle="the external reviewer's output), not as your own text: " + HOLD_LINE))
 
 # A hold quoted in text, then an external break nobody quoted: the latest verdict is the break.
 # Before 0.59.0 the external break was invisible here and the merge passed (declared in --expected).
-case("173-text-hold-then-unquoted-external-break-DENY", _relay_case(
-    "173", [{"text": SPEC_TEXT}, {"text": HOLD_TEXT}] + _tool_result("x2", EXT_BREAK),
-    "most recent adversary verdict on record is break"))
+case("173-text-hold-then-unquoted-external-break-DENY", _fx(
+    "173", [{"text": SPEC_TEXT}, {"text": HOLD_TEXT}] + _tool_result("x2", ext_out(R2, BREAK_TEXT)),
+    False, [rec(R2, line=BREAK_TEXT)], needle="most recent adversary verdict on record is break"))
 
-case("174-external-output-in-error-result-DENY", _fq(
-    "174", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_OUT, is_error=True)
-    + [_edit(CKPT, HOLD_LINE, "e174")], False, needle="Spawn goal-adversary"))
+case("174-external-output-in-error-result-DENY", _fx(
+    "174", [{"text": SPEC_TEXT}] + _tool_result("x1", ext_out(R1), is_error=True)
+    + [_edit(CKPT, HOLD_LINE, "e174")], False, [rec(R1)], needle="Spawn goal-adversary"))
 
 # p-840fef19be: the generic deny names the third cause and the Edit way out, and no longer says that
 # the next message is enough.
@@ -1226,41 +1264,84 @@ case("177-foreground-adversary-hold-quoted-by-edit-ALLOW", _fq(
     "177", [{"text": SPEC_TEXT}] + _spawn(ADV, "tfg1", report="- probe: evidence\n" + HOLD_TEXT)
     + [_edit(CKPT, HOLD_LINE, "e177")], True))
 
-# 179-181: the verdict is read only from the hook's own run line (codex round 2 on 0.59.0 passed a
-# stale hold put before a closing notice whose report was missing), the last run line decides, and
-# the real hook's output is read end to end.
-case("179-stale-hold-before-a-notice-with-no-run-line-DENY", _fq(
-    "179", [{"text": SPEC_TEXT}] + _tool_result("x1", HOLD_LINE + "\n" + EXT_SIG + "\n")
-    + [_edit(CKPT, HOLD_LINE, "e179")], False, needle="Spawn goal-adversary"))
+# 179-184 (0.59.0): recency is the run record's append order, never position in what was read.
+# Rounds 2 and 3 on 0.59.0 passed a stale hold through two earlier cuts that read position, and an
+# echoed run line through the second.
+# 179: the stale hold of run R1 was read, and a later run R2 (synthetic, unverified) has the last record.
+case("179-stale-hold-after-a-later-synthetic-run-DENY", _fx(
+    "179", EXT_REL + [_edit(CKPT, HOLD_LINE, "e179")], False, [rec(R1), rec(R2, verified=False)],
+    needle="Spawn goal-adversary"))
 
-case("180-two-reports-the-last-notice-decides-ALLOW", _fq(
-    "180", [{"text": SPEC_TEXT}] + _tool_result("x1", EXT_BREAK + EXT_OUT)
-    + [_edit(CKPT, HOLD_LINE, "e180")], True))
+# 180: two runs in one result, the latest first (cat new old): the latest record decides.
+case("180-two-runs-in-one-result-latest-record-decides-ALLOW", _fx(
+    "180", [{"text": SPEC_TEXT}] + _tool_result("x1", ext_out(R2) + ext_out(R1))
+    + [_edit(CKPT, HOLD_LINE, "e180")], True, [rec(R1), rec(R2)]))
+
+# 181: an echoed run line with no record behind it (codex round 3 on 0.59.0).
+case("181-echoed-run-line-with-no-record-DENY", _fx(
+    "181", EXT_REL + [_edit(CKPT, HOLD_LINE, "e181")], False, None, needle="Spawn goal-adversary"))
+
+# 182: a record whose line differs from the run line read (another verdict under the same id).
+case("182-record-line-differs-DENY", _fx(
+    "182", EXT_REL + [_edit(CKPT, HOLD_LINE, "e182")], False,
+    [rec(R1, line=HOLD_LINE.replace("unsafe=0", "unsafe=00"))], needle="Spawn goal-adversary"))
+
+# 186: an echoed run line with an id no record has, while the last record IS a verified hold of the
+# same line: the id must match, not only the line.
+case("186-echoed-run-line-unknown-id-beside-a-real-record-DENY", _fx(
+    "186", [{"text": SPEC_TEXT}] + _tool_result("x1", ext_out("c3c3c3c3c3c3c3c3"))
+    + [_edit(CKPT, HOLD_LINE, "e186")], False, [rec(R1), rec(R2)], needle="Spawn goal-adversary"))
 
 
-
-def _real_hook_output():
-    """The external hook's real stdout+stderr for a stub partner that returns a hold."""
-    d = os.path.join(TMP, "x181")
-    os.makedirs(d, exist_ok=True)
-    sh(["git", "init", "-q", d], d)
-    sh(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x"], d)
-    fx = os.path.join(TMP, "partner181.txt")
+def _real_hook(work, partner_text, sid=SID):
+    """Run the real external hook in `work` with a stub partner; -> stdout+stderr."""
+    fx = os.path.join(TMP, os.path.basename(os.path.dirname(work)) + "-partner.txt")
     with open(fx, "w") as fh:
-        fh.write("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- checked a: fine\n- checked b: fine\n" + HOLD_LINE + "\n")
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GOAL_ADVERSARY")}
+        fh.write(partner_text)
+    env = {k: v for k, v in os.environ.items()
+           if not k.startswith("GOAL_ADVERSARY") and k != "CLAUDE_CODE_SESSION_ID"}
     env.update({"GOAL_ADVERSARY_CMD": "cat " + fx, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT})
+    if sid:
+        env["CLAUDE_CODE_SESSION_ID"] = sid
     r = subprocess.run(["bash", os.path.join(PLUGIN_ROOT, "hooks", "external-adversary.sh")],
-                       input="payload\n", capture_output=True, text=True, cwd=d, env=env)
+                       input="payload\n", capture_output=True, text=True, cwd=work, env=env)
     return r.stdout + r.stderr
 
 
-def _case181():
-    return _fq("181", [{"text": SPEC_TEXT}] + _tool_result("x1", _real_hook_output())
-               + [_edit(CKPT, HOLD_LINE, "e181")], True)()
+GOOD_PARTNER = "[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- checked a: fine\n- checked b: fine\n" + HOLD_LINE + "\n"
 
 
-case("181-real-hook-output-hold-quoted-by-edit-ALLOW", _case181)
+def _real_case(name, runs, want_allow, sid=SID):
+    """`runs`: partner texts run through the real hook in order (None = binary missing). The output of
+    the FIRST run is what the executor read; the record file is whatever the hook wrote."""
+    def fn():
+        LAST_MESSAGE[0] = ""
+        work = make_repo(name, None, None)
+        outs = []
+        for pt in runs:
+            if pt is None:
+                env = {k: v for k, v in os.environ.items() if not k.startswith("GOAL_ADVERSARY")}
+                env.update({"GOAL_ADVERSARY_CMD": "nonexistent_bin_zz", "CLAUDE_CODE_SESSION_ID": sid or ""})
+                subprocess.run(["bash", os.path.join(PLUGIN_ROOT, "hooks", "external-adversary.sh")],
+                               input="payload\n", capture_output=True, text=True, cwd=work, env=env)
+                outs.append("")
+            else:
+                outs.append(_real_hook(work, pt, sid))
+        events = [{"text": SPEC_TEXT}] + _tool_result("x1", outs[0]) + [_edit(CKPT, HOLD_LINE, "e" + name)]
+        decision, detail = run_hook(work, "gh pr merge", transcript(events, name), session_id=SID)
+        if want_allow:
+            ok = decision == "allow-with-message" and HOLD_LINE in LAST_MESSAGE[0]
+            return ("allow-with-message", detail) if ok else (decision if decision != "allow-with-message" else "wrong-text", detail)
+        return decision, detail
+    return fn
+
+
+# 183: the real hook's output, end to end: run line, record, precheck.
+case("183-real-hook-output-hold-quoted-by-edit-ALLOW", _real_case("183", [GOOD_PARTNER], True))
+# 184: the same hold, then the real hook with its binary missing (synthetic hold, subagent round 3).
+case("184-real-hook-then-missing-binary-run-DENY", _real_case("184", [GOOD_PARTNER, None], False))
+# 185: no session id in the hook's environment: no record, so the checkpoint path does not open.
+case("185-real-hook-without-session-id-DENY", _real_case("185", [GOOD_PARTNER], False, sid=None))
 
 # The no-spec deny (entered goalspec, wrote no spec) names the checkpoint Write for the spec.
 case("178-no-spec-deny-names-checkpoint-write-DENY", lambda: _deny_reason_has(
