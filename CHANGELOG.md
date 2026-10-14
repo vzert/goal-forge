@@ -22,12 +22,14 @@ autorizado, el sandbox, el relato) bajaron de 19 apariciones a 5.
   `references/durable-artifact.md` ("What goes in it"): antes de lanzar una ronda, el ejecutor
   re-lee las dos secciones con autoridad y actualiza lo que el trabajo dejó viejo: commits o
   etiquetas de HEAD, cifras medidas y el estado hecho/pendiente de cada fila. Solo esos punteros.
-  Nunca toca el objetivo, el umbral ni el texto de un criterio, ni quita uno: cambiar un criterio
+  Nunca toca el objetivo, el umbral ni el texto de un criterio (tampoco su línea base), ni quita uno: cambiar un criterio
   después de un veredicto es hacer trampa al spec. Término común: "refresh only those pointers".
 - `test/claim-surface-carriers.py`: 4 chequeos `refresh:*` (216 en total). El `--selftest` los ve
   fallar cuando la regla queda solo en un comentario.
-- Es una regla escrita. Ningún hook la hace cumplir, y ninguna suite puede mostrar que un agente
-  la obedece. Eso se vuelve a medir en vivo.
+- Es una regla escrita. Hoy ningún hook la hace cumplir y ninguna suite de este repo comprueba que
+  un agente la obedezca. Un hook que compare los commits del goal-spec vivo con HEAD antes de lanzar
+  una ronda es posible; se eligió no hacerlo en esta versión. Si se obedece se vuelve a medir en
+  vivo.
 
 ## [0.57.0] - 2026-10-14
 
