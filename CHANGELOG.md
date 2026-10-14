@@ -17,8 +17,11 @@ turn does not need to end". Ese consejo es falso. Hay una tercera causa, medida 
 investigación del proyecto): el texto que el agente escribe a mitad de turno, en una respuesta que
 luego llama a una herramienta, a veces queda en el transcript como un resumen sin la línea del
 marcador. Todo texto escrito a mitad de turno va seguido de una llamada, así que "el siguiente
-mensaje" lleva justo a esa causa. Solo dos sitios se guardan tal cual: el texto que cierra el turno
-y una llamada a herramienta. Caso real: en 6fd1cbfa (claude-vzert) el precheck negó tres veces el
+mensaje" lleva justo a esa causa. Una llamada a herramienta se guarda tal cual. El texto que cierra
+el turno, casi siempre. Esos resúmenes los hace el servidor. El esquema de Claude Code 2.1.300 los
+llama "server summaries of the prose between tool calls", y en una sesión interactiva Claude Code los pide por defecto. La
+variable `CLAUDE_CODE_THINKING_DISPLAY_UPDATES` decide si los pide. No se midió si apagarla los
+evita, ni qué más cambia. Caso real: en 6fd1cbfa (claude-vzert) el precheck negó tres veces el
 mismo merge. Otro caso: en b30f155f (agente-coordinador, 2026-10-05) el agente escribió que volvía a
 citar el hold. La línea 1322 del transcript guarda solo ese resumen, y el push se negó. Hasta hoy, la
 documentación atribuía ese caso a una cita escrita solo en el thinking.

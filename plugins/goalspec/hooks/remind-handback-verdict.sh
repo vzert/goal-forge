@@ -264,8 +264,8 @@ msg = ("ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary r
        "UNVERIFIED, not a pass), quote these lines VERBATIM in your visible text, each alone on its own "
        "line and unformatted -- no bold, no code span, nothing after the closing bracket -- in a "
        "visible text block you emit. A quote you only write or plan in your thinking does not count: "
-       "thinking is not read, even when your screen shows it like a message. Two places are stored as "
-       "written: the text that ends your turn, and a Write or Edit to your checkpoint; text you write in the middle of a turn can be stored as a summary without the marker line. So BEFORE any push, merge or deploy, "
+       "thinking is not read, even when your screen shows it like a message. A Write or Edit to your "
+       "checkpoint is stored as written, and the text that ends your turn almost always is; text you write in the middle of a turn can be stored as a summary without the marker line. So BEFORE any push, merge or deploy, "
        "append the verdict line to your checkpoint with the Edit tool and run the command in a later "
        "message, not the same one: a message reaches the transcript only after its tool call runs. If "
        "a question to the user is still open, quote them anyway, now.\n\n" + lines)
