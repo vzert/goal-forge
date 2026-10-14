@@ -699,7 +699,8 @@ def main():
     # executor then refreshes is a live observation, not something this file can show.
     for name, t in (("skill", fs_.lower()), ("adversary-skill", fk_.lower()), ("durable", fl(durable).lower())):
         check("refresh:%s-pointers-not-targets" % name,
-              "refresh only those pointers" in t and "never a criterion's target, threshold or wording" in t
+              "refresh only those pointers" in t
+              and "never a criterion's target, threshold or wording (its baseline included)" in t
               and "before you spawn" in t)
     check("refresh:skill-and-durable-figure",
           "13 of those broke on a claim in the live goal-spec or the coverage table" in fs_
