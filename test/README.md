@@ -893,7 +893,7 @@ of a missing quote, text written in the middle of a turn stored as a summary wit
 with the Edit way out (175), no longer says the next message suffices (176), and the no-spec deny
 names the checkpoint Write for the spec (178). `--compare` against 0.58.0's hook, both modes: only
 175, 176 and 178 change. With 0.58.0's hook fixed, the module swap changes only 70, 110 (their deny
-text moved to the module), 167, 168, 172 and 173. Each new guard of `_external_verdict_item` was
+text moved to the module), 167, 168, 172, 173, 180 and 181. Each new guard of `_external_verdict_item` was
 removed in turn and its own case went red.
 
 ```sh

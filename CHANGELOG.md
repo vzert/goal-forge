@@ -51,7 +51,7 @@ documentación atribuía ese caso a una cita escrita solo en el thinking.
 - Los mensajes del gate de Stop no cambian: el cierre es el texto que cierra el turno.
 - `test/terminal-precheck-branches.py`: casos 167-181. `--compare` contra el hook de 0.58.0, en los
   dos modos: solo cambian 175, 176 y 178. Con el hook de 0.58.0 fijo, cambiar el módulo solo cambia
-  70, 110, 167, 168, 172 y 173. Ocho mutaciones, siete del lector nuevo y una que apaga la línea nueva del hook, y cada una pone rojo un caso escrito para ella.
+  70, 110, 167, 168, 172, 173, 180 y 181. Ocho mutaciones, siete del lector nuevo y una que apaga la línea nueva del hook, y cada una pone rojo un caso escrito para ella.
 - `test/claim-surface-carriers.py`: 11 checks nuevos, 227 en total. Cada carrier de la regla de
   texto visible nombra la tercera causa. Ninguno dice ya que el siguiente mensaje basta. Las dos
   suites del spec (`spec-brake-branches.py` y `spec-on-entry-branches.py`) exigen la cláusula nueva,
