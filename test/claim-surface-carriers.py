@@ -526,8 +526,8 @@ def main():
           "before blaming the log" in skill and "reaches the transcript only after its tool call runs" in skill)
     check("visible:adversary-skill", VIS in adv_skill)
     # 0.59.0 (p-840fef19be): the third cause, measured 2026-10-14 -- text written in the middle of a
-    # turn can be stored as a narration summary without the marker -- and the two places that are
-    # stored as written. Every verdict carrier names it; none may still say the next message suffices.
+    # turn can be stored as a narration summary without the marker -- and what is stored as written
+    # (a tool call; the closing text almost always). Every verdict carrier names it; none may still say the next message suffices.
     MID = "text you write in the middle of a turn can be stored as a summary without the marker line"
     MID_SPEC = "can be stored as a summary without the ## Goal-spec heading"
     check("visible:skill-names-mid-turn-cause", MID in " ".join(skill.split())

@@ -205,8 +205,8 @@ seen_note = (" If you believe you already quoted a hold, three causes are measur
              "tool to append the exact [ADVERSARY-VERDICT: hold ...] line the adversary returned to "
              + ta.checkpoint_name_for(sid) + " (a Write replaces the whole file) and run the command "
              "in a later message -- a tool call is stored as written, and this hook accepts that line "
-             "when it is the latest verdict a goal-adversary returned. Visible text holds only as the "
-             "text that ends your turn.")
+             "when it is the latest verdict a goal-adversary returned. Visible text is stored as "
+             "written almost always when it ends your turn, and not reliably in the middle of one.")
 
 # p-473ba7b48b (2026-09-30): a heredoc or -c string that only MENTIONS a push/merge is denied too.
 # The body is not stripped on purpose: the same text is data in one command and code in the next

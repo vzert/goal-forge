@@ -621,37 +621,41 @@ AGENT_ID_RE = re.compile(r"agentId:\s*([A-Za-z0-9_-]+)")
 
 # 0.59.0 (p-959ceedcca) — the external backend's report, read as a relayed verdict so its hold can be
 # quoted with a Write/Edit to the checkpoint (file_quoted_hold), as a subagent's can since 0.51.0.
-# hooks/external-adversary.sh prints EXT_SIGNATURE_RE's line on stderr after a well-formed partner
-# verdict, hold or break, and on no synthetic-hold path; every path that marks a hold UNVERIFIED ends
-# in EXT_UNVERIFIED_RE's line. The report reaches the session in a tool_result: the Bash call that ran
-# the hook or, far more often, a later Bash or Read of the file its output was redirected to (of the
-# Bash calls that ran the hook in the maintainer's last 600 transcripts, 2026-10-14, 8 of 263 carried a
-# verdict in their own result and 232 redirected their output; a looser count gives other totals). So no command is
-# parsed: any tool_result counts when one of its lines BEGINS with the signature. The hook's source
-# carries the same words inside `echo "...`, so a cat, sed or grep -n of the source does not count.
-# Read prefixes each line with its number, stripped here. Threat model: an honest executor copying a
-# stale or invented hold; a tool_result fabricated to carry the signature is not in it.
-EXT_SIGNATURE_RE = re.compile(r"^external-adversary: a verdict-shaped block was just produced above", re.M)
+# hooks/external-adversary.sh prints EXT_RUN_VERDICT_RE's line on stderr, after its closing notice,
+# carrying the verdict line of THIS run without its brackets, on every path where the partner returned
+# a well-formed verdict (hold or break) and on no synthetic-hold path; every path that marks a hold
+# UNVERIFIED ends in EXT_UNVERIFIED_RE's line. The report reaches the session in a tool_result: the
+# Bash call that ran the hook or, far more often, a later Bash or Read of the file its output was
+# redirected to (in the maintainer's transcripts most runs redirect it; the counts are in the project's
+# research, not here). So no command is parsed: any tool_result counts when one of its lines
+# BEGINS with that prefix, and the verdict is read from that line only, never from the text above it
+# -- a first cut took the last verdict line above the closing notice, and codex (round 2 on 0.59.0)
+# passed a stale hold put before a notice whose own report was missing. The hook's source carries the
+# prefix inside `printf '...`, so a cat, sed or grep -n of the source does not count. Read prefixes
+# each line with its number, stripped here. Threat model: an honest executor copying a stale or
+# invented hold; a tool_result fabricated to carry the line is not in it.
+EXT_RUN_VERDICT_RE = re.compile(
+    r"^external-adversary: verdict of this run, for a checkpoint quote: "
+    r"(ADVERSARY-VERDICT:[ \t]*(break|hold)[ \t]+ungrounded=\d+[ \t]+unfalsified=\d+[ \t]+incomplete=\d+"
+    r"[ \t]+autonomy-violations=\d+[ \t]+unsafe=\d+[ \t]*)$", re.M)
 EXT_UNVERIFIED_RE = re.compile(r"^UNVERIFIED \(goalspec external adversary\):", re.M)
-READ_LINE_PREFIX_RE = re.compile(r"^[ \t]*\d+(?:\t|→)", re.M)
+READ_LINE_PREFIX_RE = re.compile(r"^[ \t]*\d+(?:\t|\u2192)", re.M)
 
 
 def _external_verdict_item(text, ts):
-    """-> a "relayed_verdict" item for the last verdict line ABOVE the external hook's signature in a
-    tool_result, or None (no signature, an UNVERIFIED hold, no verdict above it)."""
-    text = READ_LINE_PREFIX_RE.sub("", text)
-    sig = None
-    for m in EXT_SIGNATURE_RE.finditer(text):
-        sig = m
-    if sig is None:
+    """-> a "relayed_verdict" item for the verdict the external hook printed as THIS run's on its last
+    EXT_RUN_VERDICT_RE line in a tool_result, or None (no such line, or an UNVERIFIED hold after it)."""
+    text = READ_LINE_PREFIX_RE.sub("", text.replace("\r\n", "\n"))
+    run = None
+    for m in EXT_RUN_VERDICT_RE.finditer(text):
+        run = m
+    if run is None:
         return None
-    before = text[:sig.start()]
-    after = text[sig.start():]
-    rv = _relayed_verdict_item(before, ts)
-    if rv is None or (rv["verdict"] == "hold" and EXT_UNVERIFIED_RE.search(after)):
+    verdict = run.group(2).lower()
+    if verdict == "hold" and EXT_UNVERIFIED_RE.search(text[run.end():]):
         return None
-    rv["source"] = "external"
-    return rv
+    return {"kind": "relayed_verdict", "timestamp": ts, "text": "", "verdict": verdict,
+            "line": "[" + run.group(1) + "]", "source": "external"}
 
 
 def is_adversary_type(name):
@@ -760,7 +764,7 @@ def _collect_event(ev, items, state=None):
                     items.append(rv)
             elif isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is not True:
                 # 0.59.0: the external backend's report, wherever the executor read it (see
-                # EXT_SIGNATURE_RE). An errored result delivered nothing.
+                # EXT_RUN_VERDICT_RE). An errored result delivered nothing.
                 rv = _external_verdict_item(_tool_result_text(blk.get("content")), ev.get("timestamp"))
                 if rv:
                     items.append(rv)

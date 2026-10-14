@@ -19,7 +19,8 @@ luego llama a una herramienta, a veces queda en el transcript como un resumen si
 marcador. Todo texto escrito a mitad de turno va seguido de una llamada, así que "el siguiente
 mensaje" lleva justo a esa causa. Una llamada a herramienta se guarda tal cual. El texto que cierra
 el turno, casi siempre. Esos resúmenes los hace el servidor. El esquema de Claude Code 2.1.300 los
-llama "server summaries of the prose between tool calls", y en una sesión interactiva Claude Code los pide por defecto. La
+llama "server summaries of the prose between tool calls", y en una sesión interactiva Claude Code
+puede pedirlos por defecto, según el modelo y el proveedor. La
 variable `CLAUDE_CODE_THINKING_DISPLAY_UPDATES` decide si los pide. No se midió si apagarla los
 evita, ni qué más cambia. Caso real: en 6fd1cbfa (claude-vzert) el precheck negó tres veces el
 mismo merge. Otro caso: en b30f155f (agente-coordinador, 2026-10-05) el agente escribió que volvía a
@@ -29,12 +30,15 @@ documentación atribuía ese caso a una cita escrita solo en el thinking.
 - `hooks/precheck-terminal-push.sh`: la negación nombra la tercera causa. Da como salida un Edit
   que añade la línea del veredicto al checkpoint de la sesión, o el texto que cierra el turno. La
   negación sin spec pide escribir el spec con Write en el checkpoint.
-- `hooks/lib/terminal_actions.py`: el precheck lee también la salida del revisor externo
-  (`external-adversary.sh`). Cuenta cualquier resultado de herramienta, Bash o Read, donde una línea
-  empiece con el aviso final del hook (`external-adversary: a verdict-shaped block was just produced
-  above`). El veredicto es la última línea de veredicto antes de ese aviso. Así, su hold puede
-  citarse con Edit en el checkpoint, como el del subagente desde 0.51.0. No cuenta un hold que el
-  hook marcó UNVERIFIED, ni el aviso dentro del código fuente del hook, ni un resultado con error.
+- `hooks/external-adversary.sh` imprime, tras su aviso final, una línea nueva con el veredicto de
+  esa corrida, sin corchetes: `external-adversary: verdict of this run, for a checkpoint quote: …`.
+- `hooks/lib/terminal_actions.py`: el precheck lee también la salida del revisor externo. Cuenta
+  cualquier resultado de herramienta, Bash o Read, donde una línea empiece con esa línea nueva, y
+  toma el veredicto solo de ella. Así, su hold puede citarse con Edit en el checkpoint, como el del
+  subagente desde 0.51.0. No cuenta un hold que el hook marcó UNVERIFIED, ni la línea dentro del
+  código fuente del hook, ni un resultado con error, ni una línea de veredicto en otro sitio del
+  resultado (una primera versión tomaba la última de encima del aviso, y codex hizo pasar con eso un
+  hold viejo).
   También cambia una decisión: un break del revisor externo que nadie citó, llegado después de un
   hold citado en texto, ahora niega el comando. Antes el precheck no lo veía y lo dejaba pasar.
 - Los textos que le dan al agente una salida dicen la tercera causa y las dos salidas fiables: la
@@ -45,9 +49,9 @@ documentación atribuía ese caso a una cita escrita solo en el thinking.
   vía del checkpoint para el hold externo. La frase sobre las diez negaciones de merge ya no dice
   que la cita estaba solo en el thinking.
 - Los mensajes del gate de Stop no cambian: el cierre es el texto que cierra el turno.
-- `test/terminal-precheck-branches.py`: casos 167-180. `--compare` contra el hook de 0.58.0, en los
+- `test/terminal-precheck-branches.py`: casos 167-181. `--compare` contra el hook de 0.58.0, en los
   dos modos: solo cambian 175, 176 y 178. Con el hook de 0.58.0 fijo, cambiar el módulo solo cambia
-  70, 110, 167, 168, 172 y 173. Siete mutaciones del lector nuevo, y cada una pone rojo su caso.
+  70, 110, 167, 168, 172 y 173. Ocho mutaciones, siete del lector nuevo y una que apaga la línea nueva del hook, y cada una pone rojo un caso escrito para ella.
 - `test/claim-surface-carriers.py`: 11 checks nuevos, 227 en total. Cada carrier de la regla de
   texto visible nombra la tercera causa. Ninguno dice ya que el siguiente mensaje basta. Las dos
   suites del spec (`spec-brake-branches.py` y `spec-on-entry-branches.py`) exigen la cláusula nueva,
