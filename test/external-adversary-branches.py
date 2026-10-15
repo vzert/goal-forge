@@ -72,6 +72,8 @@ HOLD = ("[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 "
 FILTER = "grep -v '^external-adversary\\|^  ' | tail -14"
 UNV = "UNVERIFIED (goalspec external adversary):"
 FILLED_RE = re.compile(r"\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+")
+# The partner's own BLOCKING finding in case 39; the hook must keep it in view on the UNVERIFIED path.
+FINDING = "- BLOCKING - incomplete: test/README.md says 141 cases, the suite runs 142\n"
 BULLETS = ("- checked coverage-floor table against narrative: rows reconcile\n"
            "- re-derived the inherited count from the source file: matches\n"
            "- session log reached and read: the Q5 ask exists as a real AskUserQuestion\n")
@@ -125,7 +127,10 @@ CASES = [
     # Echoed templates only: must stay on the unfilled-verdict fallback, never parse as real.
     ("06-echo-only", "[ADVERSARY-MODEL: <model name> / <exact model id, or UNKNOWN>]\n"
      "[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> "
-     "autonomy-violations=<n> unsafe=<n>]\n", {}, None, "unfilled"),
+     "autonomy-violations=<n> unsafe=<n>]\n", {}, None,
+     # Since 0.59.0 an echo whose last verdict line is the template takes case 39's path (same
+     # synthetic hold, same UNVERIFIED line); it has no finding to show. Against 0.59.0: `unfilled`.
+     "template-last+unverified-nofinding"),
     ("07-partner-missing", None, {"GOAL_ADVERSARY_CMD": "goalspec-no-such-binary-xyz"},
      None, "not-found"),
     ("08-unwritable-tmpdir", "STUB_TMPDIR", {"TMPDIR": "/nonexistent-goalspec-suite"},
@@ -271,6 +276,31 @@ CASES = [
     # then the copy step fails on an unreadable untracked file. The first 0.49.2 draft named the
     # hook's line as the cause; an adversary round found it. The cause must be the copy step.
     ("38-hook-noise-is-not-the-cause", "STUB_PWD", {}, "MUTREPO_HOOKNOISE", "pass+cause:copy"),
+    # 39 (0.59.0, p-6cc0ce663b): the partner's FINAL verdict line is the template, and earlier in its
+    # run sits a filled hold it only READ -- a row of a test suite it ran, mid-line. The shape of the
+    # saved codex round of 2026-10-12 (session 428e1889): until 0.59.0 the hook took the last filled
+    # match anywhere, resolved `hold` from that row, printed the "verdict-shaped block" notice the
+    # 0.59.0 precheck accepts as an external hold, and no UNVERIFIED line. Against 0.59.0 this case
+    # comes back `pass+idunresolved`. It must instead be UNVERIFIED, keep the BLOCKING finding in
+    # view, and print no signature.
+    ("39-template-last-ignores-read-hold",
+     NOISE + "exec bash -lc python3 test/terminal-precheck-branches.py\n"
+     "82-resumed-adversary-handback-is-a-relay-DENY        deny                 not as your own text: "
+     + HOLD + "\n" + "".join("%02d-other-case   allow\n" % i for i in range(30))
+     + "codex\n" + MODEL_UNKNOWN + "\n\n" + FINDING + BULLETS
+     + "\n[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
+     "autonomy-violations=0 unsafe=0]\ntokens used\n120,343\n" + MODEL_UNKNOWN + "\n\n" + FINDING
+     + "\n[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
+     "autonomy-violations=0 unsafe=0]\n", {}, None, "template-last+unverified+finding"),
+    # 40: the same run, but the partner's answer carries NO verdict line at all -- only the read hold
+    # in the suite row above its [ADVERSARY-MODEL:] line. Found by the adversary round on 0.59.0's
+    # first cut, which still resolved that hold. Against 0.59.0: `pass+idunresolved`.
+    ("40-no-verdict-in-answer-ignores-read-hold",
+     NOISE + "exec bash -lc python3 test/terminal-precheck-branches.py\n"
+     "82-resumed-adversary-handback-is-a-relay-DENY        deny                 not as your own text: "
+     + HOLD + "\n" + "".join("%02d-other-case   allow\n" % i for i in range(30))
+     + "codex\n" + MODEL_UNKNOWN + "\n\n" + FINDING + BULLETS + "tokens used\n120,343\n",
+     {}, None, "no-verdict-in-answer+unverified+finding"),
 ]
 
 
@@ -453,6 +483,22 @@ def classify(res, case_name, repo=REPO):
         return "recursion"
     if "not found on PATH" in err:
         return "not-found"
+    for marker, name in (("unfilled template ('break|hold'", "template-last"),
+                         ("carries no [ADVERSARY-VERDICT:] line", "no-verdict-in-answer")):
+        if marker not in err:
+            continue
+        # Cases 39 and 40. Each part is required: a synthetic hold on stdout, nothing of the partner's,
+        # the filter-proof UNVERIFIED line last, the partner's finding still shown, and no signature
+        # line (terminal_actions.EXT_SIGNATURE_RE), which the precheck would read as an external hold.
+        lines = err.strip().splitlines()
+        b = name
+        b += "+unverified" if lines and UNV in lines[-1] else "-nounverified"
+        b += "+finding" if "BLOCKING - incomplete" in err else "-nofinding"
+        if "verdict-shaped block was just produced" in err:
+            b += "-signature"
+        if out.strip() != HOLD:
+            b += "-stdout"
+        return b
     if "without a filled" in err:
         return "unfilled"
     branch = "bare-unverified" if "bare verdict with no evidence" in err else (

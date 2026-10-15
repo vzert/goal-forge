@@ -578,8 +578,15 @@ HEAD_BEFORE=$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)
 # the template `[ADVERSARY-VERDICT: break|hold ungrounded=<n> ...]`, so any CLI that echoes its stdin
 # (a debug/verbose wrapper, or a plain `cat`) and exits 0 would satisfy a naive
 # `grep '\[ADVERSARY-VERDICT:'` and get its echoed PLACEHOLDER printed back as a real verdict. Requiring
-# `(break|hold)` followed by numeric counts rejects both `break|hold` and `<n>`. Take the LAST match, so
-# a partner that quotes the template before answering still resolves to its real verdict.
+# `(break|hold)` followed by numeric counts rejects both `break|hold` and `<n>`. The verdict is the LAST
+# verdict-shaped line of the run, so a partner that quotes the template before answering still
+# resolves to its real verdict -- and only that line (0.59.0, p-6cc0ce663b): until then this took the
+# last FILLED match anywhere, and a partner whose own final line was the template resolved to a filled
+# line it had only READ. Measured on the saved output of a real codex round (2026-10-12, session
+# 428e1889): codex ended its answer with `[ADVERSARY-VERDICT: break|hold ... incomplete=1 ...]` over a
+# BLOCKING finding, and this hook resolved `hold` from a test-suite row codex had run 1,487 lines
+# earlier, printed the "verdict-shaped block" notice and no UNVERIFIED line -- which the 0.59.0
+# precheck then read as an external hold. Case 39.
 VERDICT_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break|hold)[[:space:]]+ungrounded=[0-9]+[[:space:]]+unfalsified=[0-9]+[[:space:]]+incomplete=[0-9]+[[:space:]]+autonomy-violations=[0-9]+[[:space:]]+unsafe=[0-9]+[[:space:]]*\]'
 
 # NB: `set -euo pipefail` is active. A no-match `grep` exits 1, which under pipefail would kill this
@@ -588,7 +595,24 @@ VERDICT_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break|hold)[[:space:]]+ungrounded=[
 set +e
 OUT=$(printf '%s' "$PROMPT" | $EXT_CMD 2>&1)
 RC=$?
-VERDICT=$(printf '%s' "$OUT" | grep -Eo "$VERDICT_RE" | tail -1 || true)
+VERDICT=""
+VLINE=""
+TEMPLATE_LAST=0
+_ADV_LAST_VLINE=$(printf '%s\n' "$OUT" | grep -n '\[ADVERSARY-VERDICT:' | tail -1 | cut -d: -f1 || true)
+# When the partner self-reported its model, its answer starts at its LAST real [ADVERSARY-MODEL:]
+# line, so a verdict line above that is text it read or ran, not its answer -- e.g. an answer with no
+# verdict line at all under a suite row that carries a filled hold (adversary round on 0.59.0; case
+# 40). Without a self-report there is no anchor, and the last verdict line stands alone.
+_ADV_ANSWER_START=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 | cut -d: -f1 || true)
+NO_VERDICT_IN_ANSWER=0
+if [ -n "$_ADV_LAST_VLINE" ] && [ -n "$_ADV_ANSWER_START" ] && [ "$_ADV_LAST_VLINE" -lt "$_ADV_ANSWER_START" ]; then
+  _ADV_LAST_VLINE=""
+  NO_VERDICT_IN_ANSWER=1
+fi
+if [ -n "$_ADV_LAST_VLINE" ]; then
+  VERDICT=$(printf '%s\n' "$OUT" | sed -n "${_ADV_LAST_VLINE}p" | grep -Eo "$VERDICT_RE" | tail -1 || true)
+  if [ -n "$VERDICT" ]; then VLINE=$_ADV_LAST_VLINE; else TEMPLATE_LAST=1; fi
+fi
 # The model self-report is requested by the prompt, so requesting it is not enforcing it (two
 # different-model reviews confirmed this gap by reading this very file). Extract it mechanically;
 # reject the prompt's own literal template (`<model name>`) the same way VERDICT_RE rejects `<n>`.
@@ -662,9 +686,26 @@ _adv_unverified_last_line() {
 if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; then
   echo "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
   {
-    echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
-    echo "no independent check ran. Treat this 'hold' as UNVERIFIED, not as a pass. Partner output:"
-    printf '%s\n' "$OUT" 2>/dev/null | head -20
+    if [ "$TEMPLATE_LAST" = 1 ]; then
+      # The partner ran and answered, but its final verdict line is the template: its findings are
+      # real and its verdict is unknown. Show the END of its run, where the answer is -- the head is
+      # the banner and the echoed prompt (a 3,500-line codex run hid a BLOCKING finding there).
+      echo "external-adversary: '$EXT_CMD' exited $RC and its final [ADVERSARY-VERDICT:] line is the"
+      echo "unfilled template ('break|hold' or '<n>'), not a verdict. Any filled verdict line earlier in"
+      echo "its run is text it read or ran (a file, a suite), not its answer. Treat this 'hold' as"
+      echo "UNVERIFIED, not as a pass; a BLOCKING finding it lists below still stands. End of its output:"
+      printf '%s\n' "$OUT" 2>/dev/null | tail -40
+    elif [ "$NO_VERDICT_IN_ANSWER" = 1 ]; then
+      echo "external-adversary: '$EXT_CMD' exited $RC and its answer (from its last [ADVERSARY-MODEL:]"
+      echo "line on) carries no [ADVERSARY-VERDICT:] line. A verdict line above that is text it read or"
+      echo "ran (a file, a suite), not its answer. Treat this 'hold' as UNVERIFIED, not as a pass; a"
+      echo "BLOCKING finding it lists below still stands. End of its output:"
+      printf '%s\n' "$OUT" 2>/dev/null | tail -40
+    else
+      echo "external-adversary: '$EXT_CMD' exited $RC without a filled [ADVERSARY-VERDICT:] line —"
+      echo "no independent check ran. Treat this 'hold' as UNVERIFIED, not as a pass. Partner output:"
+      printf '%s\n' "$OUT" 2>/dev/null | head -20
+    fi
     if [ -n "$MUTATED" ]; then
       echo "AND it left the repository modified — these paths changed during its run:"
       printf '%s\n' "$MUTATED" | sed 's/^/  /'
@@ -842,7 +883,8 @@ fi
 # 2026-07-26, where the echoed text also read as "reasoning" to a human until counted. With no
 # self-report line to anchor on, fall back to the 12 lines above the verdict (a heuristic window;
 # the missing-self-report warning above already fired on that path).
-VLINE=$(printf '%s\n' "$OUT" | grep -nE "$VERDICT_RE" | tail -1 | cut -d: -f1 || true)
+# VLINE is the line the verdict came from, set where $VERDICT was resolved -- one source, so the two
+# cannot point at different lines.
 MLINE=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 | cut -d: -f1 || true)
 if [ -z "$VLINE" ] || [ "$VLINE" -le 1 ]; then
   EVIDENCE_LINES=0
