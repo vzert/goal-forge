@@ -278,9 +278,9 @@ CASES = [
     ("38-hook-noise-is-not-the-cause", "STUB_PWD", {}, "MUTREPO_HOOKNOISE", "pass+cause:copy"),
     # 39 (0.59.0, p-6cc0ce663b): the partner's FINAL verdict line is the template, and earlier in its
     # run sits a filled hold it only READ -- a row of a test suite it ran, mid-line. The shape of the
-    # saved codex round of 2026-10-12 (session 428e1889): until 0.59.0 the hook took the last filled
-    # match anywhere, resolved `hold` from that row, printed the "verdict-shaped block" notice the
-    # 0.59.0 precheck accepts as an external hold, and no UNVERIFIED line. Against 0.59.0 this case
+    # saved codex round of 2026-10-12 (session 428e1889): until 0.58.0 the hook took the last filled
+    # match anywhere, resolved `hold` from that row, printed the "verdict-shaped block" notice that
+    # tells the executor the verdict is real, and no UNVERIFIED line. Against 0.58.0 this case
     # comes back `pass+idunresolved`. It must instead be UNVERIFIED, keep the BLOCKING finding in
     # view, and print no signature.
     ("39-template-last-ignores-read-hold",
@@ -294,7 +294,7 @@ CASES = [
      "autonomy-violations=0 unsafe=0]\n", {}, None, "template-last+unverified+finding"),
     # 40: the same run, but the partner's answer carries NO verdict line at all -- only the read hold
     # in the suite row above its [ADVERSARY-MODEL:] line. Found by the adversary round on 0.59.0's
-    # first cut, which still resolved that hold. Against 0.59.0: `pass+idunresolved`.
+    # first cut, which still resolved that hold. Against 0.58.0: `pass+idunresolved`.
     ("40-no-verdict-in-answer-ignores-read-hold",
      NOISE + "exec bash -lc python3 test/terminal-precheck-branches.py\n"
      "82-resumed-adversary-handback-is-a-relay-DENY        deny                 not as your own text: "
@@ -488,8 +488,8 @@ def classify(res, case_name, repo=REPO):
         if marker not in err:
             continue
         # Cases 39 and 40. Each part is required: a synthetic hold on stdout, nothing of the partner's,
-        # the filter-proof UNVERIFIED line last, the partner's finding still shown, and no signature
-        # line (terminal_actions.EXT_SIGNATURE_RE), which the precheck would read as an external hold.
+        # the filter-proof UNVERIFIED line last, the partner's finding still shown, and no
+        # "verdict-shaped block" notice, which tells the executor the verdict is a real one.
         lines = err.strip().splitlines()
         b = name
         b += "+unverified" if lines and UNV in lines[-1] else "-nounverified"

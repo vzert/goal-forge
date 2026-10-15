@@ -580,13 +580,13 @@ HEAD_BEFORE=$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)
 # `grep '\[ADVERSARY-VERDICT:'` and get its echoed PLACEHOLDER printed back as a real verdict. Requiring
 # `(break|hold)` followed by numeric counts rejects both `break|hold` and `<n>`. The verdict is the LAST
 # verdict-shaped line of the run, so a partner that quotes the template before answering still
-# resolves to its real verdict -- and only that line (0.59.0, p-6cc0ce663b): until then this took the
+# resolves to its real verdict -- and only that line (0.59.0, p-6cc0ce663b): until 0.58.0 this took the
 # last FILLED match anywhere, and a partner whose own final line was the template resolved to a filled
 # line it had only READ. Measured on the saved output of a real codex round (2026-10-12, session
 # 428e1889): codex ended its answer with `[ADVERSARY-VERDICT: break|hold ... incomplete=1 ...]` over a
 # BLOCKING finding, and this hook resolved `hold` from a test-suite row codex had run 1,487 lines
-# earlier, printed the "verdict-shaped block" notice and no UNVERIFIED line -- which the 0.59.0
-# precheck then read as an external hold. Case 39.
+# earlier, printed the "verdict-shaped block" notice and no UNVERIFIED line, so an executor quoting it
+# would have held over a real break. Case 39.
 VERDICT_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break|hold)[[:space:]]+ungrounded=[0-9]+[[:space:]]+unfalsified=[0-9]+[[:space:]]+incomplete=[0-9]+[[:space:]]+autonomy-violations=[0-9]+[[:space:]]+unsafe=[0-9]+[[:space:]]*\]'
 
 # NB: `set -euo pipefail` is active. A no-match `grep` exits 1, which under pipefail would kill this
