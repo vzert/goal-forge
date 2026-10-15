@@ -20,18 +20,27 @@ Every suite starts with `import tmp_cleanup`. On import it makes one dir for the
 exception or `sys.exit`, in default mode, `--selftest` and `--compare` alike (a child run imports it
 again, one level down). Hooks the suite starts inherit that `TMPDIR`, so what they write goes there
 too. The dir is mode 1777: `hooks/lib/terminal_actions.py` treats only a sticky dir, or macOS's
-per-user T, as a temp root, and terminal-precheck's cases need one. A path a suite builds outside
-`TMPDIR` on purpose is registered with `tmp_cleanup.track(path)`. It does not run on `os._exit`,
+per-user T, as a temp root. **terminal-precheck is the exception**: it sets
+`TMP_CLEANUP_KEEP_TMPDIR=1` before the import and gets tracking only, no redirect, because a sticky
+box always matches the sticky clause and its cases 116-117 would never reach the macOS per-user-T
+clause (with that clause disabled, the suite still passed under a box). Its own mkdtemp dirs, and
+the paths it builds outside `TMPDIR` on purpose, registered with `tmp_cleanup.track(path)`, are
+removed all the same. It does not run on `os._exit`,
 SIGKILL or a killed CI job. **A new suite imports it before it builds any fixture.**
 
 `python3 test/temp-leak-check.py` runs every suite again (default mode and `--selftest`), each under
-a fresh `TMPDIR`, and fails if anything is left in it, a new entry appeared in `/tmp`, or the run
+a fresh `TMPDIR`, and fails if anything is left in it, a new path of yours appeared at any depth
+under `/tmp` (Claude Code's own `/tmp/claude-<uid>` is not walked), or the run
 exited non-zero (CI runs each `--selftest` only through here).
-`--selftest` plants a suite that leaks and requires a red. CI runs both. Neither file is a suite.
+`--selftest` plants a suite that leaks and requires a red. CI runs both; `manifest-checks.py` needs
+PyYAML, so the checker skips it where PyYAML is missing (the `suites` job) and the `manifests` job
+runs it on that file alone. Neither file is a suite.
 Why it exists (p-1a5a4e9828): before this, the suites left ~15 GB a day in `$TMPDIR` (546
 terminal-precheck dirs on 2026-10-14 alone), and a full disk then broke the module-swap recipe below.
 It does not drive `--compare` (that needs a pre-edit hook copy); those runs go through the same
-import. A `/tmp` entry another process made during the run shows up as a false red, named.
+import. A `/tmp` path another process made during the run shows up as a false red, named; the
+two writers already identified (Claude Code's `/tmp/cc-socks/`, context-mode's
+`/tmp/context-mode-mcp-ready-*`) are listed as `ignored` instead.
 
 ## `manifest-checks.py` — the silent-failure classes no branch suite can see
 
@@ -167,7 +176,8 @@ aside, put it in place, run the suite in both modes, restore the edited module, 
 diff the two outputs (drop lines carrying temp paths first). Restore it before anything else
 reads the tree, and **check the restore with `cmp`**: on 2026-10-14 a full disk made the copy back
 fail, nobody noticed, and the edit in the module was lost (p-71266974e6). Keep both copies outside
-`$TMPDIR` (the suites write there), and let the script stop at the first failure:
+`$TMPDIR` (the suites write there). Each swap is `cp && cmp || exit`: under `set -e` a failure on
+the left of `&&` does not stop the script, so the `||` branch is what does:
 
 ```bash
 set -euo pipefail
@@ -175,7 +185,8 @@ M=plugins/goalspec/hooks/lib/terminal_actions.py
 KEEP=$(mktemp -d ~/.module-swap.XXXXXX)          # not under $TMPDIR
 cp "$M" "$KEEP/edited.py"
 git show HEAD:"$M" > "$KEEP/pre-edit.py"         # or wherever the pre-edit copy lives
-cp "$KEEP/pre-edit.py" "$M" && cmp "$M" "$KEEP/pre-edit.py"
+cp "$KEEP/pre-edit.py" "$M" && cmp "$M" "$KEEP/pre-edit.py" ||
+  { echo "INSTALL FAILED: $M is not the pre-edit module; restore it from $KEEP/edited.py" >&2; exit 1; }
 python3 test/gate-branches.py > "$KEEP/old-default.txt" || true
 GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py > "$KEEP/old-enforce.txt" || true
 cp "$KEEP/edited.py" "$M" && cmp "$M" "$KEEP/edited.py" ||

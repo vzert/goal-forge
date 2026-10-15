@@ -18,7 +18,10 @@ Columns: case | decision (`deny` / `allow` / `unparseable`) | detail (first ~60 
 reason, for eyeballing WHICH branch fired, not just that one did).
 """
 import base64, json, os, subprocess, sys, tempfile
-import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+# Tracking only, no TMPDIR redirect: cases 116-117 must reach terminal_actions' macOS per-user-T
+# clause, which a sticky box would short-circuit (see tmp_cleanup's header).
+os.environ["TMP_CLEANUP_KEEP_TMPDIR"] = "1"
+import tmp_cleanup  # removes this run's temp dirs at exit (p-1a5a4e9828)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
@@ -920,7 +923,7 @@ case("115-newer-handback-hold-after-text-break-ALLOW", _fq(
 TROOT = tempfile.gettempdir()
 MKT = tempfile.mkdtemp(prefix="3t-recover.")        # a real mktemp-shaped dir under the temp root
 OUTSIDE = os.path.join(REPO, "test")                # a real dir outside every temp root
-LINK = os.path.join(TROOT, "lnk.%s" % os.path.basename(MKT).split(".")[1])
+LINK = tmp_cleanup.track(os.path.join(TROOT, "lnk.%s" % os.path.basename(MKT).split(".")[1]))
 if os.path.lexists(LINK):
     os.unlink(LINK)
 os.symlink(OUTSIDE, LINK)                           # mktemp-shaped name, target outside temp

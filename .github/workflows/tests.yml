@@ -125,3 +125,7 @@ jobs:
         # two that passed on a healthy repo while missing the defect they named, so the mutation
         # probe runs here rather than living in one session's scratch directory.
         run: python3 test/manifest-checks.py --selftest
+
+      - name: manifest-checks leaves nothing in the temp dir
+        # The `suites` job has no PyYAML, so temp-leak-check skips this file there; it runs here.
+        run: python3 test/temp-leak-check.py manifest-checks.py

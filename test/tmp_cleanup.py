@@ -69,11 +69,17 @@ def cleanup():
             shutil.rmtree(path, onerror=_writable)
 
 
-BOX = _mkdtemp(prefix="goalspec-suite.")
-os.chmod(BOX, 0o1777)
-_made.append(BOX)  # first in, so popped last: tracked paths inside it go first
-os.environ["TMPDIR"] = BOX
-tempfile.tempdir = BOX
+# A suite that must run under the REAL temp root sets TMP_CLEANUP_KEEP_TMPDIR=1 before importing
+# this module: terminal-precheck, because a sticky box always matches the sticky clause of
+# terminal_actions._temp_roots, and its cases 116-117 then never reach the macOS per-user-T clause
+# (goal-adversary round 1 on this change: with that clause disabled, the suite still passed). That
+# suite gets tracking only: its own mkdtemp dirs and track()ed paths are removed, nothing redirected.
+if os.environ.get("TMP_CLEANUP_KEEP_TMPDIR") != "1":
+    BOX = _mkdtemp(prefix="goalspec-suite.")
+    os.chmod(BOX, 0o1777)
+    _made.append(BOX)  # first in, so popped last: tracked paths inside it go first
+    os.environ["TMPDIR"] = BOX
+    tempfile.tempdir = BOX
 tempfile.mkdtemp = _mkdtemp_tracked
 tempfile.mkstemp = _mkstemp_tracked
 atexit.register(cleanup)

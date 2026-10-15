@@ -12,8 +12,9 @@ Tests only; nothing installed changes, so no version bump.
 
 - **The suites remove their temp dirs** (p-1a5a4e9828). Every suite in `test/` imports the new
   `test/tmp_cleanup.py`, which gives the run one sticky `TMPDIR` of its own (hooks started by the
-  suite inherit it) and removes it at exit, in default mode, `--selftest` and `--compare`. Before,
-  14 of the 19 suites left dirs behind: measured ~15 GB a day in `$TMPDIR`, ~250 entries per run of
+  suite inherit it) and removes it at exit, in default mode, `--selftest` and `--compare`;
+  terminal-precheck gets tracking only, so its macOS per-user-T cases keep running under the real
+  temp root. Before, 12 of the 19 suites left something behind (17 runs, counting `--selftest`): measured ~15 GB a day in `$TMPDIR`, ~250 entries per run of
   `claim-surface-carriers.py --selftest`.
 - **`test/temp-leak-check.py`** re-runs every suite (default and `--selftest`) under a fresh
   `TMPDIR` and fails on anything left there or in `/tmp`, or on a non-zero exit; `--selftest`
