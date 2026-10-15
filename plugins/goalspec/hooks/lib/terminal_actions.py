@@ -712,6 +712,9 @@ def _collect_event(ev, items, state=None):
             # call with no result yet still counts: a parallel call's hook can run before it lands.
             if isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is True:
                 state.setdefault("failed_tool_uses", set()).add(blk.get("tool_use_id"))
+            elif isinstance(blk, dict) and blk.get("type") == "tool_result":
+                # 0.60.0: an AskUserQuestion counts for the ratify brake only once answered.
+                state.setdefault("answered_tool_uses", set()).add(blk.get("tool_use_id"))
             if isinstance(blk, dict) and blk.get("type") == "tool_result" \
                     and blk.get("tool_use_id") in state["adversary_spawns"]:
                 rtext = _tool_result_text(blk.get("content"))
@@ -778,8 +781,8 @@ def _collect_event(ev, items, state=None):
                 items.append({"kind": "goalspec_entry", "timestamp": ts, "text": "",
                               "skill": "interview" if sk.strip().endswith("interview") else "goalspec"})
         elif blk.get("type") == "tool_use" and blk.get("name") == "AskUserQuestion":
-            # 0.60.0: a modal raised to the human (ratify_brake_armed). One whose result is an
-            # error asked nothing, so read_transcript_items drops it.
+            # 0.60.0: a modal raised to the human (ratify_brake_armed). read_transcript_items
+            # keeps it only once its result has arrived and is not an error.
             items.append({"kind": "ask", "timestamp": ts, "text": "", "id": blk.get("id")})
         elif blk.get("type") == "tool_use" and blk.get("name") == "Bash":
             cmd = (blk.get("input") or {}).get("command")
@@ -894,9 +897,11 @@ def read_transcript_items(transcript_path):
     except Exception:
         return []
     failed = state.get("failed_tool_uses") or set()
+    answered = state.get("answered_tool_uses") or set()
     return [it for it in items
-            if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file", "ask")
-                    and it.get("id") is not None and it["id"] in failed)]
+            if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file")
+                    and it.get("id") is not None and it["id"] in failed)
+            and not (it["kind"] == "ask" and it.get("id") not in answered)]
 
 
 def last_completion_review_index(items):
@@ -1125,9 +1130,10 @@ def spec_brake_evidence(items):
 
 # 0.60.0 — the ratify brake. SKILL.md step 4b asks the agent to show the spec back in an
 # AskUserQuestion before it executes; it was written as a conditional, and agents skipped it.
-# Measured 2026-10-15 over the maintainer's local transcripts (224 sessions with a spec): in the
-# interactive ones, 59 of 186 raised any AskUserQuestion between the spec and their first Bash,
-# Write or Edit -- 54 of 118 before 0.49.0, 5 of 66 since (an upper bound: any modal counted). The
+# Measured 2026-10-15 over the maintainer's local transcripts: of the interactive sessions with a
+# spec and a later Bash, Write or Edit, 59 of 188 raised any AskUserQuestion between the spec and
+# that call -- 54 of 119 before 0.49.0, 5 of 67 since, 0 of 2 with no version (an upper bound:
+# any modal counted). The
 # sdk-cli and sdk-ts sessions (679 and 3876) never got an AskUserQuestion through (0 answered), so
 # they are never braked: there a deny would loop deny -> failed ask -> deny.
 RATIFY_ENTRYPOINTS = ("cli", "claude-vscode")
@@ -1146,9 +1152,11 @@ RATIFY_BRAKE_REASON = (
 )
 
 
-def _first_spec_index(items, session_id=None, cwd=None):
+def _first_spec_index(items, session_id=None, cwd=None, start=0):
     own = roots = None
     for i, it in enumerate(items):
+        if i < start:
+            continue
         if it["kind"] == "text" and spec_has_body(it["text"]):
             return i
         if it["kind"] == "goal_spec_file" and spec_has_body(it["text"]):
@@ -1163,12 +1171,16 @@ def _first_spec_index(items, session_id=None, cwd=None):
 def ratify_brake_armed(items, session_id=None, cwd=None):
     """True when an interactive session (entrypoint cli or claude-vscode) entered the goalspec loop,
     has a `## Goal-spec` with a body (visible text, or a Write/Edit to its own checkpoint, as
-    spec_brake_armed reads it), and since the FIRST such spec has neither raised an AskUserQuestion
-    whose result is not an error nor received a typed user prompt.
+    spec_brake_armed reads it), and since the first such spec of the current cycle has neither
+    raised an AskUserQuestion that was answered (a result that is not an error) nor received a
+    typed user prompt.
 
-    Keyed on the first spec, not the latest, on purpose: a spec re-emitted after a 'Narrow' answer,
-    and every checkpoint update during the run, must not ask again (step 4b says no second modal).
-    The cost: a second cycle later in the same session (a re-entered 4b) is not braked. A typed
+    The current cycle starts after the last `[COMPLETION-REVIEW: ...]` in visible text: its first
+    spec is the anchor. A spec re-emitted after a 'Narrow' answer, and every checkpoint update
+    during the run, must not ask again (step 4b says no second modal), so a later spec in the same
+    cycle does not re-arm it; a spec written after a close does (release round 1, external
+    adversary: keyed on the session's first spec, a re-entered cycle was never held). A run that
+    closed and wrote no new spec is not held. A typed
     prompt releases it because the human then has seen the spec and answered in words. It checks
     that the human was asked, never what they answered: 'Stop' is the written rule's to honour.
     An unknown entrypoint (none in the transcript, or a surface not listed) is not braked."""
@@ -1177,7 +1189,8 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
         return False
     if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
         return False
-    i0 = _first_spec_index(items, session_id, cwd)
+    cr = last_completion_review_index(items)
+    i0 = _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)
     if i0 is None:
         return False
     return not any(it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:])

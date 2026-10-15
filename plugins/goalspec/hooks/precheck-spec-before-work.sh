@@ -22,8 +22,9 @@
 #
 # 0.60.0 — the same hook then holds the same tools a second time: once the spec exists, in an
 # interactive session (entrypoint cli or claude-vscode), until the human has been asked to ratify
-# it (an AskUserQuestion after the first spec whose result is not an error, or a typed prompt) --
-# terminal_actions.ratify_brake_armed. Measured 2026-10-15: since 0.49.0, 5 of 66 interactive
+# it (an answered AskUserQuestion after the first spec of the cycle, or a typed prompt; a spec
+# written after a [COMPLETION-REVIEW] starts a new cycle) -- terminal_actions.ratify_brake_armed.
+# Measured 2026-10-15: since 0.49.0, 5 of 67 interactive
 # sessions with a spec asked before their first Bash, Write or Edit. Same exemptions as above
 # (Read-class tools, .goalspec/ writes, subagents); headless (sdk-*) sessions are never held.
 #
