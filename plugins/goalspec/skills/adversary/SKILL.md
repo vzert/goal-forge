@@ -139,7 +139,9 @@ breaks; a non-terminal claim with no streak closes on the subagent alone.
   middle of a turn can be stored as a summary without the marker line; a `Write` or `Edit` to
   your `.goalspec` checkpoint is stored as written, and the text that ends your turn almost always
   is. Before a push, merge or deploy: a goal-adversary subagent's verdict line can also be appended
-  to the checkpoint with `Edit`, which the terminal-push precheck accepts; an external backend's
+  to the checkpoint with `Edit`, which the terminal-push precheck accepts (only the `Edit` or
+  `Write` tool call counts: a Bash command that writes the line, such as `printf ... >>`, is not
+  read); an external backend's
   verdict counts only in visible text, so quote it as the text that ends your turn.
 - A **bare `hold`** — no evidence bullets above it — is **UNVERIFIED, not a pass**: re-run it or
   route to the other backend, and never cite a bare hold as your verification. **Read it

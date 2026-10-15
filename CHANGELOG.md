@@ -25,11 +25,12 @@ negación se habría repetido sin decir por qué.
   `SPEC_ON_ENTRY_NUDGE`. No cambia ninguna decisión.
 - `hooks/precheck-terminal-push.sh`: la misma frase en la negación sin spec y en la de las tres causas.
 - `hooks/remind-quote-verdict.sh` (las dos ramas) y `hooks/remind-handback-verdict.sh`: la misma frase.
-- `skills/goalspec/SKILL.md`: el párrafo de 0.51.0 dice que solo cuenta la llamada Write o Edit.
+- `skills/goalspec/SKILL.md` (el párrafo de 0.51.0) y `skills/adversary/SKILL.md`: dicen que solo
+  cuenta la llamada Write o Edit.
 - `test/terminal-precheck-branches.py`: casos 187 (hold escrito con printf), 188 (waiver escrito con
   printf) y 189 (negación sin spec); 166 en total. Contra 0.59.0 los tres cambian solo por el texto:
   la decisión ya era negar. Los otros 163 dan lo mismo con el módulo y el hook previos y con los nuevos.
-- `test/claim-surface-carriers.py`: 9 comprobaciones nuevas, 236 en total; `--selftest` prueba que
+- `test/claim-surface-carriers.py`: 10 comprobaciones nuevas, 237 en total; `--selftest` prueba que
   cada una se pone roja si la frase falta en su portador.
 
 ## [0.59.0] - 2026-10-14
