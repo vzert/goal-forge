@@ -19,6 +19,7 @@ No predecessor exists (new in 0.46.8), so `--selftest` copies the plugin, applie
 time, and requires at least one case to notice.
 """
 import json, os, shutil, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")

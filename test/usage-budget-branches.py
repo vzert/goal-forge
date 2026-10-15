@@ -31,6 +31,7 @@ defect this plugin keeps cataloguing (references/instrument-validity-own-tools.m
 Both limits are the point of writing them here rather than letting a green run imply more.
 """
 import json, os, subprocess, sys, tempfile, time
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "check-usage-budget.sh")

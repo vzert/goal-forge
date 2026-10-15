@@ -29,6 +29,7 @@ writes. There is no gate on it by design (the blocking `PreToolUse` half was del
 out — see the hook's own header), so an agent that ignores the announcement is silently ignoring it.
 """
 import json, os, subprocess, sys
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "announce-checkpoint-name.sh")

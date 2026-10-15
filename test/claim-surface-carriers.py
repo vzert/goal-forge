@@ -71,6 +71,7 @@ Presence only, as everywhere in this file.
 """
 
 import json
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 import os
 import re
 import subprocess
@@ -883,7 +884,8 @@ def selftest():
         shutil.rmtree(root, ignore_errors=True)
         shutil.copytree(os.path.join(REPO, "plugins"), os.path.join(root, "plugins"))
         os.makedirs(os.path.join(root, "test"))
-        shutil.copy(os.path.join(REPO, "test", "claim-surface-carriers.py"), os.path.join(root, "test"))
+        for name in ("claim-surface-carriers.py", "tmp_cleanup.py"):  # the copy imports tmp_cleanup
+            shutil.copy(os.path.join(REPO, "test", name), os.path.join(root, "test"))
         shutil.copy(os.path.join(REPO, "README.md"), root)
         return root
 

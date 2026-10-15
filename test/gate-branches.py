@@ -40,6 +40,7 @@ external-adversary case 38 once passed empty. test/expected_check.py holds that 
 suite with --expected; it is judged per prefix, so `stale-` passes when any stale case changed.
 """
 import argparse, json, os, re, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 

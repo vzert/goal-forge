@@ -36,6 +36,7 @@ blocked a headless child session's write and the file was never created — and 
 exercise two genuinely concurrent sessions; that gap is open and named as such.
 """
 import json, os, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "precheck-checkpoint-overwrite.sh")

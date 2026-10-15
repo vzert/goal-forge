@@ -8,6 +8,21 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+Tests only; nothing installed changes, so no version bump.
+
+- **The suites remove their temp dirs** (p-1a5a4e9828). Every suite in `test/` imports the new
+  `test/tmp_cleanup.py`, which gives the run one sticky `TMPDIR` of its own (hooks started by the
+  suite inherit it) and removes it at exit, in default mode, `--selftest` and `--compare`. Before,
+  14 of the 19 suites left dirs behind: measured ~15 GB a day in `$TMPDIR`, ~250 entries per run of
+  `claim-surface-carriers.py --selftest`.
+- **`test/temp-leak-check.py`** re-runs every suite (default and `--selftest`) under a fresh
+  `TMPDIR` and fails on anything left there or in `/tmp`, or on a non-zero exit; `--selftest`
+  plants a suite that leaks and requires a red. CI runs both. On the pre-change tree it reported 17
+  leaking runs; after the change, 0.
+- **The module-swap recipe in `test/README.md` checks the restore with `cmp`** and stops with
+  `RESTORE FAILED` when the copy back does not match (p-71266974e6: a full disk once lost an edit to
+  `hooks/lib/terminal_actions.py` this way).
+
 ## [0.59.1] - 2026-10-14
 
 ### Los avisos dicen que una línea escrita con Bash al checkpoint no cuenta

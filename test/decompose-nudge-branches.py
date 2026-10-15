@@ -55,6 +55,7 @@ SKILL.md prose, not in this hook, so no hermetic test can assert it; it stays an
 observation alongside the decomposition-skip case above.
 """
 import json, os, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "nudge-decompose.sh")

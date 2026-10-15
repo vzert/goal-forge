@@ -19,6 +19,7 @@ it. 01 is the control that keeps this from being a mere dirty-tree detector.
     python3 test/adversary-writes-branches.py --compare <pre-edit.sh> --expected 02
 """
 import argparse, json, os, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 

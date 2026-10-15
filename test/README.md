@@ -13,6 +13,26 @@ was scoped to, not a law: `claude --help` documents headless `-p` and `--max-bud
 job is feasible and boundable — at the cost of a credential in CI, money per run, and
 non-determinism. Whether that trade is worth it is open.
 
+## Temp dirs: `tmp_cleanup.py` and `temp-leak-check.py`
+
+Every suite starts with `import tmp_cleanup`. On import it makes one dir for the whole run, points
+`TMPDIR` and Python's `tempfile` at it, and removes it at exit — after a pass, a failure, an
+exception or `sys.exit`, in default mode, `--selftest` and `--compare` alike (a child run imports it
+again, one level down). Hooks the suite starts inherit that `TMPDIR`, so what they write goes there
+too. The dir is mode 1777: `hooks/lib/terminal_actions.py` treats only a sticky dir, or macOS's
+per-user T, as a temp root, and terminal-precheck's cases need one. A path a suite builds outside
+`TMPDIR` on purpose is registered with `tmp_cleanup.track(path)`. It does not run on `os._exit`,
+SIGKILL or a killed CI job. **A new suite imports it before it builds any fixture.**
+
+`python3 test/temp-leak-check.py` runs every suite again (default mode and `--selftest`), each under
+a fresh `TMPDIR`, and fails if anything is left in it, a new entry appeared in `/tmp`, or the run
+exited non-zero (CI runs each `--selftest` only through here).
+`--selftest` plants a suite that leaks and requires a red. CI runs both. Neither file is a suite.
+Why it exists (p-1a5a4e9828): before this, the suites left ~15 GB a day in `$TMPDIR` (546
+terminal-precheck dirs on 2026-10-14 alone), and a full disk then broke the module-swap recipe below.
+It does not drive `--compare` (that needs a pre-edit hook copy); those runs go through the same
+import. A `/tmp` entry another process made during the run shows up as a false red, named.
+
 ## `manifest-checks.py` — the silent-failure classes no branch suite can see
 
 Not a branch suite: it reads files and parses them, runs nothing, and needs no Claude Code install.
@@ -145,7 +165,25 @@ suite (and in `terminal-precheck-branches.py`) sets `CLAUDE_PLUGIN_ROOT` to the 
 so pointing that variable at an old copy from outside changes nothing. Copy the pre-edit module
 aside, put it in place, run the suite in both modes, restore the edited module, run again, and
 diff the two outputs (drop lines carrying temp paths first). Restore it before anything else
-reads the tree. 0.48.1 measured its `git merge-base` fix this way: identical in both modes here,
+reads the tree, and **check the restore with `cmp`**: on 2026-10-14 a full disk made the copy back
+fail, nobody noticed, and the edit in the module was lost (p-71266974e6). Keep both copies outside
+`$TMPDIR` (the suites write there), and let the script stop at the first failure:
+
+```bash
+set -euo pipefail
+M=plugins/goalspec/hooks/lib/terminal_actions.py
+KEEP=$(mktemp -d ~/.module-swap.XXXXXX)          # not under $TMPDIR
+cp "$M" "$KEEP/edited.py"
+git show HEAD:"$M" > "$KEEP/pre-edit.py"         # or wherever the pre-edit copy lives
+cp "$KEEP/pre-edit.py" "$M" && cmp "$M" "$KEEP/pre-edit.py"
+python3 test/gate-branches.py > "$KEEP/old-default.txt" || true
+GOAL_GATE_ENFORCE=1 python3 test/gate-branches.py > "$KEEP/old-enforce.txt" || true
+cp "$KEEP/edited.py" "$M" && cmp "$M" "$KEEP/edited.py" ||
+  { echo "RESTORE FAILED: $M is not the edited module; the copy is in $KEEP" >&2; exit 1; }
+```
+
+Run the suite again on the restored module, diff, and remove `$KEEP` only after `cmp` passed.
+0.48.1 measured its `git merge-base` fix this way: identical in both modes here,
 and only the two new cases changed in the precheck suite.
 
 **Staleness backstop cases (`stale-01`..`12`; 01-04 from 0.32.0; 10-12 from 0.55.0)** live in this same file but run separately

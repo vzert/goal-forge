@@ -79,7 +79,9 @@ jobs:
           git config --global init.defaultBranch main
           failed=0
           for t in test/*.py; do
-            [ "$(basename "$t")" = "manifest-checks.py" ] && continue
+            case "$(basename "$t")" in
+              manifest-checks.py|temp-leak-check.py|tmp_cleanup.py|expected_check.py) continue ;;
+            esac
             echo "::group::$t"
             python3 "$t"
             rc=$?
@@ -92,6 +94,17 @@ jobs:
             echo "::endgroup::"
           done
           exit $failed
+
+      - name: No suite leaves anything in the temp dir
+        # p-1a5a4e9828: the suites used to leave ~15 GB a day in $TMPDIR. Each suite now imports
+        # test/tmp_cleanup.py; this runs every one again (default mode and --selftest), each under
+        # a fresh TMPDIR, and fails if anything is left in it or in /tmp. The selftest plants a
+        # suite that leaks and requires the check to notice.
+        run: |
+          set -euo pipefail
+          export CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE/plugins/goalspec"
+          python3 test/temp-leak-check.py --selftest
+          python3 test/temp-leak-check.py
 
   manifests:
     # One platform is enough: this reads files and parses them. PyYAML is the only dependency, and

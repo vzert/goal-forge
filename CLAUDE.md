@@ -92,6 +92,11 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    every `--compare` suite's source names the shared `--expected` check (textual) — the
    silent-failure classes no branch suite can see. Needs PyYAML. `--selftest` breaks each of those
    in a throwaway copy and requires the checker to notice; run it after editing that file).
+   Plus `python3 test/temp-leak-check.py` (**not a suite**: re-runs every suite, default mode and
+   `--selftest`, each under a fresh `TMPDIR`, and fails if one leaves anything in it or in `/tmp`, or exits non-zero;
+   `--selftest` plants a leaking suite and requires a red). Every suite starts with
+   `import tmp_cleanup`, which gives the run its own `TMPDIR` and removes it at exit — a new suite
+   must too (p-1a5a4e9828: the suites used to leave ~15 GB a day in `$TMPDIR`).
    **When editing the gate, copy the
    pre-edit script somewhere and `--compare` against it afterwards, in both default and
    `GOAL_GATE_ENFORCE=1` modes** — it exits non-zero if any branch changed that `--expected` did
@@ -99,7 +104,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    into a measurement. See `test/README.md`. **That parity is blind to
    `hooks/lib/terminal_actions.py`**: both copies of the gate import the same module, and the
    suites set `CLAUDE_PLUGIN_ROOT` themselves, so for a module change swap the module file in place
-   (pre-edit copy, run both modes, restore, run again, diff) — `test/README.md` has the recipe.
+   (pre-edit copy, run both modes, restore, run again, diff) — `test/README.md` has the recipe, and
+   it checks the restore with `cmp` (a full disk once made the copy back fail silently).
 
 ## Memory System
 This project uses the 3-tier memory plugin. Operational indexes live in `memory/`:

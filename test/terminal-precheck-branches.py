@@ -18,6 +18,7 @@ Columns: case | decision (`deny` / `allow` / `unparseable`) | detail (first ~60 
 reason, for eyeballing WHICH branch fired, not just that one did).
 """
 import base64, json, os, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
@@ -927,7 +928,7 @@ os.symlink(OUTSIDE, LINK)                           # mktemp-shaped name, target
 # long-lived one), and a symlink OUTSIDE every mktemp dir that points into one.
 PERSIST = tempfile.mkdtemp(prefix="claude-state.")
 os.chmod(PERSIST, 0o755)
-OUTDIR = os.path.join(os.path.realpath("/tmp"), "goalspec-outside-%d" % os.getpid())
+OUTDIR = tmp_cleanup.track(os.path.join(os.path.realpath("/tmp"), "goalspec-outside-%d" % os.getpid()))
 os.makedirs(OUTDIR, exist_ok=True)
 INLINK = os.path.join(OUTDIR, "into-mktemp")
 os.symlink(MKT, INLINK)

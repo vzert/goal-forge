@@ -23,6 +23,7 @@ non-stdlib dependency, and it is the point — the check is "does a real YAML pa
     python3 test/manifest-checks.py
 """
 import json, os, re, shutil, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")

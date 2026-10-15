@@ -17,6 +17,7 @@ that field as output that "came back" (case 04 pins exactly that).
 Columns: case | branch the hook took (verdict / malformed / launched / silent).
 """
 import argparse, json, os, re, subprocess, sys
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 

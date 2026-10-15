@@ -52,6 +52,7 @@ The two 0.21.1 fixes are the point of this file:
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
 """
 import argparse, os, re, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 

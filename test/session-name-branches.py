@@ -14,6 +14,7 @@ plugin to a temp dir, applies one mutation at a time to the component, and requi
 case to fail under each.
 """
 import json, os, shutil, subprocess, sys, tempfile
+import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
