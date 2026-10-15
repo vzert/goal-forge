@@ -6,6 +6,23 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.60.1] - 2026-10-15
+
+### Fixed
+
+- **The own-temp-dir delete no longer depends on the order of a set** (p-0c09b2f50a).
+  `terminal_actions._in_own_mktemp` judged a path with the first temp root, in set order, whose
+  first-level name the session had printed, and returned that answer. With two nested roots — a
+  sticky `TMPDIR` named `name.XXXXXX` inside `/tmp`, as a run under `temp-leak-check` on Linux has —
+  the outer root took the `TMPDIR` itself for the mktemp dir, found mode 1777, and denied a
+  legitimate `rm -rf` of a mktemp dir inside it. Which root came first was `PYTHONHASHSEED`'s
+  choice: measured on this Mac, seeds 2 and 5 of 1-6 denied. Now every root is tried and the delete
+  passes when one of them finds an own 0700 `name.XXXXXX` dir. A path inside no such dir under any
+  root is still denied. New case `137b` runs the precheck under seeds 1-6 with nested roots and
+  wants an allow from each: with the 0.60.0 module it fails, with this one it passes. Module swap
+  (`test/README.md`): the gate suite is unchanged in both modes; in the precheck suite only `137b`
+  changed.
+
 ## [0.60.0] - 2026-10-15
 
 ### Las suites borran su carpeta temporal (solo tests; sale con 0.60.0)

@@ -1017,6 +1017,28 @@ case("137-mktemp-dir-only-in-an-error-result-DENY", lambda: _tc(
     "137", "rm -rf " + MKT, printed={"bash": "rm -rf " + MKT, "bash_id": "t2",
                                      "result": "PreToolUse:Bash hook error: ... (`rm -rf %s`)" % MKT,
                                      "result_error": True}))
+# p-0c09b2f50a: two nested temp roots -- a sticky TMPDIR named name.XXXXXXXX inside /tmp, as a run
+# under temp-leak-check on Linux has. The hook used to judge with the first root in set order, so
+# with /tmp first it took the sticky TMPDIR for the mktemp dir and denied; the order is
+# PYTHONHASHSEED's, so the case runs the hook under seeds 1-6 and wants an allow from each.
+NEST = tempfile.mkdtemp(prefix="nest.", dir=os.path.realpath("/tmp"))
+os.chmod(NEST, 0o1777)
+NESTED_MKT = tempfile.mkdtemp(prefix="3t-inner.", dir=NEST)
+
+
+def _nested_roots_every_seed():
+    printed = {"bash": "mktemp -d", "bash_id": "nest", "result": NESTED_MKT}
+    t = transcript([{"text": SPEC_TEXT}, printed], "137b")
+    repo = make_repo("137b", None, None)
+    for seed in range(1, 7):
+        decision, detail = run_hook(repo, "rm -rf " + NESTED_MKT, t,
+                                    env_extra={"TMPDIR": NEST, "PYTHONHASHSEED": str(seed)})
+        if decision != "allow":
+            return "%s-seed-%d" % (decision, seed), detail
+    return "allow", ""
+
+
+case("137b-own-mktemp-dir-under-nested-temp-roots-every-seed-ALLOW", _nested_roots_every_seed)
 
 
 # 0.57.0 (p-83e65d6b6f) — the waiver written with a Write/Edit into this session's checkpoint.

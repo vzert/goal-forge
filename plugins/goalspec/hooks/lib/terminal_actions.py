@@ -162,7 +162,10 @@ def _temp_roots():
 def _in_own_mktemp(path, roots, seen):
     """`path` lies inside a first-level dir under a root that is shaped AND owned like mktemp's:
     name.XXXXXX, a real dir, this user's, mode 0700. The name alone is not provenance (codex, 0.55.0
-    round 1: a persistent claude-state.ABCDEF passed); a missing one has nothing to delete."""
+    round 1: a persistent claude-state.ABCDEF passed); a missing one has nothing to delete.
+    Every root is tried: with two nested roots (a sticky TMPDIR named name.XXXXXX inside /tmp) the
+    outer one sees the TMPDIR as the first-level dir and rejects it (mode 1777), so returning on the
+    first root in set order made the answer depend on PYTHONHASHSEED (p-0c09b2f50a)."""
     for root in roots:
         if not path.startswith(root + os.sep):
             continue
@@ -174,8 +177,9 @@ def _in_own_mktemp(path, roots, seen):
         except FileNotFoundError:
             return True
         except OSError:
-            return False
-        return stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077
+            continue
+        if stat.S_ISDIR(st.st_mode) and st.st_uid == os.getuid() and not st.st_mode & 0o077:
+            return True
     return False
 
 
