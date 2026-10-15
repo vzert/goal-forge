@@ -22,8 +22,8 @@ el turno, casi siempre. Esos resúmenes los hace el servidor. El esquema de Clau
 llama "server summaries of the prose between tool calls", y en una sesión interactiva Claude Code
 puede pedirlos por defecto, según el modelo y el proveedor. La
 variable `CLAUDE_CODE_THINKING_DISPLAY_UPDATES` decide si los pide. No se midió si apagarla los
-evita, ni qué más cambia. Caso real: en 6fd1cbfa (claude-vzert) el precheck negó tres veces el
-mismo merge. Otro caso: en b30f155f (agente-coordinador, 2026-10-05) el agente escribió que volvía a
+evita, ni qué más cambia. Caso real: en 6fd1cbfa (claude-vzert) el precheck negó el mismo merge tres veces después de que el agente
+creyera haber escrito el waiver. Otro caso: en b30f155f (agente-coordinador, 2026-10-05) el agente escribió que volvía a
 citar el hold. La línea 1322 del transcript guarda solo ese resumen, y el push se negó. Hasta hoy, la
 documentación atribuía ese caso a una cita escrita solo en el thinking.
 
