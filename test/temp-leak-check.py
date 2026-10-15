@@ -87,7 +87,10 @@ def tmp_entries():
 
 def run_one(path, args):
     """(rc, leftover entries under the suite's TMPDIR, new /tmp entries)."""
-    box = tempfile.mkdtemp(prefix="temp-leak-check.")
+    # No "." in the prefix: a dir named like mktemp's (name.XXXXXX) nested inside another temp root
+    # (on Linux every TMPDIR is under /tmp) makes terminal_actions._in_own_mktemp judge the outer
+    # root first, in set order, and deny case 117 or a gate case at random (CI 38700885747, ubuntu).
+    box = tempfile.mkdtemp(prefix="temp-leak-check-")
     os.chmod(box, 0o1777)
     env = dict(os.environ, TMPDIR=box)
     env.setdefault("CLAUDE_PLUGIN_ROOT", os.path.join(REPO, "plugins", "goalspec"))
@@ -137,7 +140,7 @@ def check(paths):
 
 def selftest():
     """A planted suite that leaves one mkdtemp dir must turn this red; one that cleans, green."""
-    work = tempfile.mkdtemp(prefix="temp-leak-selftest.")
+    work = tempfile.mkdtemp(prefix="temp-leak-selftest-")
     try:
         leaky = os.path.join(work, "leaky.py")
         clean = os.path.join(work, "clean.py")
@@ -148,7 +151,7 @@ def selftest():
                     "import tempfile\ntempfile.mkdtemp(prefix='clean-')\n"
                     "tempfile.mkstemp(prefix='clean-')\n" % HERE)
         nested = os.path.join(work, "nested.py")
-        pre = tempfile.mkdtemp(prefix="temp-leak-pre.", dir="/tmp")  # exists BEFORE the run
+        pre = tempfile.mkdtemp(prefix="temp-leak-pre-", dir="/tmp")  # exists BEFORE the run
         with open(nested, "w") as f:
             f.write("open(%r, 'w').close()\n" % os.path.join(pre, "left-inside"))
         ok = True

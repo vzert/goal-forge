@@ -82,7 +82,7 @@ if os.environ.get("TMP_CLEANUP_KEEP_TMPDIR") == "1":
     if not os.path.lexists(_xcrun):
         _made.append(_xcrun)
 else:
-    BOX = _mkdtemp(prefix="goalspec-suite.")
+    BOX = _mkdtemp(prefix="goalspec-suite-")  # no ".": see the box prefix in temp-leak-check.py
     os.chmod(BOX, 0o1777)
     _made.append(BOX)  # first in, so popped last: tracked paths inside it go first
     os.environ["TMPDIR"] = BOX
