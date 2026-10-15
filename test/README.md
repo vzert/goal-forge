@@ -743,15 +743,15 @@ Measured 2026-10-15 over the maintainer's local transcripts: of 188 interactive 
 and a later Bash, Write or Edit, 59 raised any `AskUserQuestion` between the spec and that call — 5
 of 67 on 0.49.0 or later. The sdk-cli and sdk-ts sessions (4555) never got one answered, so they are not held.
 
-32 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
+36 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
 session's checkpoint, VS Code, a modal with no answer yet, a modal raised only before the spec, a
-modal whose result is an error, a harness notification, a new spec after a completion-review, a modal before the real spec when the first "spec" was another
+modal whose result is an error, a harness notification, a new spec after a completion-review, the close marker quoted inside the spec, a modal before the real spec when the first "spec" was another
 session's checkpoint); allowed (an answered modal after the spec, a typed reply, a spec re-emitted
-in the same cycle, a new cycle that was asked, a closed run with no new spec, sdk-cli, sdk-ts, no entrypoint, no loop entry, interview only, a
+in the same cycle, a new cycle that was asked, a closed run with no new spec, the close marker quoted inline or in a code fence, sdk-cli, sdk-ts, no entrypoint, no loop entry, interview only, a
 subagent call, a checkpoint write, Read, `GOAL_RATIFY_BRAKE=0`, `GOAL_SPEC_BRAKE=0`); and the
 pre-spec hold still comes first. The deny reason must name the modal, its four options, that Stop
 executes nothing, the later-message clause, the text fallback and the human's opt-out. New with no
-predecessor, so `--selftest` applies 20 mutations and requires a case to catch each. What no suite
+predecessor, so `--selftest` applies 23 mutations and requires a case to catch each. What no suite
 can show: that an agent then asks a good question, or honours a Stop.
 
 ```sh
