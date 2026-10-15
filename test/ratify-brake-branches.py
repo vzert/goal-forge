@@ -6,10 +6,12 @@
 
 Once an interactive session (entrypoint cli or claude-vscode) that entered the goalspec loop has a
 `## Goal-spec` with a body, the hook denies Bash, Write, Edit, MultiEdit and NotebookEdit until the
-human was asked to ratify it: an AskUserQuestion after the FIRST spec whose result is not an error,
-or a typed user prompt after it (terminal_actions.ratify_brake_armed). Not braked: headless (sdk-*)
+human was asked to ratify it: an answered AskUserQuestion (a result that is not an error) after the
+first spec of the current cycle, or a typed user prompt after it (terminal_actions.ratify_brake_armed).
+A cycle starts after a [COMPLETION-REVIEW: ...] in visible text, outside a code fence and outside
+the spec's own text block. Not braked: headless (sdk-*)
 or unknown entrypoints, a modal raised before the spec, writes under .goalspec/, subagent calls,
-GOAL_RATIFY_BRAKE=0 or GOAL_SPEC_BRAKE=0. A spec re-emitted after the modal does not re-arm it.
+GOAL_RATIFY_BRAKE=0 or GOAL_SPEC_BRAKE=0. A spec re-emitted in the same cycle does not re-arm it.
 Hermetic: synthetic transcripts in a temp dir, no git.
 
 There is no predecessor to compare against (the brake is new in 0.60.0), so `--selftest` copies the
@@ -147,13 +149,31 @@ CASES = [
      lambda: pre([LOAD, {"text": SPEC + "\nClose with " + CR + " when done.\n"}], "19"), "deny-ratify"),
     ("19b-marker-own-line-in-spec-still-denied",
      lambda: pre([LOAD, {"text": SPEC + "\n" + CR + "\n"}], "19b"), "deny-ratify"),
-    ("19c-marker-inline-prose-no-false-rearm",
+    # Accepted direction (round 3): a marker quoted in prose after the modal starts a cycle, as
+    # the Stop gate would read it; the cost is one more question, never a skipped one.
+    ("19c-marker-inline-prose-asks-again",
      lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
                   {"text": "Before closing I will write " + CR + " as the gate asks."}, TXT], "19c"),
-     "allow"),
+     "deny-ratify"),
     ("19d-marker-in-code-fence-no-false-rearm",
      lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
                   {"text": "The grammar:\n```\n" + CR + "\n```\n"}, TXT], "19d"), "allow"),
+    ("19e-tilde-fence-no-false-rearm",
+     lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
+                  {"text": "Grammar:\n~~~\n" + CR + "\n~~~\n"}, TXT], "19e"), "allow"),
+    ("19f-unclosed-fence-no-false-rearm",
+     lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
+                  {"text": "Grammar:\n```\n" + CR + "\n"}, TXT], "19f"), "allow"),
+    # Round 3 (subagent): real closes as the project's sessions write them start a cycle.
+    ("19g-bold-close-starts-cycle",
+     lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
+                  {"text": "Declaro el cierre:\n\n**" + CR + "** -- listo."}, TXT], "19g"), "deny-ratify"),
+    ("19h-backtick-close-starts-cycle",
+     lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
+                  {"text": "CIERRE goalspec\n`" + CR + "`"}, TXT], "19h"), "deny-ratify"),
+    ("19i-bullet-crlf-close-starts-cycle",
+     lambda: pre([LOAD, TXT, {"ask": "q1"}, {"result": ("q1", False)},
+                  {"text": "- " + CR + "\r\n"}, TXT], "19i"), "deny-ratify"),
     # Not released.
     ("20-ask-before-spec-does-not-count",
      lambda: pre([LOAD, {"ask": "q0"}, {"result": ("q0", False)}, TXT], "20"), "deny-ratify"),
@@ -227,12 +247,16 @@ MUTATIONS = [
      "i0 = _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)",
      "i0 = _first_spec_index(items, session_id, cwd)"),
     ("cycle start ignored by the index", LIB, "        if i < start:\n            continue\n", ""),
-    ("close read with the plain CR_RE", LIB, "    cr = _last_close_index(items)",
+    ("spec and fences not excluded", LIB, "    cr = _last_close_index(items)",
      "    cr = last_completion_review_index(items)"),
+    ("close anchored to its own line", LIB, 'if re.search(CR_RE, FENCE_RE.sub("", it["text"]), re.I):',
+     'if re.search(r"^\\[COMPLETION-REVIEW:[^\\]\\n]*\\]$", FENCE_RE.sub("", it["text"]), re.M):'),
+    ("tilde fences not stripped", LIB, 'FENCE_RE = re.compile(r"^[ \\t]*(```|~~~)', 'FENCE_RE = re.compile(r"^[ \\t]*(```)'),
+    ("unclosed fence not stripped", LIB, r'(^[ \t]*\1|\Z)', r'(^[ \t]*\1)'),
     ("spec block can be a close", LIB, '        if it["kind"] != "text" or has_goal_spec(it["text"]):',
      '        if it["kind"] != "text":'),
-    ("code fences not stripped", LIB, 'CLOSE_LINE_RE.search(FENCE_RE.sub("", it["text"]))',
-     'CLOSE_LINE_RE.search(it["text"])'),
+    ("code fences not stripped", LIB, 'if re.search(CR_RE, FENCE_RE.sub("", it["text"]), re.I):',
+     'if re.search(CR_RE, it["text"], re.I):'),
     ("reason loses Stop", LIB, "Stop means execute nothing", "Stop is up to you"),
     ("reason loses the text fallback", LIB, "end your turn with the same question as text",
      "keep going"),

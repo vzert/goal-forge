@@ -85,8 +85,9 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    (UserPromptSubmit hook that sets the session's name from the spec's `Session name:` line and
    never overwrites a name it did not set — hermetic, synthetic transcripts; new in 0.56.0 with no
    predecessor, so run `--selftest` too), and `python3 test/ratify-brake-branches.py` (the second
-   hold of the spec brake: after the first `## Goal-spec` of an interactive session, Bash/Write/Edit
-   wait for an `AskUserQuestion` or a typed reply — hermetic, synthetic transcripts; new in 0.60.0
+   hold of the spec brake: after the first `## Goal-spec` of each cycle in an interactive session (a
+   cycle starts after a `[COMPLETION-REVIEW: ...]`), Bash/Write/Edit wait for an answered
+   `AskUserQuestion` or a typed reply — hermetic, synthetic transcripts; new in 0.60.0
    with no predecessor, so run `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every

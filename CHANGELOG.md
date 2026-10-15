@@ -36,8 +36,8 @@ version bump are never delivered to already-installed users.
   are not held; a spec re-emitted after the modal does not ask again. Headless (`sdk-*`) and unknown
   entrypoints are never held. `GOAL_RATIFY_BRAKE=0` turns off this hold only; `GOAL_SPEC_BRAKE=0`
   both. It checks that the human was asked, not the answer. A spec written after a
-  `[COMPLETION-REVIEW: ...]` (the marker alone on its line, outside a code fence and outside the
-  spec's own text) starts a new cycle and is held again; a spec re-emitted in the same
+  `[COMPLETION-REVIEW: ...]` (in any formatting, outside a code block and outside the spec's own
+  text; a marker quoted in prose can cost one extra question, never a skipped one) starts a new cycle and is held again; a spec re-emitted in the same
   cycle (after Narrow, or a checkpoint update) is not.
 - **Why.** Measured 2026-10-15 over the maintainer's local transcripts: of the interactive sessions
   with a spec and a later Bash, Write or Edit, 59 of 188 raised any `AskUserQuestion` between the
@@ -47,7 +47,7 @@ version bump are never delivered to already-installed users.
   why they are exempt: there a deny would loop.
 - **SKILL.md step 4b is no longer conditional.** The trivial-spec exit is gone from step 4b and from
   "Ratify the spec before you execute"; the triggers now say what the modal must name.
-- **`test/ratify-brake-branches.py`**: 36 cases, `--selftest` with 23 mutations. The existing
+- **`test/ratify-brake-branches.py`**: 41 cases, `--selftest` with 26 mutations. The existing
   `spec-brake-branches.py` is unchanged (48 of 48): its transcripts carry no entrypoint.
 
 ## [0.59.1] - 2026-10-14

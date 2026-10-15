@@ -1152,13 +1152,14 @@ RATIFY_BRAKE_REASON = (
 )
 
 
-# A close that starts a new ratify cycle: the marker alone on its line, outside a fenced code
-# block, in a text block that is not itself the spec. Release round 2 (external adversary): the
-# plain CR_RE also matched the grammar quoted in prose -- inside the spec it disarmed the brake,
-# after a modal it re-armed a re-emitted spec. Stricter than the Stop gate on purpose.
-CLOSE_LINE_RE = re.compile(r"^[ \t]*\[COMPLETION-REVIEW:\s*(adversary|none)\b[^\]\n]*\][ \t]*$",
-                           re.M | re.I)
-FENCE_RE = re.compile(r"^[ \t]*```.*?^[ \t]*```", re.M | re.S)
+# A close that starts a new ratify cycle: a completion-review marker the way the Stop gate reads
+# one (CR_RE, any formatting), except inside the spec's own text block or a code fence (``` or
+# ~~~; an unclosed fence runs to the end of the block). Release rounds 2 and 3: the gate's plain
+# CR_RE inside the spec disarmed the brake (round 2), and a line-anchored form then missed real
+# closes written in bold or backticks, which the project's own sessions contain (round 3). The
+# residual error leans toward asking: a marker quoted in prose after the modal starts a cycle, so
+# a re-emitted spec asks once more. It never lets work through unasked that the gate saw closed.
+FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?(^[ \t]*\1|\Z)", re.M | re.S)
 
 
 def _last_close_index(items):
@@ -1166,7 +1167,7 @@ def _last_close_index(items):
     for i, it in enumerate(items):
         if it["kind"] != "text" or has_goal_spec(it["text"]):
             continue
-        if CLOSE_LINE_RE.search(FENCE_RE.sub("", it["text"])):
+        if re.search(CR_RE, FENCE_RE.sub("", it["text"]), re.I):
             idx = i
     return idx
 
@@ -1194,8 +1195,8 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
     raised an AskUserQuestion that was answered (a result that is not an error) nor received a
     typed user prompt.
 
-    The current cycle starts after the last `[COMPLETION-REVIEW: ...]` in visible text (alone on
-    its line, outside a code fence, not in the spec's own text block -- _last_close_index): its first
+    The current cycle starts after the last `[COMPLETION-REVIEW: ...]` in visible text (outside a
+    code fence and outside the spec's own text block -- _last_close_index): its first
     spec is the anchor. A spec re-emitted after a 'Narrow' answer, and every checkpoint update
     during the run, must not ask again (step 4b says no second modal), so a later spec in the same
     cycle does not re-arm it; a spec written after a close does (release round 1, external
