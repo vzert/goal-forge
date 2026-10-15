@@ -1152,6 +1152,25 @@ RATIFY_BRAKE_REASON = (
 )
 
 
+# A close that starts a new ratify cycle: the marker alone on its line, outside a fenced code
+# block, in a text block that is not itself the spec. Release round 2 (external adversary): the
+# plain CR_RE also matched the grammar quoted in prose -- inside the spec it disarmed the brake,
+# after a modal it re-armed a re-emitted spec. Stricter than the Stop gate on purpose.
+CLOSE_LINE_RE = re.compile(r"^[ \t]*\[COMPLETION-REVIEW:\s*(adversary|none)\b[^\]\n]*\][ \t]*$",
+                           re.M | re.I)
+FENCE_RE = re.compile(r"^[ \t]*```.*?^[ \t]*```", re.M | re.S)
+
+
+def _last_close_index(items):
+    idx = None
+    for i, it in enumerate(items):
+        if it["kind"] != "text" or has_goal_spec(it["text"]):
+            continue
+        if CLOSE_LINE_RE.search(FENCE_RE.sub("", it["text"])):
+            idx = i
+    return idx
+
+
 def _first_spec_index(items, session_id=None, cwd=None, start=0):
     own = roots = None
     for i, it in enumerate(items):
@@ -1175,7 +1194,8 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
     raised an AskUserQuestion that was answered (a result that is not an error) nor received a
     typed user prompt.
 
-    The current cycle starts after the last `[COMPLETION-REVIEW: ...]` in visible text: its first
+    The current cycle starts after the last `[COMPLETION-REVIEW: ...]` in visible text (alone on
+    its line, outside a code fence, not in the spec's own text block -- _last_close_index): its first
     spec is the anchor. A spec re-emitted after a 'Narrow' answer, and every checkpoint update
     during the run, must not ask again (step 4b says no second modal), so a later spec in the same
     cycle does not re-arm it; a spec written after a close does (release round 1, external
@@ -1189,7 +1209,7 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
         return False
     if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
         return False
-    cr = last_completion_review_index(items)
+    cr = _last_close_index(items)
     i0 = _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)
     if i0 is None:
         return False
