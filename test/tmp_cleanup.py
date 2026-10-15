@@ -74,7 +74,14 @@ def cleanup():
 # terminal_actions._temp_roots, and its cases 116-117 then never reach the macOS per-user-T clause
 # (goal-adversary round 1 on this change: with that clause disabled, the suite still passed). That
 # suite gets tracking only: its own mkdtemp dirs and track()ed paths are removed, nothing redirected.
-if os.environ.get("TMP_CLEANUP_KEEP_TMPDIR") != "1":
+if os.environ.get("TMP_CLEANUP_KEEP_TMPDIR") == "1":
+    # The hooks it runs call git, and on macOS the git shim runs xcrun, which writes its cache
+    # `xcrun_db` into TMPDIR (codex round 2 found it left in a fresh one). Remove it only if this
+    # run created it: in a TMPDIR that already had it, it is someone else's cache.
+    _xcrun = os.path.join(tempfile.gettempdir(), "xcrun_db")
+    if not os.path.lexists(_xcrun):
+        _made.append(_xcrun)
+else:
     BOX = _mkdtemp(prefix="goalspec-suite.")
     os.chmod(BOX, 0o1777)
     _made.append(BOX)  # first in, so popped last: tracked paths inside it go first

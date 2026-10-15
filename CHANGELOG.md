@@ -19,7 +19,8 @@ Tests only; nothing installed changes, so no version bump.
 - **`test/temp-leak-check.py`** re-runs every suite (default and `--selftest`) under a fresh
   `TMPDIR` and fails on anything left there or in `/tmp`, or on a non-zero exit; `--selftest`
   plants a suite that leaks and requires a red. CI runs both. On the pre-change tree it reported 17
-  leaking runs; after the change, 0.
+  leaking runs; after the change, 0 left in any suite's `TMPDIR`. On a busy dev machine the `/tmp`
+  walk also reports other processes' files, named; CI is where that half reads clean.
 - **The module-swap recipe in `test/README.md` checks the restore with `cmp`** and stops with
   `RESTORE FAILED` when the copy back does not match (p-71266974e6: a full disk once lost an edit to
   `hooks/lib/terminal_actions.py` this way).
