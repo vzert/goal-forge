@@ -976,7 +976,7 @@ INTERVIEW_HANDOFF_NUDGE = (
 # and never posted a visible spec; one wrote it only in its thinking, another went straight to tools.
 # 0.59.0 offers the checkpoint Write first: text in the middle of a turn can be stored as a narration
 # summary without the heading (memory research 2026-10-14), and a tool call is stored as written.
-# 0.59.2 — "a tool call is stored as written" reads as if a Bash call counted too. In VPS session
+# 0.59.1 — "a tool call is stored as written" reads as if a Bash call counted too. In VPS session
 # 6b577287 (2026-10-14) an agent denied for an unquoted hand-back hold wrote the line with
 # printf >> into its checkpoint; read_transcript_items reads only Write and Edit tool_use blocks.
 BASH_WRITE_NOTE = (

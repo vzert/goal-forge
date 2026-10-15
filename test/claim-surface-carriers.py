@@ -530,7 +530,7 @@ def main():
     # (a tool call; the closing text almost always). Every verdict carrier names it; none may still say the next message suffices.
     MID = "text you write in the middle of a turn can be stored as a summary without the marker line"
     MID_SPEC = "can be stored as a summary without the ## Goal-spec heading"
-    # 0.59.2: "a tool call is stored as written" read as if a Bash call counted (VPS 6b577287 wrote the
+    # 0.59.1: "a tool call is stored as written" read as if a Bash call counted (VPS 6b577287 wrote the
     # hold with printf >>). Every carrier that offers the checkpoint way says a Bash write is not read.
     BASH = "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count"
     check("bashwrite:skill", "a Bash command that writes the line" in " ".join(skill.split()))

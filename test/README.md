@@ -885,7 +885,7 @@ command in the same turn (152, 153); it does not count in another session's chec
 or another root (154, 155, 160), from a failed Write (156), with a reason under 20 characters (157),
 or when the line is not new: an old waiver re-written by a later Write, or held by an Edit's
 `old_string` (158, 159), also in another case or with other spacing (165, 166); a waiver only in a `narration` thinking block is nothing (162); the deny
-names the checkpoint for the waiver (161). Since 0.59.2 a hold or a waiver written into the checkpoint by a Bash command (`printf ... >>`) is still denied, and every deny that offers the checkpoint way says a Bash write is not read (187, 188; the no-spec deny, 189). Against 0.59.0 all three change, and only by their text: the decision was already deny. Against 0.56.0, 150, 151, 161, 163 and 164 change; with
+names the checkpoint for the waiver (161). Since 0.59.1 a hold or a waiver written into the checkpoint by a Bash command (`printf ... >>`) is still denied, and every deny that offers the checkpoint way says a Bash write is not read (187, 188; the no-spec deny, 189). Against 0.59.0 all three change, and only by their text: the decision was already deny. Against 0.56.0, 150, 151, 161, 163 and 164 change; with
 0.56.0's hook fixed, 0.57.0's module gives 0.56.0's module's decisions on every row. Each new check
 in `file_waiver_line` and in the parser, the case/space normalization included, was removed in turn
 and its own case went red.

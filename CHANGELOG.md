@@ -8,7 +8,7 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
-## [0.59.2] - 2026-10-14
+## [0.59.1] - 2026-10-14
 
 ### Los avisos dicen que una línea escrita con Bash al checkpoint no cuenta
 Los avisos que ofrecen escribir el hold, el waiver o el spec en el checkpoint decían "a tool call

@@ -1167,7 +1167,7 @@ case("178-no-spec-deny-names-checkpoint-write-DENY", lambda: _deny_reason_has(
     lambda: run_hook(make_repo("178", None, None), "git merge feature/x",
                      transcript([{"skill": "goalspec:goalspec"}], "178"), session_id=SID)))
 
-# 0.59.2 — a line written into the checkpoint by a Bash command does not count, and every deny that
+# 0.59.1 — a line written into the checkpoint by a Bash command does not count, and every deny that
 # offers the checkpoint way says so. Field case: VPS session 6b577287 (2026-10-14), denied for an
 # unquoted hand-back hold, wrote it with printf >> and passed only on an earlier visible quote.
 BASH_NOTE = "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count"
