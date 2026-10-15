@@ -674,6 +674,12 @@ def _collect_event(ev, items, state=None):
     RELAY_PREFIXES): a Bash tool_result or another subagent can carry any text."""
     if state is None:
         state = {"adversary_spawns": set(), "adversary_agents": set(), "background_spawns": set()}
+    # 0.60.0: the harness surface that started the session (cli, claude-vscode, sdk-cli, sdk-ts),
+    # read once from the first event that carries it. ratify_brake_armed keys on it.
+    ep = ev.get("entrypoint")
+    if isinstance(ep, str) and ep and "entrypoint" not in state:
+        state["entrypoint"] = ep
+        items.append({"kind": "entrypoint", "timestamp": ev.get("timestamp"), "text": "", "value": ep})
     if ev.get("type") == "attachment":
         att = ev.get("attachment") or {}
         prompt = att.get("prompt") if isinstance(att, dict) else None
@@ -771,6 +777,10 @@ def _collect_event(ev, items, state=None):
             if isinstance(sk, str) and sk.strip() in ENTRY_SKILLS:
                 items.append({"kind": "goalspec_entry", "timestamp": ts, "text": "",
                               "skill": "interview" if sk.strip().endswith("interview") else "goalspec"})
+        elif blk.get("type") == "tool_use" and blk.get("name") == "AskUserQuestion":
+            # 0.60.0: a modal raised to the human (ratify_brake_armed). One whose result is an
+            # error asked nothing, so read_transcript_items drops it.
+            items.append({"kind": "ask", "timestamp": ts, "text": "", "id": blk.get("id")})
         elif blk.get("type") == "tool_use" and blk.get("name") == "Bash":
             cmd = (blk.get("input") or {}).get("command")
             if isinstance(cmd, str) and cmd:
@@ -885,7 +895,7 @@ def read_transcript_items(transcript_path):
         return []
     failed = state.get("failed_tool_uses") or set()
     return [it for it in items
-            if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file")
+            if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file", "ask")
                     and it.get("id") is not None and it["id"] in failed)]
 
 
@@ -1111,6 +1121,66 @@ def spec_brake_evidence(items):
     return (" Evidence: you have posted %d visible text block(s) in this session, and none has a "
             "line that starts with `## Goal-spec`. The most recent one begins: \"%s\"."
             % (len(texts), last))
+
+
+# 0.60.0 — the ratify brake. SKILL.md step 4b asks the agent to show the spec back in an
+# AskUserQuestion before it executes; it was written as a conditional, and agents skipped it.
+# Measured 2026-10-15 over the maintainer's local transcripts (224 sessions with a spec): in the
+# interactive ones, 59 of 186 raised any AskUserQuestion between the spec and their first Bash,
+# Write or Edit -- 54 of 118 before 0.49.0, 5 of 66 since (an upper bound: any modal counted). The
+# sdk-cli and sdk-ts sessions (679 and 3876) never got an AskUserQuestion through (0 answered), so
+# they are never braked: there a deny would loop deny -> failed ask -> deny.
+RATIFY_ENTRYPOINTS = ("cli", "claude-vscode")
+RATIFY_BRAKE_REASON = (
+    "goalspec: this session posted its ## Goal-spec and has not shown it back to the human yet, so "
+    "this tool call is held until it does (SKILL.md step 4b, 'Ratify the spec before you execute'). "
+    "Raise ONE AskUserQuestion that summarizes the spec in plain words -- the objective, what it "
+    "touches and how many things, and any action that is hard to undo -- with these options: "
+    "Approve & execute, Narrow the scope, Only the minimal fix, Stop. When the spec carries a push, "
+    "merge, deploy, delete or send, the recommended option is NOT execute-now: it is the reversible "
+    "path with that step confirmed separately. Then follow the answer (step 4b, 'Where each answer "
+    "goes'; Stop means execute nothing) and call the tool again in a LATER message. If "
+    "AskUserQuestion is not available here, end your turn with the same question as text; the "
+    "human's reply releases this. Read, Grep and Glob are not held. Only the human can turn this "
+    "off (GOAL_RATIFY_BRAKE=0 in the environment Claude Code runs in)."
+)
+
+
+def _first_spec_index(items, session_id=None, cwd=None):
+    own = roots = None
+    for i, it in enumerate(items):
+        if it["kind"] == "text" and spec_has_body(it["text"]):
+            return i
+        if it["kind"] == "goal_spec_file" and spec_has_body(it["text"]):
+            if own is None:
+                own, roots = own_checkpoint_re(session_id), own_checkpoint_roots(cwd)
+            p = it.get("path") or ""
+            if own.search(p) and _in_own_root(p, cwd, roots):
+                return i
+    return None
+
+
+def ratify_brake_armed(items, session_id=None, cwd=None):
+    """True when an interactive session (entrypoint cli or claude-vscode) entered the goalspec loop,
+    has a `## Goal-spec` with a body (visible text, or a Write/Edit to its own checkpoint, as
+    spec_brake_armed reads it), and since the FIRST such spec has neither raised an AskUserQuestion
+    whose result is not an error nor received a typed user prompt.
+
+    Keyed on the first spec, not the latest, on purpose: a spec re-emitted after a 'Narrow' answer,
+    and every checkpoint update during the run, must not ask again (step 4b says no second modal).
+    The cost: a second cycle later in the same session (a re-entered 4b) is not braked. A typed
+    prompt releases it because the human then has seen the spec and answered in words. It checks
+    that the human was asked, never what they answered: 'Stop' is the written rule's to honour.
+    An unknown entrypoint (none in the transcript, or a surface not listed) is not braked."""
+    ep = next((it.get("value") for it in items if it["kind"] == "entrypoint"), None)
+    if ep not in RATIFY_ENTRYPOINTS:
+        return False
+    if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
+        return False
+    i0 = _first_spec_index(items, session_id, cwd)
+    if i0 is None:
+        return False
+    return not any(it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:])
 
 
 # v3 — what hooks/show-checkpoint-spec.sh shows the human when the spec reaches them only through

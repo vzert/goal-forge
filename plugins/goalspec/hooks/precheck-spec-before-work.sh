@@ -20,7 +20,15 @@
 # so without this an explorer spawned before the spec would be held for the parent's missing spec),
 # a session that only ran /goalspec:interview or goalspec:adversary, or a session with no goalspec.
 #
-# Escape hatch for the human: GOAL_SPEC_BRAKE=0 in the environment Claude Code runs in.
+# 0.60.0 — the same hook then holds the same tools a second time: once the spec exists, in an
+# interactive session (entrypoint cli or claude-vscode), until the human has been asked to ratify
+# it (an AskUserQuestion after the first spec whose result is not an error, or a typed prompt) --
+# terminal_actions.ratify_brake_armed. Measured 2026-10-15: since 0.49.0, 5 of 66 interactive
+# sessions with a spec asked before their first Bash, Write or Edit. Same exemptions as above
+# (Read-class tools, .goalspec/ writes, subagents); headless (sdk-*) sessions are never held.
+#
+# Escape hatches for the human: GOAL_SPEC_BRAKE=0 turns off both holds; GOAL_RATIFY_BRAKE=0 only
+# the second.
 #
 # Fail-open, like every hook here: an unreadable payload, a missing module or transcript allows.
 # Registered by hooks/hooks.json.
@@ -63,7 +71,12 @@ if tool != "Bash":
 
 items = ta.read_transcript_items(data.get("transcript_path"))
 sid = str(data.get("session_id") or "").strip()
-if not ta.spec_brake_armed(items, sid, data.get("cwd") or os.getcwd()):
+cwd = data.get("cwd") or os.getcwd()
+if not ta.spec_brake_armed(items, sid, cwd):
+    if os.environ.get("GOAL_RATIFY_BRAKE") != "0" and ta.ratify_brake_armed(items, sid, cwd):
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                                 "permissionDecision": "deny",
+                                                 "permissionDecisionReason": ta.RATIFY_BRAKE_REASON}}))
     sys.exit(0)
 
 path = ".goalspec/checkpoint-%s.md" % sid if ta.SESSION_ID_RE.fullmatch(sid) else ".goalspec/checkpoint.md"

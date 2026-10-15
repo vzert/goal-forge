@@ -1,6 +1,6 @@
 # test/
 
-**Seventeen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Eighteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -734,6 +734,29 @@ lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-tu
 ```sh
 python3 test/spec-brake-branches.py
 python3 test/spec-brake-branches.py --selftest
+```
+
+## `ratify-brake-branches.py` — hold the work until the spec is put to the human (0.60.0)
+
+For the second hold in `hooks/precheck-spec-before-work.sh` (`terminal_actions.ratify_brake_armed`).
+Measured 2026-10-15 over the maintainer's local transcripts: of 186 interactive sessions with a spec,
+59 raised any `AskUserQuestion` between the spec and the first Bash, Write or Edit — 5 of 66 on
+0.49.0 or later. The sdk-cli and sdk-ts sessions (4555) never got one answered, so they are not held.
+
+28 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
+session's checkpoint, VS Code, a modal raised only before the spec, a modal whose result is an
+error, a harness notification, a modal before the real spec when the first "spec" was another
+session's checkpoint); allowed (a modal after the spec, answered or not yet, a typed reply, a spec
+re-emitted after the modal, sdk-cli, sdk-ts, no entrypoint, no loop entry, interview only, a
+subagent call, a checkpoint write, Read, `GOAL_RATIFY_BRAKE=0`, `GOAL_SPEC_BRAKE=0`); and the
+pre-spec hold still comes first. The deny reason must name the modal, its four options, that Stop
+executes nothing, the later-message clause, the text fallback and the human's opt-out. New with no
+predecessor, so `--selftest` applies 16 mutations and requires a case to catch each. What no suite
+can show: that an agent then asks a good question, or honours a Stop.
+
+```sh
+python3 test/ratify-brake-branches.py
+python3 test/ratify-brake-branches.py --selftest
 ```
 
 ## `subagent-model-branches.py` — every subagent spawn names its model (0.50.0)

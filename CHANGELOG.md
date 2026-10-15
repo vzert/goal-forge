@@ -6,9 +6,9 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
-## [Unreleased]
+## [0.60.0] - 2026-10-15
 
-Tests only; nothing installed changes, so no version bump.
+### Las suites borran su carpeta temporal (solo tests; sale con 0.60.0)
 
 - **The suites remove their temp dirs** (p-1a5a4e9828). Every suite in `test/` imports the new
   `test/tmp_cleanup.py`, which gives the run one sticky `TMPDIR` of its own (hooks started by the
@@ -24,6 +24,28 @@ Tests only; nothing installed changes, so no version bump.
 - **The module-swap recipe in `test/README.md` checks the restore with `cmp`** and stops with
   `RESTORE FAILED` when the copy back does not match (p-71266974e6: a full disk once lost an edit to
   `hooks/lib/terminal_actions.py` this way).
+
+### Ratificar el spec deja de ser opcional: un freno espera la pregunta
+
+- **The spec brake holds a second time, after the spec, until the human is asked.** In an
+  interactive session (transcript `entrypoint` `cli` or `claude-vscode`) that entered the goalspec
+  loop, `hooks/precheck-spec-before-work.sh` now denies Bash, Write, Edit, MultiEdit and
+  NotebookEdit after the first `## Goal-spec` (visible text or this session's checkpoint) until an
+  `AskUserQuestion` follows it whose result is not an error, or the human types a reply
+  (`terminal_actions.ratify_brake_armed`). Reads stay free; `.goalspec/` writes and subagent calls
+  are not held; a spec re-emitted after the modal does not ask again. Headless (`sdk-*`) and unknown
+  entrypoints are never held. `GOAL_RATIFY_BRAKE=0` turns off this hold only; `GOAL_SPEC_BRAKE=0`
+  both. It checks that the human was asked, not the answer; a second cycle later in the session is
+  not held (it keys on the first spec).
+- **Why.** Measured 2026-10-15 over the maintainer's local transcripts (224 sessions with a spec):
+  in interactive sessions 59 of 186 raised any `AskUserQuestion` between the spec and their first
+  Bash, Write or Edit — 54 of 118 before 0.49.0, 5 of 66 since (an upper bound: any modal counted).
+  The 4555 `sdk-cli`/`sdk-ts` sessions on record never got an `AskUserQuestion` answered, which is
+  why they are exempt: there a deny would loop.
+- **SKILL.md step 4b is no longer conditional.** The trivial-spec exit is gone from step 4b and from
+  "Ratify the spec before you execute"; the triggers now say what the modal must name.
+- **`test/ratify-brake-branches.py`**: 28 cases, `--selftest` with 16 mutations. The existing
+  `spec-brake-branches.py` is unchanged (48 of 48): its transcripts carry no entrypoint.
 
 ## [0.59.1] - 2026-10-14
 
