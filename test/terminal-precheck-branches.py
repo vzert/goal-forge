@@ -1167,6 +1167,25 @@ case("178-no-spec-deny-names-checkpoint-write-DENY", lambda: _deny_reason_has(
     lambda: run_hook(make_repo("178", None, None), "git merge feature/x",
                      transcript([{"skill": "goalspec:goalspec"}], "178"), session_id=SID)))
 
+# 0.59.2 — a line written into the checkpoint by a Bash command does not count, and every deny that
+# offers the checkpoint way says so. Field case: VPS session 6b577287 (2026-10-14), denied for an
+# unquoted hand-back hold, wrote it with printf >> and passed only on an earlier visible quote.
+BASH_NOTE = "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count"
+BASH_HOLD = {"bash": "printf '\\n" + HOLD_LINE + "\\n' >> " + CKPT, "bash_id": "b187",
+             "result": HOLD_LINE}
+
+case("187-handback-hold-written-by-bash-printf-DENY", _fq(
+    "187", HB_REL + [BASH_HOLD], False, needle=BASH_NOTE))
+
+case("188-waiver-written-by-bash-printf-DENY", _fw(
+    "188", FW_DENIED + [{"bash": "printf '%s\\n' '" + FW_LINE + "' >> " + CKPT, "bash_id": "b188",
+                         "result": ""}], False, needle=BASH_NOTE))
+
+case("189-no-spec-deny-says-bash-write-does-not-count-DENY", lambda: _deny_reason_has(
+    "189", BASH_NOTE,
+    lambda: run_hook(make_repo("189", None, None), "git merge feature/x",
+                     transcript([{"skill": "goalspec:goalspec"}], "189"), session_id=SID)))
+
 
 def run_hook_raw(payload):
     out = subprocess.run(["bash", HOOK], input=json.dumps(payload),

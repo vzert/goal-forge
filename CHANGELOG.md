@@ -8,6 +8,30 @@ version bump are never delivered to already-installed users.
 
 ## [Unreleased]
 
+## [0.59.2] - 2026-10-14
+
+### Los avisos dicen que una línea escrita con Bash al checkpoint no cuenta
+Los avisos que ofrecen escribir el hold, el waiver o el spec en el checkpoint decían "a tool call
+is stored as written". Un Bash también es una llamada a herramienta. Caso real: en la sesión
+6b577287 del VPS (2026-10-14), el precheck negó un merge por un hold de hand-back no citado. El
+agente escribió la línea en su checkpoint con `printf ... >>` por Bash y reintentó. Los hooks leen
+solo las llamadas Write y Edit (`read_transcript_items`), así que esa línea no contó. El merge pasó
+solo porque el agente ya había citado el hold como texto visible un mensaje antes. Sin esa cita, la
+negación se habría repetido sin decir por qué.
+
+- `hooks/lib/terminal_actions.py`: constante nueva `BASH_WRITE_NOTE` ("A Bash command that writes
+  the file (printf, echo, tee, a >> redirect) does not count: the goalspec hooks read only Edit and
+  Write tool calls."). Va en `RELAYED_HOLD_NOTE`, `WAIVER_DENY_NOTE`, `SPEC_BRAKE_REASON` y
+  `SPEC_ON_ENTRY_NUDGE`. No cambia ninguna decisión.
+- `hooks/precheck-terminal-push.sh`: la misma frase en la negación sin spec y en la de las tres causas.
+- `hooks/remind-quote-verdict.sh` (las dos ramas) y `hooks/remind-handback-verdict.sh`: la misma frase.
+- `skills/goalspec/SKILL.md`: el párrafo de 0.51.0 dice que solo cuenta la llamada Write o Edit.
+- `test/terminal-precheck-branches.py`: casos 187 (hold escrito con printf), 188 (waiver escrito con
+  printf) y 189 (negación sin spec); 166 en total. Contra 0.59.0 los tres cambian solo por el texto:
+  la decisión ya era negar. Los otros 163 dan lo mismo con el módulo y el hook previos y con los nuevos.
+- `test/claim-surface-carriers.py`: 9 comprobaciones nuevas, 236 en total; `--selftest` prueba que
+  cada una se pone roja si la frase falta en su portador.
+
 ## [0.59.0] - 2026-10-14
 
 ### El revisor externo toma el veredicto solo de su última línea de veredicto

@@ -267,7 +267,8 @@ msg = ("ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary r
        "thinking is not read, even when your screen shows it like a message. A Write or Edit to your "
        "checkpoint is stored as written, and the text that ends your turn almost always is; text you write in the middle of a turn can be stored as a summary without the marker line. So BEFORE any push, merge or deploy, "
        "append the verdict line to your checkpoint with the Edit tool and run the command in a later "
-       "message, not the same one: a message reaches the transcript only after its tool call runs. If "
+       "message, not the same one: a message reaches the transcript only after its tool call runs. "
+       + ta.BASH_WRITE_NOTE + " If "
        "a question to the user is still open, quote them anyway, now.\n\n" + lines)
 if breaks:
     msg += ("\n\nA break is among them: quote it too -- the gate reads it -- and address its findings "

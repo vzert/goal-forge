@@ -530,6 +530,10 @@ def main():
     # (a tool call; the closing text almost always). Every verdict carrier names it; none may still say the next message suffices.
     MID = "text you write in the middle of a turn can be stored as a summary without the marker line"
     MID_SPEC = "can be stored as a summary without the ## Goal-spec heading"
+    # 0.59.2: "a tool call is stored as written" read as if a Bash call counted (VPS 6b577287 wrote the
+    # hold with printf >>). Every carrier that offers the checkpoint way says a Bash write is not read.
+    BASH = "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count"
+    check("bashwrite:skill", "a Bash command that writes the line" in " ".join(skill.split()))
     check("visible:skill-names-mid-turn-cause", MID in " ".join(skill.split())
           and "the text that ends your turn" in skill)
     check("visible:adversary-skill-names-mid-turn-cause", MID in adv_skill)
@@ -548,10 +552,12 @@ def main():
                       "[ADVERSARY-MODEL: X / x]\n- probe: evidence\n" + hold}]}})
     check("visible:nudge-verdict-branch-emits", "just came back" in out and VIS in out)
     check("visible:nudge-verdict-branch-names-mid-turn-cause", MID in out)
+    check("bashwrite:nudge-verdict-branch", BASH in out)
     out, _ = emit("remind-quote-verdict.sh", {"tool_name": "Task",
                   "tool_input": {"subagent_type": "goal-adversary"}, "tool_response": {}})
     check("visible:nudge-launched-branch-emits", "no adversary output" in out and VIS in out)
     check("visible:nudge-launched-branch-names-mid-turn-cause", MID in out)
+    check("bashwrite:nudge-launched-branch", BASH in out)
 
     # external-adversary.sh stderr reminder, driven through a stub partner with a real verdict.
     xrepo = os.path.join(vt, "xrepo"); os.makedirs(xrepo)
@@ -576,6 +582,7 @@ def main():
           and "reaches the transcript only after its tool call runs" in out)
     check("visible:precheck-deny-names-mid-turn-cause",
           "(3) The quote is visible text written in the middle of a turn: " + MID in out)
+    check("bashwrite:precheck-deny-emits", BASH in out)
     # The 0.46.7 branch: a hold that arrived as a subagent result. Its text lives in the shared lib,
     # split across string literals, which a grep of the phrase never saw (0.46.9).
     import importlib.util
@@ -589,6 +596,8 @@ def main():
     check("visible:spec-brake-names-mid-turn-cause", MID_SPEC in getattr(ta_mod, "SPEC_BRAKE_REASON", ""))
     check("visible:spec-entry-nudge-names-mid-turn-cause",
           MID_SPEC in getattr(ta_mod, "SPEC_ON_ENTRY_NUDGE", ""))
+    for const in ("RELAYED_HOLD_NOTE", "WAIVER_DENY_NOTE", "SPEC_BRAKE_REASON", "SPEC_ON_ENTRY_NUDGE"):
+        check("bashwrite:" + const.lower().replace("_", "-"), BASH in getattr(ta_mod, const, ""))
 
     # remind-handback-verdict.sh (0.46.8), driven: record on SubagentStop, then remind on
     # UserPromptSubmit. It carries the visible-text rule AND the role-fixity audience line, since an
@@ -608,6 +617,7 @@ def main():
     check("visible:handback-remind-emits", hold in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)
     check("visible:handback-remind-names-mid-turn-cause", MID in out)
+    check("bashwrite:handback-remind", BASH in out)
     check("role:handback-remind-audience-line", "ADDRESSED TO THE EXECUTOR OF THIS SESSION" in out
           and "you verify, you do not repair" in out)
 
@@ -785,7 +795,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 227  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 236  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",

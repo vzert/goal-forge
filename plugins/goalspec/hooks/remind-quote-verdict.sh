@@ -178,7 +178,8 @@ if verdicts:
         "to your .goalspec checkpoint is stored as written, and the text that ends your turn "
         "almost always is; text you write in the middle of a turn can be stored as a summary without the marker line. So before any push, merge "
         "or deploy, also append the verdict line to your checkpoint with the Edit tool -- the "
-        "terminal-push precheck accepts it there."
+        "terminal-push precheck accepts it there. "
+        "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count: the goalspec hooks read only Edit and Write tool calls."
     )
 elif models:
     msg = (
@@ -204,7 +205,8 @@ else:
         "read, even when your screen shows it like a message. Otherwise they do not exist "
         "as far as the gate is concerned. A Write or Edit to your .goalspec checkpoint is "
         "stored as written, and the text that ends your turn almost always is; text you write in the middle of a turn can be stored as a summary without the marker line -- before a push, merge or deploy, append "
-        "the verdict line to your checkpoint with the Edit tool too. (2) Do not declare a completion-review over a verdict "
+        "the verdict line to your checkpoint with the Edit tool too. "
+        "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count: the goalspec hooks read only Edit and Write tool calls. (2) Do not declare a completion-review over a verdict "
         "you have not actually read yet -- a spawn is not a verification."
     )
 

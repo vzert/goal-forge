@@ -183,7 +183,7 @@ else:
                  "after its tool call runs. And text you write in the middle of a turn can be stored "
                  "as a summary without the ## Goal-spec heading: write the spec with the Write tool "
                  "into " + ta.checkpoint_name_for(sid) + ", where a tool call is stored as written, "
-                 "then run the adversary and this command in later messages.")
+                 "then run the adversary and this command in later messages. " + ta.BASH_WRITE_NOTE)
 
 # The 2026-09-29 research (memory, p-87faebb038) measured two ways an executor believes it quoted a
 # hold that this hook cannot see, and executors that hit either one blamed the transcript. Cause A:
@@ -206,7 +206,7 @@ seen_note = (" If you believe you already quoted a hold, three causes are measur
              "to " + ta.checkpoint_name_for(sid) + " (a Write replaces the whole file) and run the "
              "command in a later message -- a tool call is stored as written, and this hook accepts "
              "that line when it is the latest verdict a goal-adversary subagent returned; a verdict from the "
-             "external backend counts only in your visible text. Visible text is stored as "
+             "external backend counts only in your visible text. " + ta.BASH_WRITE_NOTE + " Visible text is stored as "
              "written almost always when it ends your turn, and not reliably in the middle of one.")
 
 # p-473ba7b48b (2026-09-30): a heredoc or -c string that only MENTIONS a push/merge is denied too.

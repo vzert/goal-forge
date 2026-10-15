@@ -976,6 +976,13 @@ INTERVIEW_HANDOFF_NUDGE = (
 # and never posted a visible spec; one wrote it only in its thinking, another went straight to tools.
 # 0.59.0 offers the checkpoint Write first: text in the middle of a turn can be stored as a narration
 # summary without the heading (memory research 2026-10-14), and a tool call is stored as written.
+# 0.59.2 — "a tool call is stored as written" reads as if a Bash call counted too. In VPS session
+# 6b577287 (2026-10-14) an agent denied for an unquoted hand-back hold wrote the line with
+# printf >> into its checkpoint; read_transcript_items reads only Write and Edit tool_use blocks.
+BASH_WRITE_NOTE = (
+    "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count: the goalspec hooks read only Edit and Write tool calls."
+)
+
 SPEC_ON_ENTRY_NUDGE = (
     "goalspec: the loop is loaded and this session has no ## Goal-spec yet. Before your next tool "
     "call, write the ## Goal-spec (Asked line, then the six answers) with the Write tool into this "
@@ -983,7 +990,7 @@ SPEC_ON_ENTRY_NUDGE = (
     "as you write it), or post it as visible text -- but text you write in the middle of a turn can "
     "be stored as a summary without the ## Goal-spec heading, and a hook then does not see it; a "
     "tool call is stored as written. A spec you only plan in your thinking does not count: thinking "
-    "is not read, even when your screen shows it like a message. A brief or ticket that already "
+    "is not read, even when your screen shows it like a message. " + BASH_WRITE_NOTE + " A brief or ticket that already "
     "lists criteria is input to the spec, not the spec. If you ask clarifying questions first, "
     "write the spec right after the answers."
 )
@@ -1006,7 +1013,7 @@ SPEC_BRAKE_REASON = (
     "create {path} with the ## Goal-spec in it (Asked line, then the six answers) -- it is shown "
     "to the human as soon as you write it; or (2) post the ## Goal-spec as a text block in your "
     "reply -- less sure: text you write in the middle of a turn can be stored as a summary without "
-    "the ## Goal-spec heading, while a tool call is stored as written. A spec you wrote or planned "
+    "the ## Goal-spec heading, while a tool call is stored as written. " + BASH_WRITE_NOTE + " A spec you wrote or planned "
     "only in your thinking does not count, even if you believe "
     "you already posted it: this hook reads your visible text and your Write calls, and neither "
     "has a spec. Read, Grep and Glob are not held -- use them if you need to ground the spec first."
@@ -1349,7 +1356,8 @@ WAIVER_DENY_NOTE = (
     "covers this one command in this turn, not the rest of the session. Put that line in {path} "
     "with the Edit tool (append it; a Write replaces the whole file), worded differently from any "
     "earlier waiver, then retry the command in a later message: a tool call is stored as written, "
-    "while text you write in the middle of a turn can be stored as a summary without the marker line."
+    "while text you write in the middle of a turn can be stored as a summary without the marker line. "
+    + BASH_WRITE_NOTE
 )
 
 # Agent-facing deny text for an unquoted hand-back hold. Kept here, not in the hook, for the same
@@ -1363,7 +1371,7 @@ RELAYED_HOLD_NOTE = (
     "line, on a line of its own, to {path} (after any older verdict line in it; a Write replaces "
     "the whole file), then run this command again in a LATER message: a tool call is stored as "
     "written, while text you write in the middle of a turn can be stored as a summary without the "
-    "marker line. Quoting it as visible text works for this hook only in the text that ends your "
+    "marker line. " + BASH_WRITE_NOTE + " Quoting it as visible text works for this hook only in the text that ends your "
     "turn, and then the command waits for the next prompt. You do not need a new adversary round, "
     "unless the change moved after that hold."
 )
