@@ -1158,7 +1158,8 @@ RATIFY_BRAKE_REASON = (
 # CR_RE inside the spec disarmed the brake (round 2), and a line-anchored form then missed real
 # closes written in bold or backticks, which the project's own sessions contain (round 3). The
 # residual error leans toward asking: a marker quoted in prose after the modal starts a cycle, so
-# a re-emitted spec asks once more. It never lets work through unasked that the gate saw closed.
+# a re-emitted spec asks once more. The one way it reads less than the gate: a close written
+# inside a code fence is not a close here (round 4 note; none in the project's real sessions).
 FENCE_RE = re.compile(r"^[ \t]*(```|~~~).*?(^[ \t]*\1|\Z)", re.M | re.S)
 
 
