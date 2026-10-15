@@ -129,7 +129,7 @@ CASES = [
      "[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> "
      "autonomy-violations=<n> unsafe=<n>]\n", {}, None,
      # Since 0.59.0 an echo whose last verdict line is the template takes case 39's path (same
-     # synthetic hold, same UNVERIFIED line); it has no finding to show. Against 0.59.0: `unfilled`.
+     # synthetic hold, same UNVERIFIED line); it has no finding to show. Against 0.58.0: `unfilled`.
      "template-last+unverified-nofinding"),
     ("07-partner-missing", None, {"GOAL_ADVERSARY_CMD": "goalspec-no-such-binary-xyz"},
      None, "not-found"),
@@ -280,7 +280,7 @@ CASES = [
     # run sits a filled hold it only READ -- a row of a test suite it ran, mid-line. The shape of the
     # saved codex round of 2026-10-12 (session 428e1889): until 0.58.0 the hook took the last filled
     # match anywhere, resolved `hold` from that row, printed the "verdict-shaped block" notice that
-    # tells the executor the verdict is real, and no UNVERIFIED line. Against 0.58.0 this case
+    # presents the output as a verdict to judge and quote, and no UNVERIFIED line. Against 0.58.0 this case
     # comes back `pass+idunresolved`. It must instead be UNVERIFIED, keep the BLOCKING finding in
     # view, and print no signature.
     ("39-template-last-ignores-read-hold",
@@ -489,7 +489,7 @@ def classify(res, case_name, repo=REPO):
             continue
         # Cases 39 and 40. Each part is required: a synthetic hold on stdout, nothing of the partner's,
         # the filter-proof UNVERIFIED line last, the partner's finding still shown, and no
-        # "verdict-shaped block" notice, which tells the executor the verdict is a real one.
+        # "verdict-shaped block" notice, which presents the output as a verdict to judge and quote.
         lines = err.strip().splitlines()
         b = name
         b += "+unverified" if lines and UNV in lines[-1] else "-nounverified"

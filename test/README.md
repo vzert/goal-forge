@@ -340,7 +340,7 @@ template (`break|hold`, counts filled) over a BLOCKING finding, and earlier in i
 `hold` it only read, mid-line in a suite row it ran. That is the saved codex round of 2026-10-12. The
 hook took the last filled match anywhere and resolved `hold`, so against 0.58.0 the case comes back
 `pass+idunresolved`. It must come back UNVERIFIED with the finding still shown and without the
-`verdict-shaped block` line, which tells the executor the verdict is a real one (`-signature` marks
+`verdict-shaped block` line, which presents the output as a verdict to judge and quote (`-signature` marks
 that failure). Case **40** is the same run with no verdict line in the partner's answer at all:
 the verdict must come after the partner's last real `[ADVERSARY-MODEL:]` line, so the read hold above
 it is ignored (`no-verdict-in-answer+unverified+finding`; against 0.58.0, `pass+idunresolved`). Case **06**, the echo of the template alone, now takes the same path
