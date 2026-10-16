@@ -345,6 +345,14 @@ CASES = [
     ("48-late-banner-ignored",
      "x\n" * 11 + "--------\nmodel: gpt-5.6-luna\n--------\n" + MODEL_UNKNOWN + "\n" + BULLETS
      + HOLD + "\n", {}, None, "pass+idunresolved"),
+    # 50: a notice of this hook after the partner's answer -- the saved capture of 2026-10-12 ends
+    # with one -- is not the last verdict line. Against the first cut of 0.60.2: template-last.
+    ("50-own-notice-after-answer-is-not-the-verdict",
+     MODEL + "\n" + FINDING + BULLETS
+     + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
+     "autonomy-violations=0 unsafe=0]\n"
+     "external-adversary: a verdict-shaped block was just produced above -- quote the "
+     "[ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM\n", {}, None, "derived-break"),
     # 49: case 33 with every count 0, through the same filter -- still UNVERIFIED, last line.
     ("49-zero-count-placeholder-survives-filter",
      "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL_UNKNOWN + "\n"

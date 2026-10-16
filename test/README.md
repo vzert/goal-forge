@@ -411,7 +411,11 @@ the gate's real-id test accepts, the hook prints `[ADVERSARY-MODEL: <name> (id f
 header) / <id>]` (45). A `model:` line outside the banner (46), an `UNKNOWN` id in it (47), or a
 banner after line 10 (48) prints nothing and keeps the plain warning. NOISE carries a codex banner
 with `model: gpt-5`, so cases **12** and **15** now come back `pass+hdrid=gpt-5`. A `--compare`
-against 0.60.1 declares `--expected 12,15,33,39,41,42,45`.
+against 0.60.1 declares `--expected 12,15,33,39,41,42,45,50`.
+
+**The hook's own notices are not the partner's answer (0.60.2)**, case **50**: a notice line after
+the partner's verdict names both markers in prose; every verdict and model-line scan skips lines that
+start with `external-adversary:`, so the verdict above it still resolves (`derived-break`).
 
 **Reviewed-state isolation (0.44.9)**, cases **09/16/17/18/19/24**: the hook materializes the exact
 reviewed state into a private linked worktree under the repo's own `git-common-dir` before invoking

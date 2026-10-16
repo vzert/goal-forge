@@ -599,12 +599,20 @@ RC=$?
 VERDICT=""
 VLINE=""
 TEMPLATE_LAST=0
-_ADV_LAST_VLINE=$(printf '%s\n' "$OUT" | grep -n '\[ADVERSARY-VERDICT:' | tail -1 | cut -d: -f1 || true)
+# This hook's own notices are never a verdict line, wherever they land in $OUT (0.60.2). They name
+# the marker in prose ("quote the [ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines"), so a
+# partner output that carries one after its answer -- a partner that ran this hook while reviewing it,
+# or a saved capture of this hook's own output fed back in -- anchored the verdict on that notice and
+# lost the real line above it (found by the codex round on 0.60.2's first cut, feeding the saved
+# capture of 2026-10-12 whole). The same filter guards every [ADVERSARY-MODEL:] scan below, since the
+# notices name that marker too (one of them as "[ADVERSARY-MODEL: ...]", which the anchor regex
+# matches). Case 50.
+_ADV_LAST_VLINE=$(printf '%s\n' "$OUT" | grep -n '\[ADVERSARY-VERDICT:' | grep -vE '^[0-9]+:external-adversary:' | tail -1 | cut -d: -f1 || true)
 # When the partner self-reported its model, its answer starts at its LAST real [ADVERSARY-MODEL:]
 # line, so a verdict line above that is text it read or ran, not its answer -- e.g. an answer with no
 # verdict line at all under a suite row that carries a filled hold (adversary round on 0.59.0; case
 # 40). Without a self-report there is no anchor, and the last verdict line stands alone.
-_ADV_ANSWER_START=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 | cut -d: -f1 || true)
+_ADV_ANSWER_START=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | grep -vE '^[0-9]+:external-adversary:' | tail -1 | cut -d: -f1 || true)
 NO_VERDICT_IN_ANSWER=0
 if [ -n "$_ADV_LAST_VLINE" ] && [ -n "$_ADV_ANSWER_START" ] && [ "$_ADV_LAST_VLINE" -lt "$_ADV_ANSWER_START" ]; then
   _ADV_LAST_VLINE=""
@@ -643,7 +651,7 @@ fi
 # cannot reach any reader; (2) the `<>` exclusion is what rejects the prompt's own `<model name>`
 # template, and going greedy to end-of-line would give that up. Truncation here costs nothing that
 # is read; there it cost a real id its has_real_id check.
-MODEL_LINE=$(printf '%s' "$OUT" | grep -Eo '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 || true)
+MODEL_LINE=$(printf '%s\n' "$OUT" | grep -v '^external-adversary:' | grep -Eo '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 || true)
 set -e
 
 # READ-ONLY RAIL (verdict half). Name the paths whose content differs between the two captures.
@@ -845,7 +853,7 @@ fi
 # claim, and silence here is how a degraded pass gets read as an independent one.
 if [ -z "$MODEL_LINE" ]; then
   echo "external-adversary: partner returned no [ADVERSARY-MODEL:] self-report — independence UNVERIFIED; report model=same in the completion-review, not model=different." >&2
-elif printf '%s\n' "$OUT" | grep -E '\[ADVERSARY-MODEL:' | tail -1 \
+elif printf '%s\n' "$OUT" | grep -v '^external-adversary:' | grep -E '\[ADVERSARY-MODEL:' | tail -1 \
      | grep -qiE '/[[:space:]]*(UNKNOWN|N/A)?[[:space:]]*\]?[[:space:]]*$'; then
   # Tested against the RAW last line, not $MODEL_LINE: that capture stops at the first "]", so a
   # bracketed model name ("[ADVERSARY-MODEL: Claude [x] / UNKNOWN]") truncates before the id and
@@ -946,7 +954,7 @@ fi
 # the missing-self-report warning above already fired on that path).
 # VLINE is the line the verdict came from, set where $VERDICT was resolved -- one source, so the two
 # cannot point at different lines.
-MLINE=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | tail -1 | cut -d: -f1 || true)
+MLINE=$(printf '%s\n' "$OUT" | grep -nE '\[ADVERSARY-MODEL:[^]<>]+\]' | grep -vE '^[0-9]+:external-adversary:' | tail -1 | cut -d: -f1 || true)
 if [ -z "$VLINE" ] || [ "$VLINE" -le 1 ]; then
   EVIDENCE_LINES=0
 else

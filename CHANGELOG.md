@@ -30,6 +30,13 @@ version bump are never delivered to already-installed users.
   header) / <id>]`. A `model:` line outside the banner, or a banner after line 10, is ignored.
   New cases 41-49 in `test/external-adversary-branches.py`; 12, 15, 33 and 39 changed on purpose
   (`test/README.md`).
+- **The hook's own notices are never read as the partner's verdict or model line.** They name both
+  markers in prose, so a partner output carrying one after its answer (a partner that ran this hook
+  while reviewing it, or a saved capture of the hook's output fed back in) anchored on the notice and
+  lost the real verdict. Found by the codex round on this release's first cut: the saved capture of
+  2026-10-12, fed whole, came back UNVERIFIED. Every `[ADVERSARY-VERDICT:]` and `[ADVERSARY-MODEL:]`
+  scan now skips lines that start with `external-adversary:`; fed whole, that capture now resolves to
+  `break … incomplete=1`. Case 50.
 
 ## [0.60.1] - 2026-10-15
 
