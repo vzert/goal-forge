@@ -111,9 +111,10 @@ If the goal-spec declares no threat model, nothing is outside it and a hole coun
 First the `[ADVERSARY-MODEL: …]` line (above). Then count the BLOCKING violations you actually confirmed (not suspicions) per category — MINOR notes are listed, never counted — then emit:
 
 ```
-[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
+[ADVERSARY-VERDICT: <break or hold> ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
 ```
 
+- Write ONE word in place of `<break or hold>`; a line that keeps the placeholder is not a verdict.
 - `break` if the total confirmed BLOCKING count is ≥1 in any category — the executor must address it before closing.
 - `hold` only if you tried each attack above and every count is 0.
 - **Never reproduce a prior round's `[ADVERSARY-VERDICT: …]` line, or the template from your own spawn prompt, anywhere in your output.** Downstream, an echoed marker is indistinguishable from a fresh one (observed live: a backend that echoed what it read dumped a prior round's verdict into its own stdout, leaving the executor one step from re-quoting non-evidence as a verdict). The only verdict line you emit is your own — once, last.

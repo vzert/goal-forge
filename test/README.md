@@ -396,6 +396,23 @@ it is ignored (`no-verdict-in-answer+unverified+finding`; against 0.58.0, `pass+
 (`template-last+unverified-nofinding`; against 0.58.0 it is `unfilled`), so a `--compare` against
 0.58.0 declares `--expected 06,39,40`.
 
+**The placeholder word with filled counts is a break when a count is ≥1 (0.60.2)**, cases
+**41-44** and **49**. Codex fills every `<n>` and copies the word as written, so its last line reads
+`break|hold ... incomplete=1`. By the prompt's own rule that is a break, so the hook prints a
+`[ADVERSARY-VERDICT: break …]` line with the partner's counts, last on stdout (41 old spelling, 42 the
+new `<break or hold>`). Every count 0 is never read as a hold and stays UNVERIFIED (43; 49 through the
+observed filter), and an echo of the new template with `<n>` counts stays a template echo (44). Case
+**39** now resolves to that break instead of UNVERIFIED (`derived-break+hdrid`), and case **33**, the
+same shape through the filter, must show the break and no UNVERIFIED line.
+
+**The model id from the CLI's own banner (0.60.2)**, cases **45-48**. When the self-report is
+`UNKNOWN` and the banner (its first `--------` within the first 10 lines) carries `model: <id>` that
+the gate's real-id test accepts, the hook prints `[ADVERSARY-MODEL: <name> (id from the <cli> CLI
+header) / <id>]` (45). A `model:` line outside the banner (46), an `UNKNOWN` id in it (47), or a
+banner after line 10 (48) prints nothing and keeps the plain warning. NOISE carries a codex banner
+with `model: gpt-5`, so cases **12** and **15** now come back `pass+hdrid=gpt-5`. A `--compare`
+against 0.60.1 declares `--expected 12,15,33,39,41,42,45`.
+
 **Reviewed-state isolation (0.44.9)**, cases **09/16/17/18/19/24**: the hook materializes the exact
 reviewed state into a private linked worktree under the repo's own `git-common-dir` before invoking
 the partner, so a concurrent writer sharing the repo (another local session's commit landing

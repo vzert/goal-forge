@@ -146,7 +146,9 @@ CASES = [
     # case was SILENT, so the executor had to over- or under-claim independence. It must now warn
     # with the qualifier, and must NOT be mistaken for the no-self-report branch (05/04).
     ("12-model-id-unknown", NOISE + MODEL_UNKNOWN + "\n" + BULLETS + HOLD + "\n", {}, None,
-     "pass+idunresolved"),
+     # 0.60.2: NOISE carries a codex banner with `model: gpt-5`, so the CLI's id now backs the
+     # UNKNOWN self-report. Cases 46-48 keep the plain idunresolved warning pinned.
+     "pass+hdrid=gpt-5"),
     # Guard the discrimination in the other direction: a REAL id must stay silent on this branch.
     ("13-model-id-resolved-silent", NOISE + MODEL + "\n" + BULLETS + HOLD + "\n", {}, None,
      "pass"),
@@ -156,7 +158,7 @@ CASES = [
     ("14-model-id-unknown-via-wrapper", "STUB_WRAP", {}, None, "pass+idunresolved+wrapperbin"),
     # Bracketed model name + UNKNOWN id — silent before the raw-line fix; gate case 33 covers it.
     ("15-model-id-unknown-bracketed-name",
-     NOISE + MODEL_UNKNOWN_BRACKET + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+idunresolved"),
+     NOISE + MODEL_UNKNOWN_BRACKET + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+hdrid=gpt-5"),
     # --- read-only rail (0.44.0). A partner that REPAIRS what it was sent to measure verifies a
     # state it created. These four run in a THROWAWAY git repo (cwd MUTREPO) for the obvious reason:
     # the stub writes files, and most other cases in this file run with cwd=REPO.
@@ -260,7 +262,7 @@ CASES = [
      "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL_UNKNOWN + "\n"
      + BULLETS + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
      "autonomy-violations=0 unsafe=0]\ntokens used\n148,832\n", {"_PIPE": FILTER}, None,
-     "tail20+unverified+noparse"),
+     "tail20+derivedbreak+nounverified"),
     ("34-mutated-hold-survives-filter", "STUB_MUTATE", {"_PIPE": FILTER}, "MUTREPO",
      "tail20+unverified+synthetic"),
     ("35-bare-hold-survives-filter", MODEL + "\n" + HOLD + "\n", {"_PIPE": FILTER}, None,
@@ -292,7 +294,9 @@ CASES = [
      + "\n[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
      "autonomy-violations=0 unsafe=0]\ntokens used\n120,343\n" + MODEL_UNKNOWN + "\n\n" + FINDING
      + "\n[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
-     "autonomy-violations=0 unsafe=0]\n", {}, None, "template-last+unverified+finding"),
+     # 0.60.2: that last line has incomplete=1, so it now resolves to a break (never the read hold),
+     # and NOISE's codex banner backs the UNKNOWN id. Against 0.60.1: template-last+unverified+finding.
+     "autonomy-violations=0 unsafe=0]\n", {}, None, "derived-break+hdrid"),
     # 40: the same run, but the partner's answer carries NO verdict line at all -- only the read hold
     # in the suite row above its [ADVERSARY-MODEL:] line. Found by the adversary round on 0.59.0's
     # first cut, which still resolved that hold. Against 0.58.0: `pass+idunresolved`.
@@ -302,6 +306,51 @@ CASES = [
      + HOLD + "\n" + "".join("%02d-other-case   allow\n" % i for i in range(30))
      + "codex\n" + MODEL_UNKNOWN + "\n\n" + FINDING + BULLETS + "tokens used\n120,343\n",
      {}, None, "no-verdict-in-answer+unverified+finding"),
+    # --- 0.60.2: the placeholder WORD kept, the counts filled. Codex copies `break|hold` as written
+    # and fills every <n>. A count >=1 is a break by the prompt's own rule; all zeros is never a hold.
+    # 41: the old spelling, a count of 1, under a read hold. Against 0.60.1: `template-last...`.
+    ("41-placeholder-word-count-1-is-break",
+     MODEL + "\n" + "suite row: " + HOLD + "\n" + FINDING + BULLETS
+     + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=1 "
+     "autonomy-violations=0 unsafe=0]\n", {}, None, "derived-break"),
+    # 42: the new spelling, copied literally, a count of 2 in the last field.
+    ("42-new-placeholder-count-2-is-break",
+     MODEL + "\n" + FINDING + BULLETS
+     + "[ADVERSARY-VERDICT: <break or hold> ungrounded=0 unfalsified=0 incomplete=0 "
+     "autonomy-violations=0 unsafe=2]\n", {}, None, "derived-break"),
+    # 43: every count 0 -- a hold is NEVER deduced. Same UNVERIFIED path as 0.60.1.
+    ("43-placeholder-word-all-zero-stays-unverified",
+     MODEL + "\n" + BULLETS
+     + "[ADVERSARY-VERDICT: <break or hold> ungrounded=0 unfalsified=0 incomplete=0 "
+     "autonomy-violations=0 unsafe=0]\n", {}, None, "template-last+unverified-nofinding"),
+    # 44: an echo of the NEW prompt template (<n> counts) is still a template echo, not a break.
+    ("44-new-template-echo-stays-unverified",
+     "[ADVERSARY-VERDICT: <break or hold> ungrounded=<n> unfalsified=<n> incomplete=<n> "
+     "autonomy-violations=<n> unsafe=<n>]\n", {}, None, "template-last+unverified-nofinding"),
+    # --- 0.60.2: the model id from the CLI's own banner when the model says UNKNOWN.
+    # 45: the codex banner of the saved round 428e1889 (model: gpt-5.6-luna).
+    ("45-banner-id-backs-unknown-self-report",
+     "Reading prompt from stdin...\nOpenAI Codex v0.155.1\n--------\nworkdir: /x\n"
+     "model: gpt-5.6-luna\nprovider: openai\n--------\nuser\nprompt\n"
+     + MODEL_UNKNOWN + "\n" + BULLETS + HOLD + "\n", {}, None, "pass+hdrid=gpt-5.6-luna"),
+    # 46: no banner; a `model:` line the partner READ (a file) must not be taken.
+    ("46-model-line-outside-banner-ignored",
+     "exec cat config.yml\nmodel: gpt-5.6-luna\n" + MODEL_UNKNOWN + "\n" + BULLETS + HOLD + "\n",
+     {}, None, "pass+idunresolved"),
+    # 47: a banner whose model is UNKNOWN or a bare word gives nothing the gate would accept.
+    ("47-banner-unknown-id-ignored",
+     "--------\nmodel: UNKNOWN\n--------\n" + MODEL_UNKNOWN + "\n" + BULLETS + HOLD + "\n",
+     {}, None, "pass+idunresolved"),
+    # 48: a banner that starts after line 10 is not the CLI header.
+    ("48-late-banner-ignored",
+     "x\n" * 11 + "--------\nmodel: gpt-5.6-luna\n--------\n" + MODEL_UNKNOWN + "\n" + BULLETS
+     + HOLD + "\n", {}, None, "pass+idunresolved"),
+    # 49: case 33 with every count 0, through the same filter -- still UNVERIFIED, last line.
+    ("49-zero-count-placeholder-survives-filter",
+     "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL_UNKNOWN + "\n"
+     + BULLETS + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=0 "
+     "autonomy-violations=0 unsafe=0]\ntokens used\n148,832\n", {"_PIPE": FILTER}, None,
+     "tail20+unverified+noparse"),
 ]
 
 
@@ -455,7 +504,13 @@ PAYLOAD = "goal-spec: /nonexistent/spec.md\noutcome: /nonexistent/outcome.md\n"
 # What each piped case must still see after `tail -20`. 30/31 need the BREAK itself, not any
 # filled verdict: a synthetic hold on stdout would also match FILLED_RE.
 TAIL_MARKERS = {
-    "33": [("unverified", lambda o: UNV in o.splitlines()[-1] if o.strip() else False),
+    # 0.60.2: 33's last line has incomplete=1, so through the filter the reader must now see a
+    # parseable BREAK as the last verdict line, and no UNVERIFIED line. 49 keeps 33's old shape
+    # (all counts 0), which must still end on the UNVERIFIED line.
+    "33": [("derivedbreak", lambda o: (re.findall(r"^\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+",
+                                                  o, re.M) or ["none"])[-1] == "break"),
+           ("nounverified", lambda o: UNV not in o)],
+    "49": [("unverified", lambda o: UNV in o.splitlines()[-1] if o.strip() else False),
            ("noparse", lambda o: "no well-formed verdict line" in o)],
     "34": [("unverified", lambda o: UNV in o.splitlines()[-1] if o.strip() else False),
            ("synthetic", lambda o: "repository content changed" in o)],
@@ -484,6 +539,18 @@ def classify(res, case_name, repo=REPO):
         return "recursion"
     if "not found on PATH" in err:
         return "not-found"
+    if "kept the placeholder word" in err:
+        # Cases 39 and 41-42 (0.60.2): the partner's last verdict line kept the placeholder word but
+        # filled a count >=1. The LAST filled verdict line on stdout must be a break carrying the
+        # partner's counts, no UNVERIFIED line may follow, and a read hold above must not win.
+        fills = re.findall(r"^\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+.*\]$", out, re.M)
+        b = "derived-break" if fills and fills[-1] == "break" else "derived-notbreak"
+        lines = err.strip().splitlines()
+        if lines and UNV in lines[-1]:
+            b += "-unverified"
+        if "(id from the" in out:
+            b += "+hdrid"
+        return b
     for marker, name in (("unfilled template ('break|hold'", "template-last"),
                          ("carries no [ADVERSARY-VERDICT:] line", "no-verdict-in-answer")):
         if marker not in err:
@@ -506,6 +573,14 @@ def classify(res, case_name, repo=REPO):
         "pass" if FILLED_RE.search(out) else "no-verdict")
     if "no [ADVERSARY-MODEL:] self-report" in err:
         branch += "+nomodel"
+    elif "printed its model in its own header" in err:
+        # 0.60.2: the id comes from the CLI banner. The printed line must be one the gate's real-id
+        # test accepts, and it must name its source. Cases 12, 15, 45.
+        m = re.search(r"^\[ADVERSARY-MODEL:\s*(.*\(id from the .*)\]\s*$", out, re.M)
+        cid = m.group(1).rsplit("/", 1)[-1].strip().lower() if m else ""
+        ok = (m and "CLI header" in m.group(1) and len(cid) >= 2 and not re.search(r"\s", cid)
+              and cid != "unknown" and re.search(r"[a-z]", cid) and re.search(r"[0-9.-]", cid))
+        branch += "+hdrid=" + cid if ok else "+hdrid-bad"
     elif "NOT an exact id" in err:
         # The branch must (a) name the gate's ruling so the hook cannot contradict its own consumer,
         # and (b) refuse to launder the resolved first argument into a vendor claim. A warning that

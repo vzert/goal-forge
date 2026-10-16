@@ -84,13 +84,22 @@ through `grep -v`, `tail -N` or `head` (`/goalspec` step 6, same grep term: whol
 ```
 [ADVERSARY-MODEL: <name> / <exact id, or UNKNOWN>]
 ...confirmed-violation bullets...
-[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
+[ADVERSARY-VERDICT: <break or hold> ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
 ```
 
 The model line exists because "I routed to a different model" is itself a load-bearing claim, and
 the routing parameter (config, spawn override) is not evidence for it — a wrapper can be broken, a
 harness can fall back silently. Only the partner can attest what it is; `UNKNOWN` is honest and
 downgrades the independence claim, a fabricated ID would poison it.
+
+One exception since 0.60.2, and it is the tool, not the parameter: a model usually cannot read its
+own id, but the CLI that runs it can. Codex prints `model: <id>` in its banner, before the prompt.
+When the partner's self-report says `UNKNOWN` and that banner (its first `--------` within the first
+10 lines of the output) names an id the gate would accept, `external-adversary.sh` prints
+`[ADVERSARY-MODEL: <name> (id from the codex CLI header) / <id>]` last on stdout. Quote that line and
+`model=different` is open to you, when that id is not your own model. A `model:` line anywhere else in
+the output (a file the partner read) is ignored. This trusts the CLI's banner as it trusts the
+partner's line: a wrapper that forges one can forge the other.
 
 So the rest of the loop (`/goalspec` step 6, the completion-review declaration, the Stop gate) is
 identical regardless of backend.

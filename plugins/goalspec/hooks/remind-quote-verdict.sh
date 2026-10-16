@@ -184,7 +184,7 @@ if verdicts:
 elif models:
     msg = (
         "This adversary call returned an [ADVERSARY-MODEL: ...] line but no well-formed "
-        "[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> "
+        "[ADVERSARY-VERDICT: <break or hold> ungrounded=<n> unfalsified=<n> incomplete=<n> "
         "autonomy-violations=<n> unsafe=<n>] block -- the run may have failed, been truncated, or "
         "returned a bare/malformed verdict. Do not treat this as a pass; re-run it or route to the "
         "other backend before declaring completion-review over it."

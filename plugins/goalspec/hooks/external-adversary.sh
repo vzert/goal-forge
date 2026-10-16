@@ -287,9 +287,10 @@ the spot only if the fix changes no behavior, or leaves it; it opens no round an
 
 Then output EXACTLY ONE line, and nothing after it:
 
-[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
+[ADVERSARY-VERDICT: <break or hold> ungrounded=<n> unfalsified=<n> incomplete=<n> autonomy-violations=<n> unsafe=<n>]
 
-Use 'break' if any confirmed BLOCKING count is >=1, else 'hold'. Above that line, list each
+Replace <break or hold> with ONE word: 'break' if any confirmed BLOCKING count is >=1, else 'hold'.
+A line that keeps both words is not a verdict. Above that line, list each
 confirmed violation with the ground-truth that proves it, and each MINOR note on its own bullet.
 
 === POINTERS TO WHAT IS UNDER REVIEW (paths, not a narrated account — go read them) ===
@@ -613,6 +614,26 @@ if [ -n "$_ADV_LAST_VLINE" ]; then
   VERDICT=$(printf '%s\n' "$OUT" | sed -n "${_ADV_LAST_VLINE}p" | grep -Eo "$VERDICT_RE" | tail -1 || true)
   if [ -n "$VERDICT" ]; then VLINE=$_ADV_LAST_VLINE; else TEMPLATE_LAST=1; fi
 fi
+# A verdict line that kept the placeholder WORD but filled the counts (0.60.2). Codex does this
+# again and again: it fills every <n> and copies the word as written -- the saved round of
+# 2026-10-12 ends `[ADVERSARY-VERDICT: break|hold ... incomplete=1 ...]` over a BLOCKING finding.
+# The prompt's rule is mechanical ('break' if any count >=1), so when a count is >=1 the verdict is
+# a break whatever the word says, and taking it as one can only make the gate stricter. All counts 0
+# is NOT read as a hold: a hold is never deduced, it stays the UNVERIFIED path below. Both spellings
+# of the placeholder are accepted (the old `break|hold` and the current `<break or hold>`); `<n>`
+# counts still do not parse, so a plain echo of the prompt stays a template echo. Cases 41-44.
+DERIVED_BREAK=0
+PLACEHOLDER_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break[|]hold|<break or hold>)[[:space:]]+ungrounded=[0-9]+[[:space:]]+unfalsified=[0-9]+[[:space:]]+incomplete=[0-9]+[[:space:]]+autonomy-violations=[0-9]+[[:space:]]+unsafe=[0-9]+[[:space:]]*\]'
+if [ "$TEMPLATE_LAST" = 1 ]; then
+  _ADV_PH=$(printf '%s\n' "$OUT" | sed -n "${_ADV_LAST_VLINE}p" | grep -Eo "$PLACEHOLDER_RE" | tail -1 || true)
+  _ADV_COUNTS=$(printf '%s' "$_ADV_PH" | sed -E 's/^.*(ungrounded=[0-9]+[[:space:]]+unfalsified=[0-9]+[[:space:]]+incomplete=[0-9]+[[:space:]]+autonomy-violations=[0-9]+[[:space:]]+unsafe=[0-9]+).*$/\1/' | tr -s '[:space:]' ' ')
+  if [ -n "$_ADV_PH" ] && printf '%s' "$_ADV_COUNTS" | grep -qE '=0*[1-9]'; then
+    VERDICT="[ADVERSARY-VERDICT: break $_ADV_COUNTS]"
+    VLINE=$_ADV_LAST_VLINE
+    TEMPLATE_LAST=0
+    DERIVED_BREAK=1
+  fi
+fi
 # The model self-report is requested by the prompt, so requesting it is not enforcing it (two
 # different-model reviews confirmed this gap by reading this very file). Extract it mechanically;
 # reject the prompt's own literal template (`<model name>`) the same way VERDICT_RE rejects `<n>`.
@@ -691,7 +712,7 @@ if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; the
       # real and its verdict is unknown. Show the END of its run, where the answer is -- the head is
       # the banner and the echoed prompt (a 3,500-line codex run hid a BLOCKING finding there).
       echo "external-adversary: '$EXT_CMD' exited $RC and its final [ADVERSARY-VERDICT:] line is the"
-      echo "unfilled template ('break|hold' or '<n>'), not a verdict. Any filled verdict line earlier in"
+      echo "unfilled template ('break|hold' or '<break or hold>' with every count 0, or '<n>'), not a verdict. Any filled verdict line earlier in"
       echo "its run is text it read or ran (a file, a suite), not its answer. Treat this 'hold' as"
       echo "UNVERIFIED, not as a pass; a BLOCKING finding it lists below still stands. End of its output:"
       printf '%s\n' "$OUT" 2>/dev/null | tail -40
@@ -711,7 +732,7 @@ if [ -z "$VERDICT" ] || { [ $RC -ne 0 ] && [ "$VERDICT_IS_BREAK" -eq 0 ]; }; the
       printf '%s\n' "$MUTATED" | sed 's/^/  /'
     fi
   } >&2
-  _adv_unverified_last_line "the partner (exit $RC) returned no well-formed verdict line (a template echo such as 'break|hold' or '<n>' does not parse), so the 'hold' this hook printed is synthetic and no verdict-looking line in the partner output counts as a verdict."
+  _adv_unverified_last_line "the partner (exit $RC) returned no well-formed verdict line (a template echo such as 'break|hold', '<break or hold>' or '<n>' does not parse), so the 'hold' this hook printed is synthetic and no verdict-looking line in the partner output counts as a verdict."
   exit 0
 fi
 
@@ -783,6 +804,17 @@ fi
 # stdout (cases 16 and 19 assert it does not). The two break notices below sat before this line
 # until 0.46.6.
 printf '%s\n' "$OUT"
+# The partner's own last line keeps the placeholder word, which no consumer parses, so the break it
+# resolves to is printed here, after the transcript, as the last verdict line on stdout (0.60.2).
+if [ "$DERIVED_BREAK" = 1 ]; then
+  printf '%s\n' "$VERDICT"
+  {
+    echo "external-adversary: the partner's last verdict line kept the placeholder word ('break|hold'"
+    echo "or '<break or hold>') but filled the counts, and a count is >=1. By the prompt's own rule"
+    echo "that is a break, so this hook printed it as one, last on stdout, with the partner's counts."
+    echo "Quote THAT line, not the partner's. A line like it with every count 0 is never read as a hold."
+  } >&2
+fi
 
 # Reached only with a filled verdict. If RC is nonzero here, the verdict is a BREAK that was
 # deliberately preserved above — say so, loudly, because a partner that crashed may have stopped
@@ -837,6 +869,34 @@ elif printf '%s\n' "$OUT" | grep -E '\[ADVERSARY-MODEL:' | tail -1 \
   # 2026-08-09 r4). So this branch adds no new claim; it only ends the silence and points at the
   # existing rule, plus the one fact this script KNOWS rather than infers: what it executed.
   _EXT_BIN=$(command -v "${EXT_CMD%% *}" 2>/dev/null || echo "${EXT_CMD%% *} (not on PATH)")
+  # THE CLI'S OWN HEADER (0.60.2). The model cannot read its id; the codex CLI can, and prints it in
+  # the banner before the prompt -- `model: gpt-5.6-luna` between the first two `--------` lines
+  # (saved round 428e1889, line 6). That id is written by the tool that ran the model, not by the
+  # model, the same class as the `sandbox:` header relayed below. Only the banner counts: the first
+  # `--------` must sit in the first 10 lines, and a `model:` line anywhere else (a file the partner
+  # read) is ignored. The id must pass the gate's own real-id test (one token, a letter, and a digit,
+  # dot or hyphen; not UNKNOWN), so this can only print what has_real_id would accept anyway. The
+  # line it prints names its source in the name field, because the gate needs the marker to end its
+  # line. Threat model: an honest CLI whose model says UNKNOWN; not a wrapper that forges a banner
+  # (it could forge the self-report line just as easily). Cases 45-48.
+  _ADV_HDR_ID=$(printf '%s\n' "$OUT" 2>/dev/null | awk '
+    /^--------$/ { n++; if (n == 1 && NR > 10) exit; if (n == 2) exit; next }
+    n == 1 && /^model: [^[:space:]]+$/ { sub(/^model: /, ""); print; exit }' || true)
+  _ADV_HDR_LC=$(printf '%s' "$_ADV_HDR_ID" | tr '[:upper:]' '[:lower:]')
+  if [ -n "$_ADV_HDR_ID" ] && [ "$_ADV_HDR_LC" != "unknown" ] \
+     && printf '%s' "$_ADV_HDR_LC" | grep -qE '^[^][[:space:]/]{2,}$' \
+     && printf '%s' "$_ADV_HDR_LC" | grep -qE '[a-z]' && printf '%s' "$_ADV_HDR_LC" | grep -qE '[0-9.-]'; then
+    _ADV_SELF_NAME=$(printf '%s' "$MODEL_LINE" | sed -E 's/^\[ADVERSARY-MODEL:[[:space:]]*//; s/[[:space:]]*\/.*$//; s/[]/]//g')
+    [ -z "$_ADV_SELF_NAME" ] && _ADV_SELF_NAME="partner"
+    printf '%s\n' "[ADVERSARY-MODEL: $_ADV_SELF_NAME (id from the ${EXT_CMD%% *} CLI header) / $_ADV_HDR_ID]"
+    {
+      echo "external-adversary: the partner self-reported its id as UNKNOWN, but the CLI that ran it"
+      echo "  printed its model in its own header, before the prompt: '$_ADV_HDR_ID'. This hook printed"
+      echo "  that as an [ADVERSARY-MODEL:] line, last on stdout. It is the tool's report, not the"
+      echo "  model's: quote THAT line verbatim, and model=different is then yours to claim if"
+      echo "  '$_ADV_HDR_ID' is not your own model. What this host executed: cmd='$EXT_CMD' bin='$_EXT_BIN'"
+    } >&2
+  else
   {
     echo "external-adversary: partner self-reported a name but NOT an exact id (\"$MODEL_LINE\")."
     echo "  Per gate-goal-close.sh, an UNKNOWN id cannot back model=different — write model=same in"
@@ -847,6 +907,7 @@ elif printf '%s\n' "$OUT" | grep -E '\[ADVERSARY-MODEL:' | tail -1 \
     echo "  'env'/'bash' as the leading word can front any model. If the difference is real and you"
     echo "  want it on the record, say so in PROSE next to the marker — never by upgrading the field."
   } >&2
+  fi
 fi
 
 # Forward the partner declared sandbox to the executor (0.46.4). Codex prints it as a header line,

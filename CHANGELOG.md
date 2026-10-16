@@ -6,6 +6,31 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.60.2] - 2026-10-16
+
+### Fixed
+
+- **A codex verdict that keeps the placeholder word is no longer lost.** Codex filled every count
+  and copied `break|hold` as written, so its last line read `[ADVERSARY-VERDICT: break|hold …
+  incomplete=1 …]`. `external-adversary.sh` rejected it, correctly, and printed a synthetic
+  UNVERIFIED hold, so every such round was spent and its BLOCKING findings lost their verdict (seen
+  in several sessions, among them the saved round of 2026-10-12 and an agente-coordinador session).
+  Two changes. The prompt now shows `<break or hold>`, the same style as `<n>`, which codex does
+  fill, and says to write one word. And when the last verdict line keeps either spelling of the
+  placeholder but a count is ≥1, the hook prints a `break` line with the partner's counts, last on
+  stdout: the prompt's rule is mechanical, and reading it as a break can only make the gate
+  stricter. Every count 0 is never read as a hold and stays UNVERIFIED. The template changed in
+  every carrier: the external prompt, `agents/goal-adversary.md`, `SKILL.md`,
+  `references/external-adversary-setup.md` and `remind-quote-verdict.sh`. Replayed on the raw codex
+  part of the saved round: it now resolves to `break … incomplete=1`, with no UNVERIFIED line.
+- **A codex round can back `model=different`.** Codex reports its id as `UNKNOWN` (a model cannot
+  read its own id), so every codex round closed `model=same`. The codex CLI prints `model: <id>` in
+  its own banner, before the prompt. When the self-report says `UNKNOWN` and that banner names an id
+  the gate's real-id test accepts, the hook prints `[ADVERSARY-MODEL: <name> (id from the codex CLI
+  header) / <id>]`. A `model:` line outside the banner, or a banner after line 10, is ignored.
+  New cases 41-49 in `test/external-adversary-branches.py`; 12, 15, 33 and 39 changed on purpose
+  (`test/README.md`).
+
 ## [0.60.1] - 2026-10-15
 
 ### Fixed
