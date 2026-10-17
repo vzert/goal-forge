@@ -18,21 +18,27 @@ it. 01 is the control that keeps this from being a mere dirty-tree detector.
     python3 test/adversary-writes-branches.py
     python3 test/adversary-writes-branches.py --compare <pre-edit.sh> --expected 02
 """
-import argparse, json, os, subprocess, sys, tempfile
+import argparse, json, os, stat, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "watch-adversary-writes.sh")
+# The SessionEnd half of the run directory (0.62.0). Always the current one: --compare swaps the
+# watcher, and the cleanup cases build their own directories, so they never depend on it.
+CLEANUP_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "cleanup-run-dir.sh")
 
 GIT = ["git", "-c", "user.email=suite@example.invalid", "-c", "user.name=suite"]
 
 
-def payload(event, cwd, agent_type="goalspec:goal-adversary", agent_id="subagent_xyz789"):
-    d = {"session_id": "sess-abc", "transcript_path": "/nonexistent/t.jsonl", "cwd": cwd,
+def payload(event, cwd, agent_type="goalspec:goal-adversary", agent_id="subagent_xyz789",
+            session="sess-abc"):
+    d = {"session_id": session, "transcript_path": "/nonexistent/t.jsonl", "cwd": cwd,
          "permission_mode": "default", "hook_event_name": event, "agent_id": agent_id,
          "agent_type": agent_type}
+    if session is None:
+        del d["session_id"]
     if event == "SubagentStop":
         d["last_assistant_message"] = "[ADVERSARY-VERDICT: hold ungrounded=0 ...]"
     return json.dumps(d)
@@ -126,15 +132,40 @@ CASES = [
     # Two rounds must be recorded, naming both paths.
     ("10-second-stop-after-more-writes", append_dirty, None,
      "recorded:adversary-notes.md,tracked.txt|rounds=2"),
+    # --- 0.62.0 (p-42d7c57137): one run directory per session, owner and mode checked. Measured on
+    # a 4-developer VPS: the old fixed ${TMPDIR:-/tmp}/goalspec-adversary-snap belonged to the
+    # first user, and the other three hit `Permission denied` on 361 of 361 adversary runs.
+    # No session id: nothing written anywhere. The old hook keyed the findings by the agent id.
+    ("11-no-session-id-writes-nothing", append_dirty, None, "silent|no-files"),
+    # A directory under the session's name that is not ours to use (mode 0755 stands in for another
+    # user's: a suite cannot chown without root). Nothing written in it, and a failure note left
+    # for the Stop reporter. The old hook ignored it and wrote to the shared directory.
+    ("12-run-dir-wrong-mode-refused", append_dirty, None, "refused|noted"),
+    # A symlink planted under the session's name, pointing at a 0700 directory: never followed.
+    ("13-run-dir-symlink-refused", append_dirty, None, "refused|noted"),
+    # Two sessions sharing one TMPDIR: each records in its own 0700 directory, nothing shared.
+    ("14-two-sessions-own-dirs", append_dirty, None, "own-dirs-0700"),
+]
+
+# SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
+CLEANUP_CASES = [
+    ("15-cleanup-removes-own-dir", "own", "removed"),
+    ("16-cleanup-keeps-wrong-mode-dir", "mode755", "kept"),
+    ("17-cleanup-keeps-symlink-and-target", "symlink", "kept"),
+    ("18-cleanup-keeps-other-session-dir", "other", "kept"),
 ]
 
 
-def run_case(hook, workdir, name, mutate, agent_type, skip_start):
+def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, session="sess-abc"):
     root = make_repo(workdir, name)
-    tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+    tmp = tmp or tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     env = dict(os.environ)
     env["TMPDIR"] = tmp
+    # Failure notes go to this user's state directory: keep them inside the case.
+    env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
+    env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
     kw = {"agent_type": agent_type} if agent_type else {}
+    kw["session"] = session
 
     if not skip_start:
         subprocess.run(["bash", hook, "start"], input=payload("SubagentStart", root, **kw),
@@ -157,7 +188,10 @@ def classify(res, findings_dir, session="sess-abc"):
     out = res.stdout.strip()
     if out:
         return "EMITTED-TO-SUBAGENT"
-    fpath = os.path.join(findings_dir, "goalspec-adversary-snap", session + ".findings")
+    # Both layouts, so --compare against a pre-0.62.0 watcher measures behaviour, not a path rename.
+    fpath = os.path.join(findings_dir, "goalspec-run-" + session, "findings")
+    if not os.path.isfile(fpath):
+        fpath = os.path.join(findings_dir, "goalspec-adversary-snap", session + ".findings")
     if not os.path.isfile(fpath):
         return "silent"
     body = open(fpath).read()
@@ -169,9 +203,93 @@ def classify(res, findings_dir, session="sess-abc"):
     return tag + ("" if rounds == 1 else "|rounds=%d" % rounds)
 
 
+def files_under(tmp):
+    """Every file the hook left under TMPDIR, the state directory included."""
+    out = []
+    for dp, _, fns in os.walk(tmp):
+        out += [os.path.relpath(os.path.join(dp, f), tmp) for f in fns]
+    return sorted(out)
+
+
+def run_dir_case(hook, workdir, name, mutate, agent_type):
+    tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+    if name.startswith("11"):
+        res, *_ = run_case(hook, workdir, name, mutate, agent_type, False, tmp=tmp, session=None)
+        if res.stdout.strip():
+            return "EMITTED-TO-SUBAGENT"
+        left = files_under(tmp)
+        return "silent|no-files" if not left else "files-left:" + ",".join(left)
+    if name.startswith("14"):
+        for sess in ("sess-A", "sess-B"):
+            run_case(hook, workdir, name + sess, mutate, agent_type, False, tmp=tmp, session=sess)
+        tags = []
+        for sess in ("sess-A", "sess-B"):
+            d = os.path.join(tmp, "goalspec-run-" + sess)
+            ok = (os.path.isdir(d) and not os.path.islink(d)
+                  and stat.S_IMODE(os.lstat(d).st_mode) == 0o700
+                  and os.path.isfile(os.path.join(d, "findings")))
+            tags.append(ok)
+        if all(tags) and not os.path.exists(os.path.join(tmp, "goalspec-adversary-snap")):
+            return "own-dirs-0700"
+        return "shared-or-missing:" + ",".join(files_under(tmp))
+    # 12 / 13: a directory under the session's name that must not be used.
+    d = os.path.join(tmp, "goalspec-run-sess-abc")
+    target = d
+    if name.startswith("12"):
+        os.mkdir(d)
+        os.chmod(d, 0o755)
+    else:
+        target = tempfile.mkdtemp(prefix="planted-", dir=workdir)  # 0700, ours, elsewhere
+        os.symlink(target, d)
+    res, *_ = run_case(hook, workdir, name, mutate, agent_type, False, tmp=tmp)
+    if res.stdout.strip():
+        return "EMITTED-TO-SUBAGENT"
+    used = os.listdir(target)
+    if used:
+        return "USED:" + ",".join(sorted(used))
+    others = [f for f in files_under(tmp) if not f.startswith("state" + os.sep)]
+    if others:
+        return "wrote-elsewhere:" + ",".join(others)
+    note = os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc")
+    return "refused|noted" if os.path.isfile(note) else "refused|no-note"
+
+
+def cleanup_case(workdir, name, setup):
+    tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+    env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
+               CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"))
+    d = os.path.join(tmp, "goalspec-run-sess-abc")
+    target = d
+    if setup == "symlink":
+        target = tempfile.mkdtemp(prefix="planted-", dir=workdir)
+        os.symlink(target, d)
+    elif setup == "other":
+        d = target = os.path.join(tmp, "goalspec-run-sess-OTHER")
+        os.mkdir(d, 0o700)
+    else:
+        os.mkdir(d, 0o700)
+        if setup == "mode755":
+            os.chmod(d, 0o755)
+    with open(os.path.join(target, "findings"), "w") as f:
+        f.write("ts=1\npath x\nend\n")
+    subprocess.run(["bash", CLEANUP_HOOK], input=json.dumps({"session_id": "sess-abc",
+                   "hook_event_name": "SessionEnd", "reason": "other"}),
+                   capture_output=True, text=True, env=env, timeout=30)
+    gone = not os.path.lexists(d)
+    target_kept = os.path.isfile(os.path.join(target, "findings"))
+    if setup == "own":
+        return "removed" if gone else "kept"
+    if setup == "symlink":
+        return "kept" if (os.path.islink(d) and target_kept) else "followed-or-removed"
+    return "kept" if (not gone and target_kept) else "removed"
+
+
 def suite(hook, workdir):
     rows = []
     for name, mutate, agent_type, expect in CASES:
+        if name[:2] in ("11", "12", "13", "14"):
+            rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
+            continue
         res, tmp, root, env, kw = run_case(hook, workdir, name, mutate, agent_type,
                                            skip_start=name.startswith("09"))
         if name.startswith("10"):
@@ -179,6 +297,8 @@ def suite(hook, workdir):
             res = subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
                                  capture_output=True, text=True, env=env, cwd=root, timeout=30)
         rows.append((name, classify(res, tmp), expect))
+    for name, setup, expect in CLEANUP_CASES:
+        rows.append((name, cleanup_case(workdir, name, setup), expect))
     return rows
 
 

@@ -548,9 +548,10 @@ goal-forge/
                                           #   discovers the goal before the spec, for fuzzy intent
     agents/goal-adversary.md              # independent adversarial verifier (verifies, never repairs — measured)
     agents/explorer.md                    # explorer for grounding and mechanical work, read-only by instruction, haiku pinned
-    hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart/Subagent* hooks below
+    hooks/hooks.json                      # registers the Stop/PreToolUse/PostToolUse/SessionStart/SessionEnd/Subagent* hooks below
     hooks/gate-goal-close.sh              # fail-open, transcript-anchored completion gate (Stop) + terminal-action staleness backstop
     hooks/precheck-terminal-push.sh       # PreToolUse (Bash): hard-denies a push/merge/deploy/destructive command with no operative adversary hold on record
+    hooks/lib/run_dir.py                  # the per-session state directory ${TMPDIR:-/tmp}/goalspec-run-<session_id>/ (mode 0700, owner checked) used by the three hooks below that keep state
     hooks/lib/terminal_actions.py         # shared terminal-command classifier + content exemption, read by gate-goal-close.sh, precheck-terminal-push.sh, and check-usage-budget.sh below
     hooks/check-usage-budget.sh           # opt-in, off by default: 5h/7d usage-ceiling nudge (Stop)
     hooks/enable-autoupdate.sh            # SessionStart: idempotently enables marketplace auto-update
@@ -559,7 +560,8 @@ goal-forge/
     hooks/remind-quote-verdict.sh         # PostToolUse nudge: quote the verdict before you forget it
     hooks/remind-handback-verdict.sh      # SubagentStop records a background adversary's verdict lines (and UserPromptSubmit also reads a just-written adversary report itself, for when it runs first); UserPromptSubmit reminds the executor to quote them
     hooks/watch-adversary-writes.sh       # SubagentStart/Stop: fingerprints repo content around an adversary run and records anything it changed
-    hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor)
+    hooks/report-adversary-writes.sh      # Stop: reports that record to the executor (SubagentStop output reaches the subagent, not the executor), and says when the run directory could not be used
+    hooks/cleanup-run-dir.sh              # SessionEnd: removes this session's run directory, only if it passes the owner/mode check
     hooks/nudge-decompose.sh              # advisory: coverage-floor table populated, no decomposition dispatched (Stop)
     hooks/nudge-spec-on-entry.sh          # advisory: right after the goalspec loop loads with no spec yet, reminds the agent to write it to its checkpoint or post it as visible text (PostToolUse Skill)
     hooks/precheck-spec-before-work.sh    # PreToolUse: after the goalspec loop loads, holds Bash/Write/Edit until a ## Goal-spec exists in visible text or in this session's checkpoint, then (interactive sessions, 0.60.0) until the spec was put to the human in an AskUserQuestion (reads stay free; GOAL_SPEC_BRAKE=0 turns both off, GOAL_RATIFY_BRAKE=0 the second)

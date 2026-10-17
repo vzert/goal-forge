@@ -20,7 +20,8 @@
 # attribution is structural rather than guessed.
 #
 # What it does:
-#   start -> fingerprint the repository CONTENT, stash it under $TMPDIR keyed by agent_id.
+#   start -> fingerprint the repository CONTENT, stash it keyed by agent_id in this session's own
+#            run directory, ${TMPDIR:-/tmp}/goalspec-run-<session_id>/ (hooks/lib/run_dir.py).
 #   stop  -> fingerprint again, diff, RE-ARM the snapshot, and if anything changed RECORD the paths
 #            to a per-session findings file. It emits NOTHING.
 #
@@ -35,8 +36,12 @@
 # external half already refuses remove-verbs on artifacts it does not own. Naming the paths is the
 # whole job.
 #
-# Fail-open everywhere: no git, no repo, no writable TMPDIR, unparseable payload, missing snapshot ->
-# exit 0, silent. It never blocks a subagent and never blocks a close.
+# Fail-open everywhere: no git, no repo, no session id, unparseable payload, missing snapshot ->
+# exit 0, silent. A run directory that cannot be used (someone else's, a symlink, wrong mode,
+# TMPDIR not writable) -> exit 0 too, but run_dir.py leaves a note that report-adversary-writes.sh
+# reports on Stop: until 0.62.0 that failure was silent, and on a shared Linux /tmp it disabled this
+# rail for every user but the first (361 of 361 runs, measured; see hooks/lib/run_dir.py). It never
+# blocks a subagent and never blocks a close.
 #
 # Registered by hooks/hooks.json on SubagentStart and SubagentStop, matcher "(^|:)goal-adversary$".
 # The matcher is belt; the agent_type re-check below is braces — a harness that passes the matcher
@@ -67,7 +72,9 @@ if not (isinstance(at, str) and re.search(r"(^|:)goal-adversary$", at.strip().lo
 aid = d.get("agent_id") or d.get("session_id") or ""
 cwd = d.get("cwd") or ""
 sid = d.get("session_id") or ""
-if not aid:
+# No session id, no run directory (0.62.0). Until then the agent id stood in for it, which put the
+# findings where neither the reporter nor the SessionEnd cleanup would ever look.
+if not aid or not sid:
     sys.exit(0)
 # Keys must be filesystem-safe: ids are harness-generated, so this is hygiene, not distrust.
 safe = lambda v: re.sub(r"[^A-Za-z0-9_.-]", "_", str(v))[:120]
@@ -78,7 +85,7 @@ print(safe(aid) + "\t" + str(cwd) + "\t" + safe(sid))
 AGENT_KEY=$(printf '%s' "$FIELDS" | cut -f1)
 PAYLOAD_CWD=$(printf '%s' "$FIELDS" | cut -f2)
 SESSION_KEY=$(printf '%s' "$FIELDS" | cut -f3)
-[ -n "$SESSION_KEY" ] || SESSION_KEY="$AGENT_KEY"
+[ -n "$SESSION_KEY" ] || exit 0
 
 # Resolve the repo from the payload cwd, not from this process cwd: a hook runs wherever the harness
 # puts it, and the payload states where the session actually is.
@@ -87,9 +94,14 @@ REPO_ROOT=$(git -C "$PAYLOAD_CWD" rev-parse --show-toplevel 2>/dev/null) || exit
 [ -n "$REPO_ROOT" ] || exit 0
 
 # Snapshots live OUTSIDE the repository — writing them inside would make this instrument trip on
-# itself, the most embarrassing way for a change-detector to fail.
-SNAP_DIR="${TMPDIR:-/tmp}/goalspec-adversary-snap"
-mkdir -p "$SNAP_DIR" 2>/dev/null || exit 0
+# itself, the most embarrassing way for a change-detector to fail. One directory per SESSION, owner
+# and mode checked (hooks/lib/run_dir.py); empty output means it cannot be used and a note was left.
+# A copy of this hook outside the plugin (a --compare baseline, a selftest mutant) finds the
+# library through CLAUDE_PLUGIN_ROOT, as remind-handback-verdict.sh does.
+RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
+[ -f "$RUN_DIR_PY" ] || RUN_DIR_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/run_dir.py"
+SNAP_DIR=$("$PY" "$RUN_DIR_PY" ensure "$SESSION_KEY" watch-adversary-writes 2>/dev/null)
+[ -n "$SNAP_DIR" ] || exit 0
 SNAP="$SNAP_DIR/$AGENT_KEY.fp"
 
 # CONTENT, not `git status`. The tree under review is almost always ALREADY dirty (the uncommitted
@@ -168,9 +180,9 @@ CHANGED=$(diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") 2>/dev/null 
 # hooks/report-adversary-writes.sh, on `Stop`. That routing is measured too, in the same transcript:
 # a `hookName: "Stop"` attachment lands with `isSidechain: false` in the executor's own file.
 #
-# One record per firing, append-only, keyed by SESSION so a different session never picks it up. The
-# reporter reads, emits, and deletes.
-FINDINGS="$SNAP_DIR/$SESSION_KEY.findings"
+# One record per firing, append-only, in this SESSION's run directory so a different session never
+# picks it up. The reporter reads, emits, and deletes.
+FINDINGS="$SNAP_DIR/findings"
 {
   printf 'ts=%s agent=%s repo=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_KEY" "$REPO_ROOT"
   printf '%s\n' "$CHANGED" | sed 's/^/path /'

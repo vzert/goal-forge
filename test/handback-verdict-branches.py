@@ -25,6 +25,7 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
 HOOK_REL = os.path.join("hooks", "remind-handback-verdict.sh")
 LIB_REL = os.path.join("hooks", "lib", "terminal_actions.py")
+RUN_DIR_REL = os.path.join("hooks", "lib", "run_dir.py")
 
 MODEL = "[ADVERSARY-MODEL: Sonnet 5.5 / claude-sonnet-5-5]"
 HOLD = "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
@@ -72,7 +73,8 @@ def call(plugin, mode, payload, tmpdir):
     r = subprocess.run(["bash", os.path.join(plugin, HOOK_REL), mode],
                        input=payload if isinstance(payload, str) else json.dumps(payload),
                        capture_output=True, text=True,
-                       env=dict(os.environ, TMPDIR=tmpdir, CLAUDE_PLUGIN_ROOT=plugin))
+                       env=dict(os.environ, TMPDIR=tmpdir, CLAUDE_PLUGIN_ROOT=plugin,
+                                XDG_STATE_HOME=os.path.join(tmpdir, "state")))
     return r.stdout.strip()
 
 
@@ -191,9 +193,40 @@ def marker_consumed(plugin):
                             "agent_id": "a1", "agent_transcript_path": sp}, d)
     call(plugin, "remind", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
                             "transcript_path": jsonl(d, "p", [])}, d)
-    left = os.path.exists(os.path.join(d, "goalspec-adversary-snap", SID + ".handback-verdicts"))
+    left = os.path.exists(os.path.join(d, "goalspec-run-" + SID, "handback-verdicts"))
     shutil.rmtree(d, ignore_errors=True)
     return "left" if left else "consumed"
+
+
+def foreign_run_dir(plugin, plant):
+    """0.62.0 (p-42d7c57137): a directory under this session's name that is not ours to use (mode
+    0755 stands in for another user's; a suite cannot chown without root), or a planted symlink.
+    `record` writes nothing in it and leaves a failure note; `remind` never reads a record planted
+    there. -> "<written-in-it>|<note>|<remind>"."""
+    d = tempfile.mkdtemp(prefix="hbv-")
+    rd = os.path.join(d, "goalspec-run-" + SID)
+    target = rd
+    if plant == "symlink":
+        target = tempfile.mkdtemp(prefix="hbv-planted-")
+        os.symlink(target, rd)
+    else:
+        os.mkdir(rd)
+        os.chmod(rd, 0o755)
+    sp = jsonl(d, "sub", sub(handback=REPORT_HOLD))
+    call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop", "agent_type": ADV,
+                            "agent_id": "a1", "agent_transcript_path": sp}, d)
+    written = "written" if os.listdir(target) else "untouched"
+    note = os.path.isfile(os.path.join(d, "state", "goalspec", "run-dir-failed-" + SID))
+    # A record planted in the unusable directory must not be read as a verdict to remind.
+    with open(os.path.join(target, "handback-verdicts"), "w") as fh:
+        fh.write(json.dumps({"ts": PAST, "rts": PAST, "agent": "a9", "verdict": "hold",
+                             "line": HOLD, "model": MODEL}) + "\n")
+    out = summarize(call(plugin, "remind", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                            "transcript_path": jsonl(d, "p", [])}, d))
+    if target != rd:
+        shutil.rmtree(target, ignore_errors=True)
+    shutil.rmtree(d, ignore_errors=True)
+    return "%s|%s|%s" % (written, "noted" if note else "no-note", out)
 
 
 FUTURE = "2999-01-01T00:00:00.000Z"
@@ -257,6 +290,8 @@ CASES = [
      lambda p: race(p, sub_events=sub(handback=REPORT_HOLD), record_after=True), "-|hold+model"),
     ("33-resumed-newer-report-beats-older-record", resumed_race, "break+model+breaknote"),
     ("29-marker-consumed-after-remind", marker_consumed, "consumed"),
+    ("34-run-dir-wrong-mode-not-used", lambda p: foreign_run_dir(p, "mode755"), "untouched|noted|-"),
+    ("35-run-dir-symlink-not-used", lambda p: foreign_run_dir(p, "symlink"), "untouched|noted|-"),
 ]
 
 HOOK = HOOK_REL
@@ -273,8 +308,13 @@ MUTATIONS = [
     ("quote time ignored", HOOK, 'and it["timestamp"] >= rec.get("ts", "") ', ""),
     ("text preferred over handback", HOOK, "rep = handback if handback is not None else text",
      "rep = text if text is not None else handback"),
-    ("session not in the key", HOOK, 're.sub(r"[^A-Za-z0-9_.-]", "_", sid)[:120] + ".handback-verdicts"',
-     '"all.handback-verdicts"'),
+    ("session not in the key", RUN_DIR_REL, 'return re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:120]',
+     'return "all"'),
+    ("run directory used without its check", RUN_DIR_REL, '    why = check(p)\n    if why:',
+     '    why = ""\n    if why:'),
+    ("unusable run directory read anyway", RUN_DIR_REL,
+     'if not p or not os.path.lexists(p) or check(p):', 'if not p or not os.path.lexists(p):'),
+    ("failure not noted", RUN_DIR_REL, '        note_failure(session_id, hook, why)\n', ''),
     ("no per-agent dedupe", HOOK, 'latest[rec.get("agent") or ""] = rec', 'latest[len(latest)] = rec'),
     ("model line dropped", HOOK, '(r["model"] + "\\n") if r.get("model") else ""', '""'),
     ("break note dropped", HOOK, "if breaks:", "if False:"),

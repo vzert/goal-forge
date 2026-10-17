@@ -69,7 +69,7 @@ end
 """
 
 
-def payload(session_id=SESSION, drop_session=False, raw=None):
+def payload(session_id=SESSION, drop_session=False, raw=None, note=False, mode=0o700):
     if raw is not None:
         return raw
     d = {"transcript_path": "/nonexistent/t.jsonl", "cwd": "/tmp",
@@ -117,6 +117,16 @@ CASES = [
     # and — the half that keeps it from being a free pass — must say that the third reading needs
     # evidence naming the other writer, or the verdict stays UNVERIFIED. The human line names it too.
     ("12-third-reading", ONE_ROUND, SESSION, {}, "third-reading-ok"),
+    # --- 0.62.0 (p-42d7c57137): the run directory is per session and checked. ---
+    # The watcher could not use the run directory and left a note: reported once, on its own, in
+    # Spanish for the human and with the audience line for the agent. Until 0.62.0 this failure was
+    # silent (361 of 361 adversary runs of three VPS users, measured).
+    ("13-failure-note-reported", None, SESSION, {"note": True}, "failure-reported"),
+    ("14-failure-note-reported-once", None, SESSION, {"note": True}, "silent-on-second"),
+    # A finding and a note in one session: the finding is reported and the note rides under it.
+    ("15-finding-and-failure-note", ONE_ROUND, SESSION, {"note": True}, "reported+unmeasured"),
+    # A run directory that fails the owner/mode check is never read: its content could be planted.
+    ("16-run-dir-wrong-mode-not-read", ONE_ROUND, SESSION, {"mode": 0o755}, "silent"),
 ]
 
 
@@ -141,6 +151,19 @@ def classify(res, name, findings_path):
         if sysmsg.isascii() and any(c.isalpha() for c in sysmsg):
             return "systemMessage-looks-english"
         return "split-ok"
+
+    if name.startswith("13"):
+        if (not agent_msg.startswith("ADDRESSED TO THE EXECUTOR") or "did not run" not in agent_msg
+                or "you verify, you do not repair" not in agent_msg):
+            return "failure-agent-text-wrong"
+        if "no pudo" not in sysmsg or len(sysmsg) > 300:
+            return "failure-human-line-wrong"
+        return "failure-reported"
+
+    if name.startswith("15"):
+        if "were not measured at all" not in agent_msg or "- " not in agent_msg:
+            return "finding-without-unmeasured-note"
+        return "reported+unmeasured"
 
     if name.startswith("12"):
         low = (agent_msg or "").lower()
@@ -178,7 +201,7 @@ def classify(res, name, findings_path):
             return "reported-no-audience-line"
         if not disarms:
             return "reported-audience-not-disarming"
-    if os.path.isfile(findings_path):
+    if all(os.path.isfile(f) for f in findings_path):
         # Not deleted: every later turn would re-report the same finding as if it were new.
         return tag + "|NOT-CONSUMED"
     return tag
@@ -187,20 +210,38 @@ def classify(res, name, findings_path):
 def suite(hook, workdir):
     rows = []
     for name, body, stem, kw, expect in CASES:
+        kw = dict(kw)  # popped below; the table is reused by --compare and --selftest
         tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+        # Both layouts (pre-0.62.0 shared directory, 0.62.0 per-session run directory), so --compare
+        # against the old reporter measures behaviour, not the path rename.
         snap = os.path.join(tmp, "goalspec-adversary-snap")
         os.makedirs(snap)
-        findings = os.path.join(snap, stem + ".findings")
+        run = os.path.join(tmp, "goalspec-run-" + stem)
+        os.mkdir(run, 0o700)
+        os.chmod(run, kw.pop("mode", 0o700))
+        old_copy = os.path.join(snap, stem + ".findings")
         if body is not None:
-            with open(findings, "w") as f:
-                f.write(body)
+            for f_path in (old_copy, os.path.join(run, "findings")):
+                with open(f_path, "w") as f:
+                    f.write(body)
         env = dict(os.environ)
         env["TMPDIR"] = tmp
-        # classify() looks for THIS session's file; case 04 writes another session's.
-        own = os.path.join(snap, SESSION + ".findings")
+        env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
+        env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
+        if kw.pop("note", False):
+            nd = os.path.join(tmp, "state", "goalspec")
+            os.makedirs(nd)
+            with open(os.path.join(nd, "run-dir-failed-" + stem), "w") as f:
+                f.write("watch-adversary-writes: /tmp/goalspec-run-%s belongs to uid 1001\n" % stem)
+        if name.startswith("16"):
+            os.remove(old_copy)  # only the unusable run directory holds a finding
+        # classify() looks for THIS session's files; case 04 writes another session's. A finding
+        # counts as consumed when the hook deleted the copy in the layout it reads.
+        own = [os.path.join(snap, SESSION + ".findings"),
+               os.path.join(tmp, "goalspec-run-" + SESSION, "findings")]
         res = subprocess.run(["bash", hook], input=payload(**kw), capture_output=True,
                              text=True, env=env, cwd=tmp, timeout=30)
-        if name.startswith("09"):
+        if name.startswith("09") or name.startswith("14"):
             res = subprocess.run(["bash", hook], input=payload(**kw), capture_output=True,
                                  text=True, env=env, cwd=tmp, timeout=30)
             rows.append((name, "silent-on-second" if not res.stdout.strip() else "RE-REPORTED",
@@ -224,8 +265,18 @@ MUTATIONS = [
     ("the findings file not consumed",
      'rm -f "$FINDINGS" 2>/dev/null || true', 'true', "09"),
     ("the session key ignored",
-     'FINDINGS="$SNAP_DIR/$SESSION_KEY.findings"', 'FINDINGS=$(ls "$SNAP_DIR"/*.findings 2>/dev/null | head -1)',
-     "04"),
+     'SNAP_DIR=$("$PY" "$RUN_DIR_PY" path "$SESSION_KEY" 2>/dev/null || true)',
+     'SNAP_DIR=$(ls -d "${TMPDIR:-/tmp}"/goalspec-run-* 2>/dev/null | tail -1)', "04"),
+    ("the run directory read without its check",
+     'SNAP_DIR=$("$PY" "$RUN_DIR_PY" path "$SESSION_KEY" 2>/dev/null || true)',
+     'SNAP_DIR="${TMPDIR:-/tmp}/goalspec-run-$SESSION_KEY"', "16"),
+    ("the failure note never read",
+     'FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" 2>/dev/null || true)', 'FAILED=""', "13"),
+    ("the failure note read but not consumed",
+     'FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" 2>/dev/null || true)',
+     'FAILED=$(cat "${XDG_STATE_HOME}/goalspec/run-dir-failed-$SESSION_KEY" 2>/dev/null || true)', "14"),
+    ("the failure note dropped when a finding is reported",
+     'if [ -n "$FAILED" ]; then\n  AGENT_MSG=', 'if false; then\n  AGENT_MSG=', "15"),
     ("the audience split collapsed back to one string",
      'print(json.dumps({"systemMessage": os.environ["MSG"],\n'
      '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',

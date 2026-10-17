@@ -59,8 +59,7 @@ INPUT=$(cat)
 
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
-printf '%s' "$INPUT" | MODE="$MODE" LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" \
-  SNAP_DIR="${TMPDIR:-/tmp}/goalspec-adversary-snap" "$PY" -c '
+printf '%s' "$INPUT" | MODE="$MODE" LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" "$PY" -c '
 import json, os, re, sys, datetime
 
 libdir = os.environ.get("LIBDIR", "")
@@ -68,6 +67,7 @@ if libdir and libdir not in sys.path:
     sys.path.insert(0, libdir)
 try:
     import terminal_actions as ta
+    import run_dir
 except Exception:
     sys.exit(0)
 
@@ -79,8 +79,12 @@ except Exception:
 sid = data.get("session_id")
 if not isinstance(sid, str) or not sid:
     sys.exit(0)
-snap = os.environ["SNAP_DIR"]
-path = os.path.join(snap, re.sub(r"[^A-Za-z0-9_.-]", "_", sid)[:120] + ".handback-verdicts")
+# The run directory of this session (0.62.0, hooks/lib/run_dir.py): a fixed shared directory was
+# unwritable for every Linux user but the one who created it. Only a directory that passes the
+# owner/mode check is read; `record` creates it only once it has a verdict to write.
+HOOK_NAME = "remind-handback-verdict"
+snap = run_dir.existing(sid)
+path = os.path.join(snap, "handback-verdicts") if snap else ""
 MODEL_RE = r"\[ADVERSARY-MODEL:[^\n]*\]"
 
 
@@ -143,7 +147,10 @@ if os.environ["MODE"] == "record":
                          stamp(datetime.datetime.now(datetime.timezone.utc)))
     if rec is None:
         sys.exit(0)
-    os.makedirs(snap, exist_ok=True)
+    snap = run_dir.ensure(sid, HOOK_NAME)
+    if not snap:
+        sys.exit(0)
+    path = os.path.join(snap, "handback-verdicts")
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec) + "\n")
     sys.exit(0)
@@ -153,7 +160,7 @@ if data.get("hook_event_name") not in (None, "UserPromptSubmit"):
     sys.exit(0)
 latest = {}
 body = ""
-if os.path.isfile(path):
+if path and os.path.isfile(path):
     try:
         body = open(path, encoding="utf-8").read()
     except Exception:
@@ -222,9 +229,9 @@ if isinstance(tp, str) and tp.endswith(".jsonl"):
 
 # Two sources can name the same report (the scan now, the record on a later prompt), so a report
 # reminded once is not reminded again: keyed by agent, report time and line, per session.
-done_path = path[:-len(".handback-verdicts")] + ".handback-reminded"
+done_path = os.path.join(snap, "handback-reminded") if snap else ""
 try:
-    done = set(open(done_path, encoding="utf-8").read().splitlines())
+    done = set(open(done_path, encoding="utf-8").read().splitlines()) if done_path else set()
 except Exception:
     done = set()
 
@@ -245,7 +252,10 @@ for rec in latest.values():
 if not pending:
     sys.exit(0)
 try:
-    os.makedirs(snap, exist_ok=True)
+    rd = run_dir.ensure(sid, HOOK_NAME)
+    if not rd:
+        raise OSError("no usable run directory")  # never a relative path in the cwd
+    done_path = os.path.join(rd, "handback-reminded")
     with open(done_path, "a", encoding="utf-8") as fh:
         fh.write("".join(key(r) + "\n" for r in pending))
 except Exception:

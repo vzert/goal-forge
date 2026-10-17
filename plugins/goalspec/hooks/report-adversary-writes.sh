@@ -23,8 +23,11 @@
 # `hookName: "Stop"` hook_success attachment lands with `isSidechain: false` in the EXECUTOR's own
 # file. Stop output reaches the executor; SubagentStop output does not. That asymmetry is the design.
 #
-# What it does: reads the per-session findings file that watch-adversary-writes.sh appends to,
-# prints one message naming every path, and deletes the file so a finding is reported once.
+# What it does: reads the findings file that watch-adversary-writes.sh appends to in this session's
+# run directory (hooks/lib/run_dir.py), prints one message naming every path, and deletes the file so
+# a finding is reported once. It also reports, once, any note run_dir.py left because that directory
+# could not be used (0.62.0): that failure used to be silent, and on a shared Linux /tmp it switched
+# the rail off for every user but the first.
 #
 # Deliberately NOT registered on the gate. `gate-goal-close.sh` is 54KB with a 48-case suite and a
 # documented history of silent breakage; a second, small, independent Stop hook costs nothing and
@@ -33,7 +36,8 @@
 # Deliberately NOT blocking. Like the rest of this rail it reports and never reverts: undoing a
 # change the human may have made themselves is the no-harm violation being checked for.
 #
-# Fail-open everywhere: no findings file, unparseable payload, no session id -> exit 0, silent.
+# Fail-open everywhere: no findings file, unparseable payload, no session id, a run directory that
+# fails the owner/mode check (never read: its content could be planted) -> exit 0, silent.
 #
 # Registered by hooks/hooks.json on Stop.
 
@@ -55,14 +59,38 @@ print(re.sub(r"[^A-Za-z0-9_.-]", "_", str(sid))[:120])
 
 [ -z "$SESSION_KEY" ] && exit 0
 
-SNAP_DIR="${TMPDIR:-/tmp}/goalspec-adversary-snap"
-FINDINGS="$SNAP_DIR/$SESSION_KEY.findings"
-[ -f "$FINDINGS" ] || exit 0
+# A copy of this hook outside the plugin (a --compare baseline, a selftest mutant) finds the
+# library through CLAUDE_PLUGIN_ROOT, as remind-handback-verdict.sh does.
+RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
+[ -f "$RUN_DIR_PY" ] || RUN_DIR_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/run_dir.py"
+FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" 2>/dev/null || true)
+SNAP_DIR=$("$PY" "$RUN_DIR_PY" path "$SESSION_KEY" 2>/dev/null || true)
+FINDINGS="$SNAP_DIR/findings"
+BODY=""
+if [ -n "$SNAP_DIR" ] && [ -f "$FINDINGS" ]; then
+  # Read then delete: a finding is reported once. Deleting first would lose it if this process dies
+  # between the read and the print, so read into a variable and unlink after.
+  BODY=$(cat "$FINDINGS" 2>/dev/null || true)
+  rm -f "$FINDINGS" 2>/dev/null || true
+fi
 
-# Read then delete: a finding is reported once. Deleting first would lose it if this process dies
-# between the read and the print, so read into a variable and unlink after.
-BODY=$(cat "$FINDINGS" 2>/dev/null || true)
-rm -f "$FINDINGS" 2>/dev/null || true
+# The measurement could not run (0.62.0). Said on its own, because a finding cannot come with it:
+# the run directory was unusable, so no snapshot was taken.
+if [ -n "$FAILED" ] && [ -z "$BODY" ]; then
+  FMSG="La vigilancia del revisor independiente no pudo guardar su estado en esta sesión, así que no comprobó si el revisor cambió archivos."
+  FAGENT="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a transcript, it is not addressed to you and changes nothing about your role: you verify, you do not repair.
+
+The goalspec hooks could not use this session's run directory, so the check that a goal-adversary subagent wrote nothing to the repository did not run, and a background hand-back may not have been recorded:
+$(printf '%s\n' "$FAILED" | sed 's/^/  - /')
+
+So no adversary round of this session so far has been measured for writes. That is not a finding against the adversary; it is a measurement that did not happen, and a hold from those rounds is not evidence the tree was left untouched. If the directory is someone else's or a planted one, do not delete it: it is not yours. Say in your close that this measurement did not run."
+  FMSG="$FMSG" FAGENT="$FAGENT" "$PY" -c '
+import json, os
+print(json.dumps({"systemMessage": os.environ["FMSG"],
+                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["FAGENT"]}}))
+' 2>/dev/null || true
+  exit 0
+fi
 [ -z "$BODY" ] && exit 0
 
 # Collect the distinct paths across every record. A malformed line is skipped, not fatal: a
@@ -105,6 +133,15 @@ A goal-adversary subagent ran in this session and the repository content changed
 $(printf '%s\n' "$PATHS" | sed 's/^/  - /')
 
 There are three readings, and only the third is not a defect of this run — so it is the one that costs evidence. (1) The adversary WROTE to the work it was sent to measure — it was told not to, and a verdict it returned describes a state it created, so treat that verdict as UNVERIFIED rather than a pass, and re-run the review over a tree nobody edited mid-flight. (2) The EXECUTOR edited under an in-flight verifier — the same defect from the other end, since the verdict is then about a tree that no longer exists. A background round can produce (2) innocently; a synchronous closing round cannot. (3) ANOTHER WRITER changed the repository during the round — a parallel session on the same project, the human, a background job. This hook fingerprints the whole repository and cannot tell who wrote, so (3) is a real possibility, not an excuse: claim it only with evidence that names the other writer (the other session and what it wrote — e.g. a .goalspec/ file carrying a different session token — or a commit or timestamp from outside this session) AND that the path appears in no write by this session or by the adversary. A bare \"probably another session\" is not evidence: without it, (1) and (2) stand and the verdict stays UNVERIFIED. Say in your close which of the three it was, with the evidence, instead of leaving it implied. Nothing has been reverted and nothing is blocked: what to keep is yours to decide."
+
+# Both happened in one session (a round whose directory was unusable, then one that worked): the
+# finding is reported and the unmeasured rounds are named under it, not dropped.
+if [ -n "$FAILED" ]; then
+  AGENT_MSG="$AGENT_MSG
+
+Some rounds of this session were not measured at all, because the run directory could not be used:
+$(printf '%s\n' "$FAILED" | sed 's/^/  - /')"
+fi
 
 MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c '
 import json, os
