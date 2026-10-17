@@ -149,6 +149,10 @@ CASES = [
     # The state directory inside the repository under review (a repo rooted at the home
     # directory): the snapshot would be one of the files it fingerprints, so it is noted instead.
     ("30-state-dir-inside-repo-noted", append_dirty, None, "noted-inside-repo"),
+    # A repository rooted at the home directory, XDG_STATE_HOME unset: every state directory is
+    # inside it. The note goes to its git directory and the Stop reporter says the check did not
+    # run; nothing new appears in the repository.
+    ("34-repo-at-home-reported-via-git-dir", append_dirty, None, "reported-via-git-dir|repo-clean"),
 ]
 
 # SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
@@ -458,6 +462,25 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         if all(tags) and not os.path.exists(os.path.join(tmp, "goalspec-adversary-snap")):
             return "own-dirs-0700"
         return "shared-or-missing:" + ",".join(mine(files_under(tmp)))
+    if name.startswith("34"):
+        root = make_repo(workdir, name)
+        before = subprocess.run(GIT + ["-C", root, "status", "--porcelain", "--untracked-files=all"],
+                                capture_output=True, text=True).stdout
+        env = dict(os.environ, TMPDIR=tmp, HOME=root, CLAUDE_PLUGIN_ROOT=PLUGIN)
+        env.pop("XDG_STATE_HOME", None)
+        subprocess.run(["bash", hook, "start"], input=payload("SubagentStart", root), capture_output=True,
+                       text=True, env=env, cwd=root, timeout=30)
+        report = os.path.join(os.path.dirname(hook), "report-adversary-writes.sh")
+        if not os.path.isfile(report):  # a --compare baseline copied alone: use the plugin's
+            report = os.path.join(PLUGIN, "hooks", "report-adversary-writes.sh")
+        out = subprocess.run(["bash", report], input=json.dumps({"session_id": "sess-abc", "cwd": root,
+                             "hook_event_name": "Stop"}), capture_output=True, text=True, env=env,
+                             cwd=root, timeout=30).stdout
+        after = subprocess.run(GIT + ["-C", root, "status", "--porcelain", "--untracked-files=all"],
+                               capture_output=True, text=True).stdout
+        said = "did not run" in out
+        clean = before == after
+        return ("reported-via-git-dir" if said else "silent") + "|" + ("repo-clean" if clean else "REPO-CHANGED")
     if name.startswith("30"):
         # The state directory inside the repository under review: the snapshot would be one of the
         # files it fingerprints. Noted, nothing measured, nothing written in the repo.
@@ -540,7 +563,7 @@ def suite(hook, workdir, plugin=PLUGIN):
     copy, --compare swaps only the watcher."""
     rows = []
     for name, mutate, agent_type, expect in CASES:
-        if name[:2] in ("11", "12", "13", "14", "30"):
+        if name[:2] in ("11", "12", "13", "14", "30", "34"):
             rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
             continue
         res, tmp, root, env, kw = run_case(hook, workdir, name, mutate, agent_type,
@@ -567,8 +590,10 @@ LIB_MUTATIONS = [
     ("owner check dropped", "    if st.st_uid != os.getuid():", "    if False:", "20"),
     ("parent check dropped", "    why = check_parent(os.path.dirname(p))\n    if why:",
      "    why = \"\"\n    if why:", "21"),
-    ("note written inside the repository", "        if repo and inside(b, repo):\n            continue",
-     "        if False:\n            continue", "30"),
+    ("no git-directory fallback for the note", "    if repo and not out:\n        g = _git_dir(repo)",
+     "    if False:\n        g = _git_dir(repo)", "34"),
+    ("note written inside the repository", "    out = [b for b in bases() if not (repo and inside(b, repo))]",
+     "    out = [b for b in bases()]", "30"),
     ("only the last directory of the path checked", "        up = os.path.dirname(d)\n        if up == d:",
      "        up = d\n        if up == d:", "23"),
     ("relative TMPDIR accepted", '    return v if os.path.isabs(v) else ""', "    return v", "19"),

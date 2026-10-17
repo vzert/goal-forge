@@ -41,7 +41,10 @@ already hold it in its cache.
   fails the check, it is reported, never routed around to another location. Only absolute paths are
   used. A payload with no `session_id` writes nothing; `watch` used to key it by the agent id. When
   the state directory falls inside the repository under review (a repository rooted at the home
-  directory), `watch` notes it and does not measure, because its own snapshot would read as a write;
+  directory), `watch` notes it and does not measure, because its own snapshot would read as a write.
+  The note goes to a state directory outside the repository, or, when every state directory is
+  inside it, to the repository's git directory, which git never lists as a change; the Stop hook
+  reads it there too;
   the comparison runs in Python on real, case-normalised paths, so a Windows backslash path and a
   Git Bash forward-slash root still match.
 - **A failure of that directory is now reported.** When it cannot be used, `run_dir.py` leaves a note
@@ -68,9 +71,11 @@ already hold it in its cache.
   directory on the path, an unusable `XDG_STATE_HOME`, a symlinked state directory through a shared
   directory, a group-writable path with a private and with a shared group, a sticky directory of
   another owner, the Windows branch and a junction without `os.path.isjunction` (simulated), the
-  30-day prune and an idle session it keeps, and a planted failure note (cases 19-33). `classify`
-  reads both layouts, so `--compare` against the 0.60.4 watcher changes only 11-14 and 30. New
-  `--selftest`: 17 mutations of `run_dir.py` in a copy of the plugin, each caught by its case. This is the proof for
+  30-day prune and an idle session it keeps, and a planted failure note (cases 19-33). Case 34 runs
+  a repository rooted at the home directory end to end, through the Stop reporter. `classify` reads
+  both layouts, so `--compare` against the 0.60.4 watcher changes only 11-14, 30 and 34. New
+  `--selftest`: 19 mutations of `run_dir.py` in a copy of the plugin, each caught by its case, and it
+  fails first when the unmutated baseline is red. This is the proof for
   the cleanup and the library, which have no older version to compare against.
 - `adversary-report-branches.py`: cases 13-16 cover the failure note (reported, once, alongside a
   finding) and a wrong-mode directory that is never read. Four new `--selftest` mutations.

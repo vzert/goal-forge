@@ -33,7 +33,10 @@ Anything else is someone else's or a plant: the hook writes nothing there and a 
 in the first state directory whose path passes the same check (never following a symlink at the
 note's name), which report-adversary-writes.sh turns into one line on `Stop` (the one event whose
 output reaches the executor and the human); a note is read back only from such a directory, so a
-note planted in a refused one is never reported. A payload with no session_id gets no
+note planted in a refused one is never reported. When every state directory lies inside the
+repository under review (a repository rooted at the home directory), the note goes to that
+repository's git directory instead: git never lists it as a change and the fingerprint never reads
+it, and the Stop hook looks there too, given the session's repository. A payload with no session_id gets no
 directory at all. Only absolute paths are used: a relative XDG_STATE_HOME, LOCALAPPDATA or HOME is
 ignored, so nothing is ever written relative to the hook's working directory.
 
@@ -47,7 +50,8 @@ Usable as a module (remind-handback-verdict.sh imports it) and as a command (the
                                                  leave a failure note
   run_dir.py path <session_id>                   print the directory only if it exists and passes
   run_dir.py note <session_id> <hook> <reason>   leave a failure note
-  run_dir.py failures <session_id>               print this session's failure notes, delete them
+  run_dir.py failures <session_id> [repo]        print this session's failure notes (also from
+                                                 `repo`'s git directory), delete them
   run_dir.py remove <session_id>                 delete the directory (if it passes), its notes, and
                                                  this user's run directories untouched for 30 days
 Every command exits 0: a state directory that cannot be used is never a reason to block anything.
@@ -174,10 +178,34 @@ def _note_path(b, session_id):
     return os.path.join(b, "run-dir-failed-" + key(session_id))
 
 
+def _git_dir(repo):
+    """The repository's git directory as an absolute path, or "" (no git, not a repository)."""
+    if not repo:
+        return ""
+    try:
+        import subprocess
+        out = subprocess.run(["git", "-C", repo, "rev-parse", "--git-common-dir"], capture_output=True,
+                             text=True, timeout=10).stdout.strip()
+    except Exception:
+        return ""
+    if not out:
+        return ""
+    return out if os.path.isabs(out) else os.path.join(repo, out)
+
+
+def _note_bases(repo):
+    """Where a note may go, in order: every state directory outside `repo`, then `repo`'s git
+    directory when every state directory is inside it."""
+    out = [b for b in bases() if not (repo and inside(b, repo))]
+    if repo and not out:
+        g = _git_dir(repo)
+        if g:
+            out.append(g)
+    return out
+
+
 def note_failure(session_id, hook, reason, repo=""):
-    for b in bases():
-        if repo and inside(b, repo):
-            continue  # never write into the repository under review: it would read as a change
+    for b in _note_bases(repo):
         try:
             os.makedirs(b, 0o700, exist_ok=True)
             # Only where another account cannot plant or redirect the note: the same path check.
@@ -238,12 +266,13 @@ def existing(session_id):
     return ""
 
 
-def take_failures(session_id):
+def take_failures(session_id, repo=""):
     k = key(session_id)
     if not k:
         return []
     body = ""
-    for b in bases():
+    g = _git_dir(repo)
+    for b in bases() + ([g] if g else []):
         fp = _note_path(b, session_id)
         try:
             if not os.path.lexists(fp) or check_parent(b) or _redirected(b) or os.path.islink(fp):
@@ -320,7 +349,7 @@ def main(argv):
         if key(sid):
             note_failure(sid, argv[3] if len(argv) > 3 else "hook", " ".join(argv[4:]) or "unknown")
     elif cmd == "failures":
-        for ln in take_failures(sid):
+        for ln in take_failures(sid, argv[3] if len(argv) > 3 else ""):
             print(ln)
     elif cmd == "remove":
         remove(sid)

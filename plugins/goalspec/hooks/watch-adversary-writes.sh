@@ -103,7 +103,8 @@ RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
 [ -f "$RUN_DIR_PY" ] || RUN_DIR_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/run_dir.py"
 # The repo root goes along: a state directory inside the repository under review (a repo rooted at
 # the home directory) would make the snapshot one of the files it fingerprints, so run_dir.py
-# refuses it and leaves a note. Compared in Python, as real case-normalised paths: Git Bash on
+# refuses it and leaves a note outside the repository, or in its git directory when every state
+# directory is inside it. Compared in Python, as real case-normalised paths: Git Bash on
 # Windows gives a forward-slash root and Python a backslash path.
 SNAP_DIR=$("$PY" "$RUN_DIR_PY" ensure "$SESSION_KEY" watch-adversary-writes "$REPO_ROOT" 2>/dev/null)
 [ -n "$SNAP_DIR" ] || exit 0

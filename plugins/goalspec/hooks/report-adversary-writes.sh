@@ -45,7 +45,7 @@ INPUT=$(cat)
 
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
-SESSION_KEY=$(printf '%s' "$INPUT" | "$PY" -c '
+FIELDS=$(printf '%s' "$INPUT" | "$PY" -c '
 import json, sys, re
 try:
     d = json.load(sys.stdin)
@@ -54,8 +54,10 @@ except Exception:
 sid = d.get("session_id") or ""
 if not sid:
     sys.exit(0)
-print(re.sub(r"[^A-Za-z0-9_.-]", "_", str(sid))[:120])
+print(re.sub(r"[^A-Za-z0-9_.-]", "_", str(sid))[:120] + "\t" + str(d.get("cwd") or ""))
 ' 2>/dev/null)
+SESSION_KEY=$(printf '%s' "$FIELDS" | cut -f1)
+PAYLOAD_CWD=$(printf '%s' "$FIELDS" | cut -f2)
 
 [ -z "$SESSION_KEY" ] && exit 0
 
@@ -63,7 +65,11 @@ print(re.sub(r"[^A-Za-z0-9_.-]", "_", str(sid))[:120])
 # library through CLAUDE_PLUGIN_ROOT, as remind-handback-verdict.sh does.
 RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
 [ -f "$RUN_DIR_PY" ] || RUN_DIR_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/run_dir.py"
-FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" 2>/dev/null || true)
+# The session's repository, so a note left in its git directory (every state directory inside the
+# repository, e.g. a repository rooted at the home directory) is found too.
+REPO_ROOT=""
+[ -n "$PAYLOAD_CWD" ] && [ -d "$PAYLOAD_CWD" ] && REPO_ROOT=$(git -C "$PAYLOAD_CWD" rev-parse --show-toplevel 2>/dev/null || true)
+FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" "$REPO_ROOT" 2>/dev/null || true)
 SNAP_DIR=$("$PY" "$RUN_DIR_PY" path "$SESSION_KEY" 2>/dev/null || true)
 FINDINGS="$SNAP_DIR/findings"
 BODY=""

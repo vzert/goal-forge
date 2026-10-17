@@ -591,20 +591,24 @@ come back `EMITTED-TO-SUBAGENT` and 10 comes back `silent`.
 a run directory per session in the user's own state directory (`hooks/lib/run_dir.py`). **11-14**
 and **30** run the hook: no session id writes nothing, a wrong-mode or symlinked directory under the
 session's name is refused with a note, two sessions keep separate 0700 directories, and a state
-directory inside the repository is noted instead of measured. **15-18** run the SessionEnd cleanup.
+directory inside the repository is noted instead of measured. **34** runs a repository rooted at
+the home directory through `watch` and the Stop reporter: the note goes to its git directory, the
+reporter says the check did not run, and nothing new appears in the repository. **15-18** run the
+SessionEnd cleanup.
 **19-33** drive `run_dir.py` directly: relative paths, another owner (`getuid` patched; a suite
 cannot be another user), directories on the path that another account can write (shared, symlinked,
 group-writable with a shared group, sticky of another owner), a group-writable path with a private
 group (accepted: the Debian/Ubuntu `~/.local`), an unusable `XDG_STATE_HOME`, the Windows branch
 (simulated: CI runs Ubuntu and macOS only, with no `windows-latest` job), a planted failure note, and the 30-day prune. `classify` reads both
-layouts, so `--compare` against the 0.60.4 watcher changes only 11-14 and 30. These pieces have no
-older version to compare against, so `--selftest` applies 17 mutations of `run_dir.py` in a copy of
-the plugin and requires the case written for each to change.
+layouts, so `--compare` against the 0.60.4 watcher changes only 11-14, 30 and 34. These pieces have
+no older version to compare against, so `--selftest` applies 19 mutations of `run_dir.py` in a copy
+of the plugin and requires the case written for each to change; it fails first when the unmutated
+baseline is red.
 
 ```sh
 python3 test/adversary-writes-branches.py
 python3 test/adversary-writes-branches.py --selftest
-python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 11,12,13,14,30
+python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 11,12,13,14,30,34
 ```
 
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
