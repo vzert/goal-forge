@@ -19,8 +19,12 @@ directory, which report-adversary-writes.sh turns into one line on `Stop` (the o
 output reaches the executor and the human). A payload with no session_id gets no directory at all.
 
 Threat model: catches sessions or users colliding by accident, and a directory planted under the
-predictable name. Not root, and not a user who can write inside a 0700 directory it does not own
-(it cannot).
+predictable name, or swapped for another after the check (the parent must be a sticky temp root or
+this user's own non-shared directory, so another user cannot rename or replace ours). Not root, and
+not this same user racing its own hooks.
+
+Only absolute paths are used: a relative TMPDIR, XDG_STATE_HOME or HOME is ignored (TMPDIR falls
+back to /tmp), so nothing is ever written relative to the hook's working directory.
 
 Usable as a module (remind-handback-verdict.sh imports it) and as a command (the bash hooks):
   run_dir.py ensure <session_id> <hook>   print the directory, creating it; on failure print nothing
@@ -43,15 +47,42 @@ def key(session_id):
     return re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:120]
 
 
+def _abs_env(name):
+    v = os.environ.get(name) or ""
+    return v if os.path.isabs(v) else ""
+
+
+def temp_root():
+    return _abs_env("TMPDIR") or "/tmp"
+
+
 def path_for(session_id):
     k = key(session_id)
     if not k:
         return ""
-    return os.path.join(os.environ.get("TMPDIR") or "/tmp", PREFIX + k)
+    return os.path.join(temp_root(), PREFIX + k)
+
+
+def check_parent(parent):
+    """-> "" when nobody but this user (and root) can rename or replace an entry of `parent`: it has
+    the sticky bit (like /tmp), or it is this user's and not writable by group or others (like
+    macOS's per-user T). Else the reason."""
+    try:
+        st = os.stat(parent)
+    except OSError as e:
+        return "cannot stat %s: %s" % (parent, e.strerror)
+    if st.st_mode & stat.S_ISVTX:
+        return ""
+    if st.st_uid == os.getuid() and not st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return ""
+    return "%s lets other users replace entries in it (not sticky, not private)" % parent
 
 
 def check(p):
     """-> "" when `p` is a usable run directory, else the reason it is not."""
+    why = check_parent(os.path.dirname(p))
+    if why:
+        return why
     try:
         st = os.lstat(p)
     except OSError as e:
@@ -68,19 +99,27 @@ def check(p):
     return ""
 
 
-def _failures_path(session_id):
-    base = os.environ.get("XDG_STATE_HOME") or os.path.join(os.path.expanduser("~"), ".local", "state")
-    return os.path.join(base, "goalspec", "run-dir-failed-" + key(session_id))
+def _failures_paths(session_id):
+    """Where a failure note may live, in order: $XDG_STATE_HOME, then ~/.local/state. Absolute only."""
+    out = []
+    home = os.path.expanduser("~")
+    for base in (_abs_env("XDG_STATE_HOME"),
+                 os.path.join(home, ".local", "state") if os.path.isabs(home) else ""):
+        if base:
+            out.append(os.path.join(base, "goalspec", "run-dir-failed-" + key(session_id)))
+    return out
 
 
 def note_failure(session_id, hook, reason):
-    try:
-        fp = _failures_path(session_id)
-        os.makedirs(os.path.dirname(fp), exist_ok=True)
-        with open(fp, "a", encoding="utf-8") as fh:
-            fh.write("%s: %s\n" % (hook, reason))
-    except Exception:
-        pass  # nowhere writable to say it: silent, as before
+    for fp in _failures_paths(session_id):
+        try:
+            os.makedirs(os.path.dirname(fp), exist_ok=True)
+            with open(fp, "a", encoding="utf-8") as fh:
+                fh.write("%s: %s\n" % (hook, reason))
+            return
+        except Exception:
+            continue  # e.g. XDG_STATE_HOME is a file: try the next place
+    # nowhere writable to say it: silent, as before
 
 
 def ensure(session_id, hook):
@@ -113,15 +152,16 @@ def existing(session_id):
 def take_failures(session_id):
     if not key(session_id):
         return []
-    fp = _failures_path(session_id)
-    try:
-        body = open(fp, encoding="utf-8").read()
-    except Exception:
-        return []
-    try:
-        os.remove(fp)
-    except Exception:
-        pass
+    body = ""
+    for fp in _failures_paths(session_id):
+        try:
+            body += open(fp, encoding="utf-8").read()
+        except Exception:
+            continue
+        try:
+            os.remove(fp)
+        except Exception:
+            pass
     seen, out = set(), []
     for ln in body.splitlines():
         if ln.strip() and ln not in seen:
@@ -135,10 +175,11 @@ def remove(session_id):
     if p:
         shutil.rmtree(p, ignore_errors=True)  # rmtree never follows a symlink inside it
     if key(session_id):
-        try:
-            os.remove(_failures_path(session_id))
-        except Exception:
-            pass
+        for fp in _failures_paths(session_id):
+            try:
+                os.remove(fp)
+            except Exception:
+                pass
 
 
 def main(argv):
