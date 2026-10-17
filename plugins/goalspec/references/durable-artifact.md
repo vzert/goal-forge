@@ -149,7 +149,7 @@ purpose: that is the resume case this file exists for, not a defect.
 **A deliberate handoff is that same case, chosen rather than suffered (v0.39.0).** On **any** ending
 that leaves work undone — a stop with no marker, a waiver with work still open, a cutoff at a limit
 — `SKILL.md` ("Ending a run that did not finish") has you print a pasteable `/clear` + pointer
-prompt that starts with `/goalspec:goalspec` (0.61.0: without it the resumed session never loads
+prompt that starts with `/goalspec:goalspec` (0.60.3: without it the resumed session never loads
 the loop, and no goalspec hook holds anything), and this file is what that prompt points at. The trigger is *work left undone*, not *a new
 session*: whether the reader clears and starts fresh or keeps going right here is their call, and
 the same block serves both. So it **stays**, for the same

@@ -11,9 +11,9 @@ version bump are never delivered to already-installed users.
 ### Changed
 
 - **The continuation block starts with `/goalspec:goalspec`.** A session that never loads the loop
-  has no goalspec hook holding anything. Measured 2026-10-16: the three newest resumed sessions of
-  one project started from a pasted prompt with no command and ran 31, 43 and 81 Bash calls, with no
-  goalspec Skill call and no spec. Those prompts came from 3-tier-memory's resume note, not from
+  has no goalspec hook holding anything. Measured 2026-10-16: of 11 claude-vzert sessions resumed
+  from a pasted prompt with no command, 7 loaded the loop on their own and 4 never did; those 4 ran
+  31, 43, 81 and 101 Bash calls with no goalspec Skill call and no spec. Those prompts came from 3-tier-memory's resume note, not from
   goalspec, so this change covers only goalspec's own handoff (`SKILL.md`, "Ending a run that did
   not finish"; `references/durable-artifact.md`). Continuing in the same session drops the command
   with the `/clear`, because the loop is already loaded.
