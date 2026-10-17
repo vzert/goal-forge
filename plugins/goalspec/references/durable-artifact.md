@@ -30,6 +30,20 @@ disk now") now points at something executable instead of asking each agent to in
 run, not per entity — a second checkpoint is a second home for the same fact, which is the defect
 this exists to prevent.
 
+**Every other file this session creates in `.goalspec/` follows the same shape:
+`<kind>-<session>.<ext>`** (`payload-<session>.md`, `informe-<session>.md`), with the same token.
+That is what lets the adversary-writes rail (`hooks/watch-adversary-writes.sh`,
+`hooks/external-adversary.sh`) skip a file a parallel session of the same project writes while
+this session's adversary runs: a `.goalspec/` file whose name ends in a token (8 hex digits or a
+full session id) that this session's id does not start with, and that names a session with a
+transcript beside this session's own (`${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<project>/`), is
+left out of the fingerprint. A name that only happens to end in 8 hex digits — a date, a short
+sha — names no session, so it stays measured.
+Measured on the team VPS before 0.63.1: another session's checkpoint was reported, round after
+round, as written during this session's review. A file with no token stays measured — the rail
+cannot tell whose it is, so it warns once too often rather than once too few. Declared limit: an
+adversary that writes a file under a foreign-looking token is not seen.
+
 **`<session>` is HANDED to you where it can be, DERIVED where it cannot, and never chosen.**
 
 On Claude Code, `hooks/announce-checkpoint-name.sh` (a `SessionStart` hook) names the exact file at

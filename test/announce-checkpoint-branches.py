@@ -100,6 +100,9 @@ def main():
         checks.append(("delivered-as-additionalContext", bool(ctx)))
         checks.append(("path-exact", ".goalspec/checkpoint-%s.md" % SID in ctx))
         checks.append(("id-not-truncated", SID in ctx))
+        # 0.63.1: the naming rule for every other .goalspec/ file, with this session's id filled in.
+        # It is what lets the adversary-writes rail skip another session's files.
+        checks.append(("other-files-carry-id", "<kind>-%s.<ext>" % SID in ctx))
         # The announced name must satisfy the two read-side matchers, or the agent obeying it goes
         # invisible to both. Re-derived here from the module itself rather than copied as a string.
         sys.path.insert(0, os.path.join(REPO, "plugins", "goalspec", "hooks", "lib"))

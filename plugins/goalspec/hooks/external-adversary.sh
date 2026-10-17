@@ -405,6 +405,37 @@ if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || ec
 # only protects reads the partner makes RELATIVE to its cwd — a payload pointer that names an
 # ABSOLUTE path under the live repo root still resolves there, bypassing isolation for that one
 # read; narrows to the "paths, not prose, relative-in-repo" calling convention holding, not removed.
+# Another session's run state is left out (0.63.1), exactly as in hooks/watch-adversary-writes.sh:
+# a .goalspec/ file named <kind>-<token>.<ext> whose token (8 hex digits or a full session id) this
+# session's id does not start with and whose session has a transcript beside this one's. This hook
+# is run from the agent's Bash call, so the session id comes from CLAUDE_CODE_SESSION_ID; without it,
+# or without its transcript directory, nothing is skipped. Keep the two copies identical.
+# The token must name a session that EXISTS: a transcript <token>*.jsonl next to this session's own,
+# in ${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<project>/. Without that check any name ending in 8 hex
+# digits passed as foreign — a date (report-20261017.md), a short sha, even this session's own id
+# with a suffix — and an accidental write under such a name went unseen (adversary round, 0.63.1).
+# No transcript directory found for this session -> nothing is skipped.
+_gs_session_dir() {
+  # $1 = this session's id. Prints the directory that holds its transcript, or nothing.
+  [ -n "${1:-}" ] || return 0
+  for _t in "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"/projects/*/"$1".jsonl; do
+    [ -f "$_t" ] && { printf '%s\n' "${_t%/*}"; return 0; }
+  done
+  return 0
+}
+_gs_foreign_runstate() {
+  # $1 = file name, $2 = this session's id, $3 = its transcript directory. Exit 0 = another
+  # session's file.
+  [ -n "${2:-}" ] && [ -n "${3:-}" ] || return 1
+  _re='-([0-9a-f]{8}(-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$'
+  [[ ${1%.*} =~ $_re ]] || return 1
+  case "$2" in "${BASH_REMATCH[1]}"*) return 1 ;; esac
+  for _t in "$3/${BASH_REMATCH[1]}"*.jsonl; do
+    [ -f "$_t" ] && return 0
+  done
+  return 1
+}
+_GS_SESSION_DIR=$(_gs_session_dir "${CLAUDE_CODE_SESSION_ID:-}")
 _adv_fingerprint() {
   # $1 = repo root. Prints one line per fact; the caller diffs two of these captures.
   [ -z "${1:-}" ] && return 0
@@ -424,6 +455,7 @@ _adv_fingerprint() {
   # Run state: gitignored (see .gitignore), so the scan above never lists it.
   for _f in "$1"/.goalspec/*; do
     [ -f "$_f" ] || continue
+    _gs_foreign_runstate "${_f##*/}" "${CLAUDE_CODE_SESSION_ID:-}" "$_GS_SESSION_DIR" && continue
     printf '%s %s\n' "$(git -C "$1" hash-object -- "$_f" 2>/dev/null || echo unreadable)" "${_f#"$1"/}"
   done
 }

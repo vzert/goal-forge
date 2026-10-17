@@ -216,7 +216,10 @@ shared live tree and carries the same concurrent-writer exposure this release cl
 external-CLI side.
 
 **One limit, stated plainly**: the fingerprint covers tracked content, the staged diff and the
-gitignored `.goalspec/` run state; **other gitignored paths are invisible to it**, so a partner that
+gitignored `.goalspec/` run state (since 0.63.1 minus any file whose name ends in another session's
+token, read from `CLAUDE_CODE_SESSION_ID`, when that session has a transcript beside this one's —
+see `references/durable-artifact.md`, "Where it lives"; with no session id in the environment, or no
+transcript of this session to find, nothing is skipped); **other gitignored paths are invisible to it**, so a partner that
 writes into an ignored directory is not caught. Widening it to every ignored path would drown the
 signal in build output and `node_modules`, so the choice is deliberate — but it is a gap, not a
 guarantee, and a clean run means "nothing changed where this looks". Nothing is reverted —

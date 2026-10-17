@@ -119,6 +119,40 @@ SNAP="$SNAP_DIR/$AGENT_KEY.fp"
 # belongs), and a file changed and changed back reads as unchanged — correctly, nothing was left
 # modified. This mirrors hooks/external-adversary.sh so the two backends measure the same thing; when
 # one changes, change both.
+# ANOTHER SESSION'S RUN STATE is left out (0.63.1). A parallel session of the same project writes
+# its own .goalspec/checkpoint-<its id>.md while this adversary runs, and every such write was
+# reported as this round's (observed on the team VPS, checkpoint-831306ab-… under session 23ebe429).
+# A file named <kind>-<token>.<ext>, the token 8 hex digits or a full session id, belongs to the
+# session the token names; it is skipped only when this session's id does not start with it AND a
+# transcript of that session exists beside this session's own (below). This
+# session's own files and files with no token stay measured: a warning too many, never one too few.
+# Declared hole: an adversary that writes a file under a foreign-looking token is not seen.
+# The token must name a session that EXISTS: a transcript <token>*.jsonl next to this session's own,
+# in ${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<project>/. Without that check any name ending in 8 hex
+# digits passed as foreign — a date (report-20261017.md), a short sha, even this session's own id
+# with a suffix — and an accidental write under such a name went unseen (adversary round, 0.63.1).
+# No transcript directory found for this session -> nothing is skipped.
+_gs_session_dir() {
+  # $1 = this session's id. Prints the directory that holds its transcript, or nothing.
+  [ -n "${1:-}" ] || return 0
+  for _t in "${CLAUDE_CONFIG_DIR:-${HOME:-}/.claude}"/projects/*/"$1".jsonl; do
+    [ -f "$_t" ] && { printf '%s\n' "${_t%/*}"; return 0; }
+  done
+  return 0
+}
+_gs_foreign_runstate() {
+  # $1 = file name, $2 = this session's id, $3 = its transcript directory. Exit 0 = another
+  # session's file.
+  [ -n "${2:-}" ] && [ -n "${3:-}" ] || return 1
+  _re='-([0-9a-f]{8}(-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$'
+  [[ ${1%.*} =~ $_re ]] || return 1
+  case "$2" in "${BASH_REMATCH[1]}"*) return 1 ;; esac
+  for _t in "$3/${BASH_REMATCH[1]}"*.jsonl; do
+    [ -f "$_t" ] && return 0
+  done
+  return 1
+}
+SESSION_DIR=$(_gs_session_dir "$SESSION_KEY")
 fingerprint() {
   printf 'HEAD %s\n' "$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)"
   printf 'staged %s\n' "$(git -C "$REPO_ROOT" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null || echo none)"
@@ -132,6 +166,7 @@ fingerprint() {
       done
   for f in "$REPO_ROOT"/.goalspec/*; do
     [ -f "$f" ] || continue
+    _gs_foreign_runstate "${f##*/}" "$SESSION_KEY" "$SESSION_DIR" && continue
     printf '%s %s\n' "$(git -C "$REPO_ROOT" hash-object -- "$f" 2>/dev/null || echo unreadable)" "${f#"$REPO_ROOT"/}"
   done
 }

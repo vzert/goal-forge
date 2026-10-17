@@ -86,8 +86,10 @@ msg = (
     "[GOALSPEC] If this session writes a durable checkpoint (SKILL.md Execute step -- only for a "
     "long or multi-round run; never create one speculatively), use this exact path: "
     ".goalspec/checkpoint-{}.md -- the token is the identifier the harness reports for this session, "
-    "handed to you rather than chosen or derived by you. Do not invent a different name."
-).format(sid)
+    "handed to you rather than chosen or derived by you. Do not invent a different name. "
+    "Any other file this session creates in .goalspec/ is named <kind>-{}.<ext> too, so the "
+    "goalspec rail that watches the adversary can tell it from another session\x27s files."
+).format(sid, sid)
 
 print(json.dumps({
     "hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": msg},

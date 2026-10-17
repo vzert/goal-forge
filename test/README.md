@@ -517,6 +517,14 @@ python3 test/external-adversary-branches.py
 python3 test/external-adversary-branches.py --compare /tmp/external-BASELINE.sh --expected 02,05,08,09,11,16,17,19,20,25,26,27,28,29,30,31
 ```
 
+**Another session's run state (0.63.1)**, cases **51-53**, on an unborn repo so the partner works
+in the live shared tree: a file named for another session (`CLAUDE_CODE_SESSION_ID` set) is not the
+partner's write (51; against 0.63.0 it comes back `pass+other-session-file-reported`), this
+session's own checkpoint is still measured (52), and with no session id in the environment nothing
+is skipped (53), nor when this session has no transcript to find (54). The suite drops the
+`CLAUDE_CODE_SESSION_ID` it inherits from the session that runs it and points `CLAUDE_CONFIG_DIR` at
+a per-case directory, so only these cases set an id and see sessions.
+
 The `--expected` list above is the one a past edit used; it is per edit, not a standing list. Name
 the cases your change is meant to move and nothing else. For 0.49.2 against the 0.49.1 hook it is
 `--expected 36,37,38`.
@@ -620,6 +628,17 @@ python3 test/adversary-writes-branches.py
 python3 test/adversary-writes-branches.py --selftest
 python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 11,12,13,14,30,34
 ```
+
+**Another session's run state (0.63.1)**, cases **35-44**, run with a session id shaped like the
+harness's and transcripts planted in the case's `~/.claude/projects/<project>/` (the sessions that
+exist). A parallel session's checkpoint, by full id (35) or by the 8-digit short form (36), is
+not this round's write and records nothing; this session's own checkpoint (37), a name carrying a
+prefix of this session's id (38) and a name with no token (39) are still recorded; and a foreign
+file in the same round as a real write names only the real write (40). Names that end in 8 hex
+digits but name no session — a date (41), this session's id with a suffix (42), a short sha (43) —
+are recorded, and so is a foreign checkpoint when this session's own transcript is missing (44).
+Against 0.63.0, 35, 36 and 40 change (`--expected 35,36,40`); 41-44 change only against the first
+0.63.1 draft, which skipped any name ending in 8 hex digits.
 
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
 

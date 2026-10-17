@@ -101,6 +101,33 @@ def revert_it(root):
         f.write(orig)
 
 
+# Cases 35-40 (0.63.1): a parallel session's run state. The ids are shaped like the harness's.
+OWN_SID = "23ebe429-5f1c-4c2a-9d1e-0123456789ab"
+OTHER_SID = "831306ab-40a3-4e27-acf5-8e42ba6a8bbf"
+SHORT_SID = "563394de-0000-4000-8000-000000000000"  # the session the 8-digit name points at
+
+
+def plant_transcripts(tmp, own=True):
+    """The sessions that exist: transcripts in the case's ~/.claude/projects/<project>/. A token
+    counts as another session's only when its transcript sits beside this session's own."""
+    d = os.path.join(tmp, "home", ".claude", "projects", "-suite-project")
+    os.makedirs(d, exist_ok=True)
+    for sid in ([OWN_SID] if own else []) + [OTHER_SID, SHORT_SID]:
+        open(os.path.join(d, sid + ".jsonl"), "w").close()
+
+
+def write_runstate(name):
+    def mutate(root):
+        with open(os.path.join(root, ".goalspec", name), "a") as f:
+            f.write("- a round of whichever session owns this file\n")
+    return mutate
+
+
+def foreign_and_dirty(root):
+    write_runstate("checkpoint-" + OTHER_SID + ".md")(root)
+    append_dirty(root)
+
+
 # name, mutation, agent_type, expected branch
 CASES = [
     # Control: the tree is dirty the whole time and the adversary writes nothing. Must stay silent,
@@ -153,6 +180,34 @@ CASES = [
     # inside it. The note goes to its git directory and the Stop reporter says the check did not
     # run; nothing new appears in the repository.
     ("34-repo-at-home-reported-via-git-dir", append_dirty, None, "reported-via-git-dir|repo-clean"),
+    # 0.63.1: another session's checkpoint, full id or the 8-digit short form, is not this round's.
+    # Against 0.63.0 both come back recorded — the warning the team VPS kept getting.
+    ("35-other-session-checkpoint-ignored", write_runstate("checkpoint-" + OTHER_SID + ".md"), None,
+     "silent"),
+    ("36-other-session-short-token-ignored", write_runstate("checkpoint-563394de.md"), None, "silent"),
+    # The other half, unchanged from 0.63.0: this session's own file, a name carrying a prefix of
+    # this session's id, and a name with no token at all are still measured.
+    ("37-own-checkpoint-still-measured", write_runstate("checkpoint-" + OWN_SID + ".md"), None,
+     "recorded:.goalspec/checkpoint-" + OWN_SID + ".md"),
+    ("38-own-short-token-still-measured", write_runstate("informe-23ebe429.md"), None,
+     "recorded:.goalspec/informe-23ebe429.md"),
+    ("39-untokened-runstate-still-measured", write_runstate("informe-sin-spec.md"), None,
+     "recorded:.goalspec/informe-sin-spec.md"),
+    # Skipping the other session's file must not hide a real write in the same round.
+    ("40-other-session-plus-real-write", foreign_and_dirty, None, "recorded:tracked.txt"),
+    # A token is another session's only if that session has a transcript (adversary round on the
+    # first 0.63.1 draft): names that merely END in 8 hex digits are still measured — a date, this
+    # session's own id with a suffix, a short sha — and so is everything when this session's own
+    # transcript directory cannot be found.
+    ("41-date-named-runstate-still-measured", write_runstate("report-20261017.md"), None,
+     "recorded:.goalspec/report-20261017.md"),
+    ("42-own-id-with-suffix-still-measured",
+     write_runstate("checkpoint-" + OWN_SID + "-20261017.md"), None,
+     "recorded:.goalspec/checkpoint-" + OWN_SID + "-20261017.md"),
+    ("43-short-sha-still-measured", write_runstate("findings-a1b2c3d4.md"), None,
+     "recorded:.goalspec/findings-a1b2c3d4.md"),
+    ("44-no-own-transcript-measures-all", write_runstate("checkpoint-" + OTHER_SID + ".md"), None,
+     "recorded:.goalspec/checkpoint-" + OTHER_SID + ".md"),
 ]
 
 # SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
@@ -569,13 +624,18 @@ def suite(hook, workdir, plugin=PLUGIN):
         if name[:2] in ("11", "12", "13", "14", "30", "34"):
             rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
             continue
+        sid, tmp = "sess-abc", None
+        if "35" <= name[:2] <= "44":
+            sid = OWN_SID
+            tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+            plant_transcripts(tmp, own=not name.startswith("44"))
         res, tmp, root, env, kw = run_case(hook, workdir, name, mutate, agent_type,
-                                           skip_start=name.startswith("09"))
+                                           skip_start=name.startswith("09"), tmp=tmp, session=sid)
         if name.startswith("10"):
             new_file(root)
             res = subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
                                  capture_output=True, text=True, env=env, cwd=root, timeout=30)
-        rows.append((name, classify(res, tmp), expect))
+        rows.append((name, classify(res, tmp, sid), expect))
     for name, setup, expect in CLEANUP_CASES:
         rows.append((name, cleanup_case(workdir, name, setup,
                                         os.path.join(plugin, "hooks", "cleanup-run-dir.sh")), expect))

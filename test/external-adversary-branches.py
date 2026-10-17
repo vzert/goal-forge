@@ -113,6 +113,10 @@ echo "- probe: one real evidence line"
 echo "%s"
 """ % (MODEL, HOLD)
 
+# Cases 51-53 (0.63.1): ids shaped like the harness's session ids.
+OWN_SID = "23ebe429-5f1c-4c2a-9d1e-0123456789ab"
+OTHER_SID = "831306ab-40a3-4e27-acf5-8e42ba6a8bbf"
+
 # name, partner transcript (None -> script stub), extra env, cwd, expected branch
 CASES = [
     ("01-bullets-hold", NOISE + MODEL + "\n" + BULLETS + HOLD + "\n", {}, None, "pass"),
@@ -354,6 +358,21 @@ CASES = [
      "external-adversary: a verdict-shaped block was just produced above -- quote the "
      "[ADVERSARY-MODEL: ...] and [ADVERSARY-VERDICT: ...] lines VERBATIM\n", {}, None, "derived-break"),
     # 49: case 33 with every count 0, through the same filter -- still UNVERIFIED, last line.
+    # --- another session's run state (0.63.1). Un-isolated (unborn repo), the live tree is shared,
+    # and a parallel session's own checkpoint landing mid-round degraded the hold and named the file.
+    # Against 0.63.0, 51 comes back mutation-unverified+otherwriter. 52 and 53 are unchanged: this
+    # session's own file is still measured, and with no session id in the environment nothing is
+    # skipped.
+    ("51-other-session-runstate-ignored", "STUB_RUNSTATE_OTHER",
+     {"CLAUDE_CODE_SESSION_ID": OWN_SID}, "MUTREPO_UNBORN", "pass"),
+    ("52-own-runstate-still-measured", "STUB_RUNSTATE_OWN",
+     {"CLAUDE_CODE_SESSION_ID": OWN_SID}, "MUTREPO_UNBORN", "mutation-unverified+otherwriter"),
+    ("53-no-session-id-measures-all", "STUB_RUNSTATE_OTHER", {}, "MUTREPO_UNBORN",
+     "mutation-unverified+otherwriter"),
+    # 54: the id is set but this session has no transcript to stand next to, so no other session can
+    # be shown to exist and nothing is skipped.
+    ("54-no-own-transcript-measures-all", "STUB_RUNSTATE_OTHER",
+     {"CLAUDE_CODE_SESSION_ID": OWN_SID}, "MUTREPO_UNBORN", "mutation-unverified+otherwriter"),
     ("49-zero-count-placeholder-survives-filter",
      "".join("exec bash -lc cat file%02d.md\n" % i for i in range(30)) + MODEL_UNKNOWN + "\n"
      + BULLETS + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=0 "
@@ -399,6 +418,9 @@ echo "- probe: one real evidence line"
 echo "%s"
 """ % (MODEL, HOLD)
 
+
+STUB_RUNSTATE_OTHER = STUB_MUTATE_RUNSTATE.replace("checkpoint-suite.md", "checkpoint-%s.md" % OTHER_SID)
+STUB_RUNSTATE_OWN = STUB_MUTATE_RUNSTATE.replace("checkpoint-suite.md", "checkpoint-%s.md" % OWN_SID)
 
 STUB_BREAK_RC = """#!/bin/bash
 cat >/dev/null
@@ -686,13 +708,15 @@ def classify(res, case_name, repo=REPO):
         warned = "returned a filled 'break'" in err
         branch = ("pass+rcwarned" if kept and warned
                   else ("break-suppressed" if not kept else "pass+rcsilent"))
-    if case_name[:2] in ("16", "17", "19", "32"):
+    if case_name[:2] in ("16", "17", "19", "32", "52", "53", "54"):
         # Two halves, both required: the hook must SAY the partner modified the tree, and it must
         # NAME the path. A warning that cannot name what changed sends the operator to a blank
         # `git status` on an already-dirty tree — the same blindness the content fingerprint exists
         # to remove.
         said = "MODIFIED the repository" in err
         named = ("tracked.txt" in err if case_name[:2] in ("16", "17", "32")
+                 else "checkpoint-%s.md" % OWN_SID in err if case_name.startswith("52")
+                 else "checkpoint-%s.md" % OTHER_SID in err if case_name[:2] in ("53", "54")
                  else "checkpoint-suite.md" in err)
         if said and named:
             # 16/19: the clean hold is degraded, so stdout must carry a hold and stderr must say so.
@@ -715,6 +739,9 @@ def classify(res, case_name, repo=REPO):
         if "ANOTHER WRITER" in err:
             branch += ("+otherwriter" if "evidence naming the other writer" in err
                        and "the partner reading stands" in err else "+otherwriter-no-evidence-bar")
+    if case_name.startswith("51") and "MODIFIED the repository" in err:
+        # Another session's file is not this partner's write: naming it is the false warning.
+        branch += "+other-session-file-reported"
     if case_name.startswith("22") or case_name.startswith("23"):
         branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
     if case_name[:2] in ("36", "37", "38"):
@@ -762,6 +789,15 @@ def suite(hook, workdir):
         env.pop("GOAL_ADVERSARY_ACTIVE", None)
         env.pop("GOAL_ADVERSARY_CMD", None)
         env.pop("GOAL_CONFIG_PATH", None)
+        env.pop("CLAUDE_CODE_SESSION_ID", None)  # the suite runs inside a session; cases set their own
+        # The sessions that exist (0.63.1): never the real ~/.claude, so a case sees only these.
+        cfg = os.path.join(workdir, "claude-config-" + name[:2])
+        env["CLAUDE_CONFIG_DIR"] = cfg
+        if name[:2] in ("51", "52", "53", "54"):
+            pd = os.path.join(cfg, "projects", "-suite-project")
+            os.makedirs(pd, exist_ok=True)
+            for sid in ([] if name.startswith("54") else [OWN_SID]) + [OTHER_SID]:
+                open(os.path.join(pd, sid + ".jsonl"), "w").close()
         env["PATH"] = fakebin + os.pathsep + env.get("PATH", "")
         stubs = {"STUB_TMPDIR": STUB_TMPDIR, "STUB_PWD": STUB_PWD, "STUB_WRAP": STUB_WRAP,
                  "STUB_MUTATE": STUB_MUTATE, "STUB_MUTATE_BREAK": STUB_MUTATE_BREAK,
@@ -769,7 +805,8 @@ def suite(hook, workdir):
                  "STUB_BREAK_RC": STUB_BREAK_RC, "STUB_HOLD_RC": STUB_HOLD_RC,
                  "STUB_BREAK_RC_PAD": STUB_BREAK_RC_PAD,
                  "STUB_MUTATE_BREAK_PAD": STUB_MUTATE_BREAK_PAD,
-                 "STUB_CONCURRENT_COMMIT": STUB_CONCURRENT_COMMIT}
+                 "STUB_CONCURRENT_COMMIT": STUB_CONCURRENT_COMMIT,
+                 "STUB_RUNSTATE_OTHER": STUB_RUNSTATE_OTHER, "STUB_RUNSTATE_OWN": STUB_RUNSTATE_OWN}
         if transcript in stubs:
             stub = os.path.join(workdir, "stub-" + name + ".sh")
             with open(stub, "w") as f:

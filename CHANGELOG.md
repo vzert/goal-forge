@@ -6,9 +6,33 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
-## [Unreleased]
+## [0.63.1] - 2026-10-17
 
-Tests only; nothing installed changes, so no version bump.
+### Fixed
+
+- **The adversary-writes rail no longer reports another session's run state as this round's
+  write.** `watch-adversary-writes.sh` (subagent backend) and `external-adversary.sh` (external
+  backend) hashed every top-level file in `.goalspec/`, so a parallel session of the same project
+  that wrote its own checkpoint while this session's adversary ran was reported as a change made
+  during the round. Seen repeatedly on the team VPS: `.goalspec/checkpoint-831306ab-….md` named in
+  the warning of session 23ebe429, written by neither the session nor its adversary. Both
+  fingerprints now skip a `.goalspec/` file named `<kind>-<token>.<ext>` whose token (8 hex digits
+  or a full session id) this session's id does not start with, and only when that session exists: a
+  transcript `<token>*.jsonl` sits beside this session's own in
+  `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/<project>/`. That last condition came from an adversary
+  round on the first draft of this fix, which skipped any name ending in 8 hex digits — a date
+  (`report-20261017.md`), a short sha, this session's own id with a suffix. The subagent side takes
+  the id from the hook payload; the external side from `CLAUDE_CODE_SESSION_ID`. With no id, or no
+  transcript of this session to find, nothing is skipped.
+  This session's own files and files with no token are still measured. Declared limit: an
+  adversary that writes a file under a foreign-looking token is not seen.
+- **Naming rule for the rest of `.goalspec/`.** Every other file a session creates there is named
+  `<kind>-<session>.<ext>` with the same token as its checkpoint, so the rail can tell it from
+  another session's. The SessionStart announcement (`announce-checkpoint-name.sh`) now says so with
+  the id filled in; `references/durable-artifact.md` ("Where it lives") and SKILL.md carry the rule.
+  Prose only: no hook blocks a file that does not follow it, and such a file stays measured.
+
+### Tests
 
 - **temp-leak-check no longer watches all of `/tmp`** (p-9991d7ddc9). It walked every path of this
   user under `/tmp`, where other programs write all the time (Claude Code's sockets, context-mode, a
@@ -23,6 +47,10 @@ Tests only; nothing installed changes, so no version bump.
   Each checker run hands its suites its own prefix (`goalspec-test-fixture-<pid>-`, through
   `GOALSPEC_TEST_FIXTURE_PREFIX`) and watches only that one, so two runs at once on one machine no
   longer turn each other red (both adversaries of this change saw that happen, running in parallel).
+- `adversary-writes-branches.py` cases 35-44 and `external-adversary-branches.py` cases 51-54;
+  `announce-checkpoint-branches.py` checks the naming rule in the announcement. Against 0.63.0,
+  adversary-writes 35, 36 and 40 and external-adversary 51 change, and nothing else; 41-44 and 54
+  change against the first draft of this fix, which skipped names that name no session.
 
 ## [0.63.0] - 2026-10-17
 
