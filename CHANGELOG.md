@@ -47,9 +47,9 @@ version bump are never delivered to already-installed users.
   Each checker run hands its suites its own prefix (`goalspec-test-fixture-<pid>-`, through
   `GOALSPEC_TEST_FIXTURE_PREFIX`) and watches only that one, so two runs at once on one machine no
   longer turn each other red (both adversaries of this change saw that happen, running in parallel).
-- `adversary-writes-branches.py` cases 35-44 and `external-adversary-branches.py` cases 51-54;
+- `adversary-writes-branches.py` cases 35-45 and `external-adversary-branches.py` cases 51-54;
   `announce-checkpoint-branches.py` checks the naming rule in the announcement. Against 0.63.0,
-  adversary-writes 35, 36 and 40 and external-adversary 51 change, and nothing else; 41-44 and 54
+  adversary-writes 35, 36 and 40 and external-adversary 51 change, and nothing else; 41-45 and 54
   change against the first draft of this fix, which skipped names that name no session.
 
 ## [0.63.0] - 2026-10-17

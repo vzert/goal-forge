@@ -629,15 +629,16 @@ python3 test/adversary-writes-branches.py --selftest
 python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 11,12,13,14,30,34
 ```
 
-**Another session's run state (0.63.1)**, cases **35-44**, run with a session id shaped like the
+**Another session's run state (0.63.1)**, cases **35-45**, run with a session id shaped like the
 harness's and transcripts planted in the case's `~/.claude/projects/<project>/` (the sessions that
 exist). A parallel session's checkpoint, by full id (35) or by the 8-digit short form (36), is
 not this round's write and records nothing; this session's own checkpoint (37), a name carrying a
 prefix of this session's id (38) and a name with no token (39) are still recorded; and a foreign
 file in the same round as a real write names only the real write (40). Names that end in 8 hex
 digits but name no session — a date (41), this session's id with a suffix (42), a short sha (43) —
-are recorded, and so is a foreign checkpoint when this session's own transcript is missing (44).
-Against 0.63.0, 35, 36 and 40 change (`--expected 35,36,40`); 41-44 change only against the first
+are recorded, and so is a foreign checkpoint when this session's own transcript is missing (44)
+and a foreign token with no extension, which is not the `<kind>-<token>.<ext>` shape (45).
+Against 0.63.0, 35, 36 and 40 change (`--expected 35,36,40`); 41-45 change only against the first
 0.63.1 draft, which skipped any name ending in 8 hex digits.
 
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite

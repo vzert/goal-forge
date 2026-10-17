@@ -206,6 +206,10 @@ CASES = [
      "recorded:.goalspec/checkpoint-" + OWN_SID + "-20261017.md"),
     ("43-short-sha-still-measured", write_runstate("findings-a1b2c3d4.md"), None,
      "recorded:.goalspec/findings-a1b2c3d4.md"),
+    # The shape is <kind>-<token>.<ext>: the other session's token with no extension is not it, so
+    # it stays measured (external adversary round on the 0.63.1 draft).
+    ("45-other-session-token-no-extension-measured", write_runstate("checkpoint-" + OTHER_SID[:8]),
+     None, "recorded:.goalspec/checkpoint-" + OTHER_SID[:8]),
     ("44-no-own-transcript-measures-all", write_runstate("checkpoint-" + OTHER_SID + ".md"), None,
      "recorded:.goalspec/checkpoint-" + OTHER_SID + ".md"),
 ]
@@ -625,7 +629,7 @@ def suite(hook, workdir, plugin=PLUGIN):
             rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
             continue
         sid, tmp = "sess-abc", None
-        if "35" <= name[:2] <= "44":
+        if "35" <= name[:2] <= "45":
             sid = OWN_SID
             tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
             plant_transcripts(tmp, own=not name.startswith("44"))

@@ -427,6 +427,7 @@ _gs_foreign_runstate() {
   # $1 = file name, $2 = this session's id, $3 = its transcript directory. Exit 0 = another
   # session's file.
   [ -n "${2:-}" ] && [ -n "${3:-}" ] || return 1
+  case "$1" in *?.?*) ;; *) return 1 ;; esac  # <kind>-<token>.<ext>: no extension, not the shape
   _re='-([0-9a-f]{8}(-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)$'
   [[ ${1%.*} =~ $_re ]] || return 1
   case "$2" in "${BASH_REMATCH[1]}"*) return 1 ;; esac
