@@ -19,6 +19,13 @@ version bump are never delivered to already-installed users.
   owes the modal, and the checkpoint still stays on an ending that leaves work undone and is still
   deleted on a clean close.
 
+### Tests
+
+- **`temp-leak-check.py` names one more foreign writer.** `/tmp/claude-readloop/` is written by
+  a PreToolUse(Read) hook of the sms-masivos Paperclip agents running on the same machine
+  (`contexto/hooks/gate-read-loop.sh`), so it turned a different suite red on each run. It is now
+  reported as ignored, like Claude Code's sockets and context-mode's ready files.
+
 ## [0.60.3] - 2026-10-16
 
 ### Changed

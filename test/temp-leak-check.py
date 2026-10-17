@@ -38,7 +38,11 @@ SKIP = {"temp-leak-check.py", "expected_check.py", "tmp_cleanup.py"}
 # suite: Claude Code's per-session sockets and the context-mode MCP's ready files. A path under one
 # of these prefixes is reported as "ignored", never as a leak. Add a prefix only for a writer you
 # have named; the threat model is a suite that forgets to clean, not one that hides.
-FOREIGN_TMP = ("/tmp/cc-socks/", "/tmp/context-mode-mcp-ready-")
+# /tmp/claude-readloop/ (2026-10-17): a PreToolUse(Read) hook for the sms-masivos Paperclip
+# agents (sms-masivos/contexto/hooks/gate-read-loop.sh, registered in their .claude/
+# settings.local.json) writes <session_id>.json there on every Read; the leaked ids were
+# sdk-ts sessions of the Paperclip CEO agent running on the same machine.
+FOREIGN_TMP = ("/tmp/cc-socks/", "/tmp/context-mode-mcp-ready-", "/tmp/claude-readloop/")
 try:
     import yaml  # noqa: F401  (only to know whether manifest-checks.py can run here)
     HAVE_YAML = True
