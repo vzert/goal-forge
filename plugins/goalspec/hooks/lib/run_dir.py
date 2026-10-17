@@ -11,33 +11,49 @@ it. MEASURED on a 4-developer VPS (2026-10-17): the directory belonged to one de
 detection never measured anything for them and the hand-back record never landed, and nobody saw it:
 the hooks exit 0 and the error stayed in each subagent's own transcript.
 
-So each SESSION now gets its own directory, the same idea as .goalspec/checkpoint-<session>.md:
-${TMPDIR:-/tmp}/goalspec-run-<session_id>/, made by mkdir mode 0700 (no -p), and used only if it is
-a real directory (not a symlink) owned by this uid with mode 0700. Anything else is someone else's
-or a plant: the hook writes nothing there and a FAILURE NOTE is left in this user's own state
-directory, which report-adversary-writes.sh turns into one line on `Stop` (the one event whose
-output reaches the executor and the human). A payload with no session_id gets no directory at all.
+WHERE, AND WHY NOT THE TEMP ROOT. Each SESSION gets its own directory, the same idea as
+.goalspec/checkpoint-<session>.md, under this user's own state directory:
+  POSIX:   ${XDG_STATE_HOME:-~/.local/state}/goalspec/run-<session_id>/
+  Windows: %LOCALAPPDATA%\\goalspec\\run-<session_id>\\
+A first version put it in the shared temp root with owner and mode checks, and three review rounds
+in a row each found another way to swap it from another account (a relative TMPDIR, a symlink on the
+way, a sticky directory owned by someone else). A per-user directory removes that whole class: no
+other account writes on the way to it.
 
-Threat model: catches sessions or users colliding by accident, and a directory planted under the
-predictable name, or swapped for another after the check: the temp root is resolved to its real
-path, and every directory on that path must be sticky (like /tmp) or belong to this user or root
-without being writable by group or others, so another user can neither rename ours nor redirect a
-symlink on the way to it. Not root, and not this same user racing its own hooks.
+Checks (POSIX): the run directory is made with mode 0700 and used only if it is a real directory
+(not a symlink), owned by this uid, mode 0700; and every directory on the real path to it belongs to
+this user or root and is not writable by others, nor by its group unless that group is private (no
+members, primary group of this user only: the Debian/Ubuntu default, where ~/.local is 0775,
+measured on the VPS for all five users). A sticky directory owned by root or this user (like /tmp)
+is accepted too. On Windows uid and mode bits do not exist (os.getuid is Unix-only, access is by
+ACL, and %LOCALAPPDATA% is private to the user by default), so only "a real directory, not a
+symlink or junction" is checked there.
 
-Only absolute paths are used: a relative TMPDIR, XDG_STATE_HOME or HOME is ignored (TMPDIR falls
-back to /tmp), so nothing is ever written relative to the hook's working directory.
+Anything else is someone else's or a plant: the hook writes nothing there and a FAILURE NOTE is left
+in the same state directory, which report-adversary-writes.sh turns into one line on `Stop` (the one
+event whose output reaches the executor and the human). A payload with no session_id gets no
+directory at all. Only absolute paths are used: a relative XDG_STATE_HOME, LOCALAPPDATA or HOME is
+ignored, so nothing is ever written relative to the hook's working directory.
+
+Threat model: catches sessions or users colliding by accident, a directory planted under the
+predictable name, and a swap from another account after the check. Not root, and not this same user
+racing its own hooks.
 
 Usable as a module (remind-handback-verdict.sh imports it) and as a command (the bash hooks):
-  run_dir.py ensure <session_id> <hook>   print the directory, creating it; on failure print nothing
-                                          and leave a failure note
-  run_dir.py path <session_id>            print the directory only if it exists and passes the check
-  run_dir.py failures <session_id>        print this session's failure notes and delete them
-  run_dir.py remove <session_id>          delete the directory (if it passes the check) and the notes
+  run_dir.py ensure <session_id> <hook>          print the directory, creating it; on failure print
+                                                 nothing and leave a failure note
+  run_dir.py path <session_id>                   print the directory only if it exists and passes
+  run_dir.py note <session_id> <hook> <reason>   leave a failure note
+  run_dir.py failures <session_id>               print this session's failure notes, delete them
+  run_dir.py remove <session_id>                 delete the directory (if it passes), its notes, and
+                                                 this user's run directories older than 7 days
 Every command exits 0: a state directory that cannot be used is never a reason to block anything.
 """
-import os, re, shutil, stat, sys
+import os, re, shutil, stat, sys, time
 
-PREFIX = "goalspec-run-"
+IS_WINDOWS = os.name == "nt"
+PREFIX = "run-"
+STALE_SECONDS = 7 * 24 * 3600
 
 
 def key(session_id):
@@ -53,35 +69,51 @@ def _abs_env(name):
     return v if os.path.isabs(v) else ""
 
 
-def temp_root():
-    # Resolved, so a symlink on the way (macOS /tmp -> /private/tmp, a linked TMPDIR) is checked and
-    # used as the real directory it points to, never re-followed after the check.
-    return os.path.realpath(_abs_env("TMPDIR") or "/tmp")
+def bases():
+    """This user's goalspec state directories, in order of preference; absolute paths only."""
+    home = os.path.expanduser("~")
+    home = home if os.path.isabs(home) else ""
+    if IS_WINDOWS:
+        cands = (_abs_env("LOCALAPPDATA"), os.path.join(home, "AppData", "Local") if home else "")
+    else:
+        cands = (_abs_env("XDG_STATE_HOME"), os.path.join(home, ".local", "state") if home else "")
+    out = []
+    for c in cands:
+        if c and os.path.join(c, "goalspec") not in out:
+            out.append(os.path.join(c, "goalspec"))
+    return out
 
 
-def path_for(session_id):
-    k = key(session_id)
-    if not k:
-        return ""
-    return os.path.join(temp_root(), PREFIX + k)
+def _group_private(gid):
+    """True when the group has no listed members and is the primary group of this user only."""
+    try:
+        import grp, pwd
+        if grp.getgrgid(gid).gr_mem:
+            return False
+        me = pwd.getpwuid(os.getuid()).pw_name
+        return [p.pw_name for p in pwd.getpwall() if p.pw_gid == gid] == [me]
+    except Exception:
+        return False
 
 
 def check_parent(parent):
-    """-> "" when nobody but this user (and root) can rename or replace anything on the way to an
-    entry of `parent`: `parent` is resolved to its real path, and each directory from it up to `/`
-    has the sticky bit (like /tmp) or belongs to this user or root and is not writable by group or
-    others (like macOS's per-user T and its ancestors). Else the reason."""
-    real = os.path.realpath(parent)
-    d = real
+    """-> "" when no other account can replace anything on the real path to `parent`, else why."""
+    if IS_WINDOWS:
+        return ""
+    d = os.path.realpath(parent)
     while True:
         try:
             st = os.lstat(d)
         except OSError as e:
             return "cannot stat %s: %s" % (d, e.strerror)
-        safe = bool(st.st_mode & stat.S_ISVTX) or (
-            st.st_uid in (os.getuid(), 0) and not st.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+        owner_ok = st.st_uid in (os.getuid(), 0)
+        if st.st_mode & stat.S_ISVTX:
+            safe = owner_ok
+        else:
+            safe = owner_ok and not st.st_mode & stat.S_IWOTH and (
+                not st.st_mode & stat.S_IWGRP or _group_private(st.st_gid))
         if not safe:
-            return "%s (on the way to %s) lets other users replace entries in it" % (d, parent)
+            return "%s (on the way to %s) lets another account replace entries in it" % (d, parent)
         up = os.path.dirname(d)
         if up == d:
             return ""
@@ -97,10 +129,12 @@ def check(p):
         st = os.lstat(p)
     except OSError as e:
         return "cannot stat %s: %s" % (p, e.strerror)
-    if stat.S_ISLNK(st.st_mode):
+    if stat.S_ISLNK(st.st_mode) or getattr(os.path, "isjunction", lambda _p: False)(p):
         return "%s is a symlink" % p
     if not stat.S_ISDIR(st.st_mode):
         return "%s is not a directory" % p
+    if IS_WINDOWS:
+        return ""
     if st.st_uid != os.getuid():
         return "%s belongs to uid %d, not to this user (uid %d)" % (p, st.st_uid, os.getuid())
     mode = stat.S_IMODE(st.st_mode)
@@ -109,22 +143,11 @@ def check(p):
     return ""
 
 
-def _failures_paths(session_id):
-    """Where a failure note may live, in order: $XDG_STATE_HOME, then ~/.local/state. Absolute only."""
-    out = []
-    home = os.path.expanduser("~")
-    for base in (_abs_env("XDG_STATE_HOME"),
-                 os.path.join(home, ".local", "state") if os.path.isabs(home) else ""):
-        if base:
-            out.append(os.path.join(base, "goalspec", "run-dir-failed-" + key(session_id)))
-    return out
-
-
 def note_failure(session_id, hook, reason):
-    for fp in _failures_paths(session_id):
+    for b in bases():
         try:
-            os.makedirs(os.path.dirname(fp), exist_ok=True)
-            with open(fp, "a", encoding="utf-8") as fh:
+            os.makedirs(b, 0o700, exist_ok=True)
+            with open(os.path.join(b, "run-dir-failed-" + key(session_id)), "a", encoding="utf-8") as fh:
                 fh.write("%s: %s\n" % (hook, reason))
             return
         except Exception:
@@ -134,36 +157,52 @@ def note_failure(session_id, hook, reason):
 
 def ensure(session_id, hook):
     """-> the run directory, created if absent; "" when there is no id or it cannot be used."""
-    p = path_for(session_id)
-    if not p:
+    k = key(session_id)
+    if not k:
         return ""
-    try:
-        os.mkdir(p, 0o700)
-    except FileExistsError:
-        pass
-    except OSError as e:
-        note_failure(session_id, hook, "cannot create %s: %s" % (p, e.strerror))
-        return ""
-    why = check(p)
-    if why:
-        note_failure(session_id, hook, why)
-        return ""
-    return p
+    why = "no state directory (HOME and %s unset or relative)" % (
+        "LOCALAPPDATA" if IS_WINDOWS else "XDG_STATE_HOME")
+    for b in bases():
+        p = os.path.join(b, PREFIX + k)
+        try:
+            os.makedirs(b, 0o700, exist_ok=True)
+            os.mkdir(p, 0o700)
+        except FileExistsError:
+            pass
+        except OSError as e:
+            why = "cannot create %s: %s" % (p, e.strerror)
+            continue  # this state directory is unusable (e.g. XDG_STATE_HOME is a file): next one
+        # It exists but fails the check: someone else's or a plant. Never fall through to the next
+        # state directory: a refused directory is reported, not routed around.
+        why = check(p)
+        break
+    if not why:
+        # Real path: the checked chain, never re-followed; and what watch-adversary-writes.sh
+        # compares with the repository root git reports, which is resolved too.
+        return os.path.realpath(p)
+    note_failure(session_id, hook, why)
+    return ""
 
 
 def existing(session_id):
     """-> the run directory if it exists and passes the check, else "" (never creates)."""
-    p = path_for(session_id)
-    if not p or not os.path.lexists(p) or check(p):
+    k = key(session_id)
+    if not k:
         return ""
-    return p
+    for b in bases():
+        p = os.path.join(b, PREFIX + k)
+        if os.path.lexists(p) and not check(p):
+            return os.path.realpath(p)
+    return ""
 
 
 def take_failures(session_id):
-    if not key(session_id):
+    k = key(session_id)
+    if not k:
         return []
     body = ""
-    for fp in _failures_paths(session_id):
+    for b in bases():
+        fp = os.path.join(b, "run-dir-failed-" + k)
         try:
             body += open(fp, encoding="utf-8").read()
         except Exception:
@@ -180,14 +219,29 @@ def take_failures(session_id):
     return out
 
 
-def remove(session_id):
+def remove(session_id, now=None):
     p = existing(session_id)
     if p:
         shutil.rmtree(p, ignore_errors=True)  # rmtree never follows a symlink inside it
-    if key(session_id):
-        for fp in _failures_paths(session_id):
+    k = key(session_id)
+    now = time.time() if now is None else now
+    for b in bases():
+        if k:
             try:
-                os.remove(fp)
+                os.remove(os.path.join(b, "run-dir-failed-" + k))
+            except Exception:
+                pass
+        # A session that crashed never reaches SessionEnd: its directory is pruned here after a week,
+        # under the same check, so the per-user state directory does not grow without end.
+        try:
+            names = os.listdir(b)
+        except Exception:
+            continue
+        for n in names:
+            q = os.path.join(b, n)
+            try:
+                if n.startswith(PREFIX) and now - os.lstat(q).st_mtime > STALE_SECONDS and not check(q):
+                    shutil.rmtree(q, ignore_errors=True)
             except Exception:
                 pass
 
@@ -203,6 +257,9 @@ def main(argv):
         out = existing(sid)
         if out:
             print(out)
+    elif cmd == "note":
+        if key(sid):
+            note_failure(sid, argv[3] if len(argv) > 3 else "hook", " ".join(argv[4:]) or "unknown")
     elif cmd == "failures":
         for ln in take_failures(sid):
             print(ln)

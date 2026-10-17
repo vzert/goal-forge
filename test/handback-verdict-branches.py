@@ -74,7 +74,8 @@ def call(plugin, mode, payload, tmpdir):
                        input=payload if isinstance(payload, str) else json.dumps(payload),
                        capture_output=True, text=True,
                        env=dict(os.environ, TMPDIR=tmpdir, CLAUDE_PLUGIN_ROOT=plugin,
-                                XDG_STATE_HOME=os.path.join(tmpdir, "state")))
+                                XDG_STATE_HOME=os.path.join(tmpdir, "state"),
+                                HOME=os.path.join(tmpdir, "home")))
     return r.stdout.strip()
 
 
@@ -193,7 +194,7 @@ def marker_consumed(plugin):
                             "agent_id": "a1", "agent_transcript_path": sp}, d)
     call(plugin, "remind", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
                             "transcript_path": jsonl(d, "p", [])}, d)
-    left = os.path.exists(os.path.join(d, "goalspec-run-" + SID, "handback-verdicts"))
+    left = os.path.exists(os.path.join(d, "state", "goalspec", "run-" + SID, "handback-verdicts"))
     shutil.rmtree(d, ignore_errors=True)
     return "left" if left else "consumed"
 
@@ -204,7 +205,8 @@ def foreign_run_dir(plugin, plant):
     `record` writes nothing in it and leaves a failure note; `remind` never reads a record planted
     there. -> "<written-in-it>|<note>|<remind>"."""
     d = tempfile.mkdtemp(prefix="hbv-")
-    rd = os.path.join(d, "goalspec-run-" + SID)
+    rd = os.path.join(d, "state", "goalspec", "run-" + SID)
+    os.makedirs(os.path.dirname(rd), 0o700)
     target = rd
     if plant == "symlink":
         target = tempfile.mkdtemp(prefix="hbv-planted-")
@@ -310,11 +312,13 @@ MUTATIONS = [
      "rep = text if text is not None else handback"),
     ("session not in the key", RUN_DIR_REL, 'return re.sub(r"[^A-Za-z0-9_.-]", "_", session_id)[:120]',
      'return "all"'),
-    ("run directory used without its check", RUN_DIR_REL, '    why = check(p)\n    if why:',
-     '    why = ""\n    if why:'),
+    ("run directory used without its check", RUN_DIR_REL, '        why = check(p)\n        break',
+     '        why = ""\n        break'),
     ("unusable run directory read anyway", RUN_DIR_REL,
-     'if not p or not os.path.lexists(p) or check(p):', 'if not p or not os.path.lexists(p):'),
-    ("failure not noted", RUN_DIR_REL, '        note_failure(session_id, hook, why)\n', ''),
+     'if os.path.lexists(p) and not check(p):', 'if os.path.lexists(p):'),
+    ("failure not noted", RUN_DIR_REL, '    note_failure(session_id, hook, why)\n    return ""', '    return ""'),
+    ("refused directory routed around", RUN_DIR_REL, '        why = check(p)\n        break',
+     '        why = check(p)\n        if why:\n            continue\n        break'),
     ("no per-agent dedupe", HOOK, 'latest[rec.get("agent") or ""] = rec', 'latest[len(latest)] = rec'),
     ("model line dropped", HOOK, '(r["model"] + "\\n") if r.get("model") else ""', '""'),
     ("break note dropped", HOOK, "if breaks:", "if False:"),

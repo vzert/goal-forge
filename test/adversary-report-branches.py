@@ -216,7 +216,8 @@ def suite(hook, workdir):
         # against the old reporter measures behaviour, not the path rename.
         snap = os.path.join(tmp, "goalspec-adversary-snap")
         os.makedirs(snap)
-        run = os.path.join(tmp, "goalspec-run-" + stem)
+        run = os.path.join(tmp, "state", "goalspec", "run-" + stem)
+        os.makedirs(os.path.dirname(run), 0o700)
         os.mkdir(run, 0o700)
         os.chmod(run, kw.pop("mode", 0o700))
         old_copy = os.path.join(snap, stem + ".findings")
@@ -227,18 +228,18 @@ def suite(hook, workdir):
         env = dict(os.environ)
         env["TMPDIR"] = tmp
         env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
+        env["HOME"] = os.path.join(tmp, "home")  # the fallback state directory, never the real one
         env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
         if kw.pop("note", False):
             nd = os.path.join(tmp, "state", "goalspec")
-            os.makedirs(nd)
             with open(os.path.join(nd, "run-dir-failed-" + stem), "w") as f:
-                f.write("watch-adversary-writes: /tmp/goalspec-run-%s belongs to uid 1001\n" % stem)
+                f.write("watch-adversary-writes: ~/.local/state/goalspec/run-%s belongs to uid 1001\n" % stem)
         if name.startswith("16"):
             os.remove(old_copy)  # only the unusable run directory holds a finding
         # classify() looks for THIS session's files; case 04 writes another session's. A finding
         # counts as consumed when the hook deleted the copy in the layout it reads.
         own = [os.path.join(snap, SESSION + ".findings"),
-               os.path.join(tmp, "goalspec-run-" + SESSION, "findings")]
+               os.path.join(tmp, "state", "goalspec", "run-" + SESSION, "findings")]
         res = subprocess.run(["bash", hook], input=payload(**kw), capture_output=True,
                              text=True, env=env, cwd=tmp, timeout=30)
         if name.startswith("09") or name.startswith("14"):
@@ -266,10 +267,10 @@ MUTATIONS = [
      'rm -f "$FINDINGS" 2>/dev/null || true', 'true', "09"),
     ("the session key ignored",
      'SNAP_DIR=$("$PY" "$RUN_DIR_PY" path "$SESSION_KEY" 2>/dev/null || true)',
-     'SNAP_DIR=$(ls -d "${TMPDIR:-/tmp}"/goalspec-run-* 2>/dev/null | tail -1)', "04"),
+     'SNAP_DIR=$(ls -d "$XDG_STATE_HOME"/goalspec/run-* 2>/dev/null | tail -1)', "04"),
     ("the run directory read without its check",
      'SNAP_DIR=$("$PY" "$RUN_DIR_PY" path "$SESSION_KEY" 2>/dev/null || true)',
-     'SNAP_DIR="${TMPDIR:-/tmp}/goalspec-run-$SESSION_KEY"', "16"),
+     'SNAP_DIR="$XDG_STATE_HOME/goalspec/run-$SESSION_KEY"', "16"),
     ("the failure note never read",
      'FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" 2>/dev/null || true)', 'FAILED=""', "13"),
     ("the failure note read but not consumed",

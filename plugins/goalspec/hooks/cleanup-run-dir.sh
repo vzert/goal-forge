@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # cleanup-run-dir.sh — SessionEnd hook. Removes this session's run directory,
-# ${TMPDIR:-/tmp}/goalspec-run-<session_id>/, and its failure note (hooks/lib/run_dir.py).
+# ${XDG_STATE_HOME:-~/.local/state}/goalspec/run-<session_id>/ (%LOCALAPPDATA% on Windows), its failure note, and any run directory of this user
+# older than 7 days (hooks/lib/run_dir.py).
 #
 # Why (0.62.0): the run directory holds one snapshot per goal-adversary round, plus the findings and
 # hand-back records the other hooks consume. The shared directory it replaced was never cleaned —
-# 284 snapshots of one developer sat in /tmp on the VPS, measured 2026-10-17.
+# 284 snapshots of one developer sat in /tmp on the VPS, measured 2026-10-17. The new directory lives in
+# the user's home, which no system job cleans, so this hook is what keeps it bounded.
 #
 # It removes ONLY the directory whose name carries the session id in the payload, and only if
 # run_dir.py's check passes: a real directory, not a symlink, owned by this uid, mode 0700. A
 # directory under that name that belongs to someone else is not ours to delete. If SessionEnd never
-# fires (a crash), the directory stays until the system clears its temp root. If a resumed session
-# keeps its id, the next hook simply creates it again.
+# fires (a crash), the directory stays until a later session's SessionEnd prunes it after 7 days. If a
+# resumed session keeps its id, the next hook simply creates it again.
 #
 # Fail-open everywhere and silent: no session id, unparseable payload, nothing to remove -> exit 0.
 #

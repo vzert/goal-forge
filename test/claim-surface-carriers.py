@@ -194,11 +194,12 @@ def main():
                              env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0])
     # report-adversary-writes.sh with one recorded finding for the session.
     rtmp = tempfile.mkdtemp(prefix="report-")
-    os.mkdir(os.path.join(rtmp, "goalspec-run-s"), 0o700)  # the per-session run dir (0.62.0)
-    with open(os.path.join(rtmp, "goalspec-run-s", "findings"), "w") as fh:
+    os.makedirs(os.path.join(rtmp, "state", "goalspec", "run-s"), 0o700)  # the per-session run dir (0.62.0)
+    with open(os.path.join(rtmp, "state", "goalspec", "run-s", "findings"), "w") as fh:
         fh.write("ts=1\npath src/x.py\n")
     report_out = context(emit("report-adversary-writes.sh", {"session_id": "s"},
-                              env={"TMPDIR": rtmp, "XDG_STATE_HOME": os.path.join(rtmp, "state")})[0])
+                              env={"TMPDIR": rtmp, "XDG_STATE_HOME": os.path.join(rtmp, "state"),
+                                   "HOME": os.path.join(rtmp, "home")})[0])
 
     vt = tempfile.mkdtemp(prefix="visible-")
     def jsonl(name, texts):
@@ -612,10 +613,12 @@ def main():
     hb_tmp = os.path.join(vt, "hb-tmp"); os.makedirs(hb_tmp)
     emit("remind-handback-verdict.sh", {"session_id": "s", "hook_event_name": "SubagentStop",
          "agent_type": "goalspec:goal-adversary", "agent_id": "a", "agent_transcript_path": hb_sub},
-         env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state")}, args=["record"])
+         env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state"),
+              "HOME": os.path.join(hb_tmp, "home")}, args=["record"])
     out, _ = emit("remind-handback-verdict.sh", {"session_id": "s", "hook_event_name": "UserPromptSubmit",
                   "transcript_path": jsonl("hb-parent", [spec])},
-                  env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state")},
+                  env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state"),
+                       "HOME": os.path.join(hb_tmp, "home")},
                   args=["remind"])
     check("visible:handback-remind-emits", hold in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)

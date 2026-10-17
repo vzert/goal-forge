@@ -21,7 +21,8 @@
 #
 # What it does:
 #   start -> fingerprint the repository CONTENT, stash it keyed by agent_id in this session's own
-#            run directory, ${TMPDIR:-/tmp}/goalspec-run-<session_id>/ (hooks/lib/run_dir.py).
+#            run directory, ${XDG_STATE_HOME:-~/.local/state}/goalspec/run-<session_id>/ (%LOCALAPPDATA% on Windows)
+#            (hooks/lib/run_dir.py).
 #   stop  -> fingerprint again, diff, RE-ARM the snapshot, and if anything changed RECORD the paths
 #            to a per-session findings file. It emits NOTHING.
 #
@@ -38,7 +39,7 @@
 #
 # Fail-open everywhere: no git, no repo, no session id, unparseable payload, missing snapshot ->
 # exit 0, silent. A run directory that cannot be used (someone else's, a symlink, wrong mode,
-# TMPDIR not writable) -> exit 0 too, but run_dir.py leaves a note that report-adversary-writes.sh
+# state directory not writable) -> exit 0 too, but run_dir.py leaves a note that report-adversary-writes.sh
 # reports on Stop: until 0.62.0 that failure was silent, and on a shared Linux /tmp it disabled this
 # rail for every user but the first (361 of 361 runs, measured; see hooks/lib/run_dir.py). It never
 # blocks a subagent and never blocks a close.
@@ -102,6 +103,15 @@ RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
 [ -f "$RUN_DIR_PY" ] || RUN_DIR_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/run_dir.py"
 SNAP_DIR=$("$PY" "$RUN_DIR_PY" ensure "$SESSION_KEY" watch-adversary-writes 2>/dev/null)
 [ -n "$SNAP_DIR" ] || exit 0
+# The state directory inside the repository under review (a repo rooted at the home directory): the
+# snapshot would be one of the files it fingerprints, and every round would report a write. Say so
+# instead of measuring.
+case "$SNAP_DIR" in
+  "$REPO_ROOT"/*)
+    "$PY" "$RUN_DIR_PY" note "$SESSION_KEY" watch-adversary-writes \
+      "$SNAP_DIR is inside the repository under review ($REPO_ROOT)" >/dev/null 2>&1 || true
+    exit 0 ;;
+esac
 SNAP="$SNAP_DIR/$AGENT_KEY.fp"
 
 # CONTENT, not `git status`. The tree under review is almost always ALREADY dirty (the uncommitted
@@ -135,7 +145,7 @@ if [ "$MODE" = "start" ]; then
   exit 0
 fi
 
-# stop: no snapshot means this hook did not see the start (installed mid-run, unwritable TMPDIR,
+# stop: no snapshot means this hook did not see the start (installed mid-run, unwritable state directory,
 # a harness that skipped the event). Silence is correct — claiming "no writes detected" from a
 # measurement that never ran is the broken instrument this whole rail is about.
 [ -f "$SNAP" ] || exit 0

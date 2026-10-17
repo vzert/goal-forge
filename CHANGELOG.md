@@ -13,54 +13,65 @@ already hold it in its cache.
 
 ### Fixed
 
-- **One state directory per session instead of one shared by every user (p-42d7c57137).**
-  `watch-adversary-writes.sh`, `report-adversary-writes.sh` and `remind-handback-verdict.sh` kept
-  their state in a fixed `${TMPDIR:-/tmp}/goalspec-adversary-snap`, made with `mkdir -p` and never
-  checked. On Linux `TMPDIR` is usually unset, so every user shared it and the first one owned it.
-  Measured on a 4-developer VPS on 2026-10-17: the directory belonged to one developer (mode 775,
-  a group nobody else was in), and the other three ran 361 goal-adversary subagents between
-  2026-09-21 and 2026-10-16. Every one of those runs hit `Permission denied` on its snapshot, so the
-  write detection never measured anything for them and the hand-back record never landed. Nobody saw
-  it: the hooks exit 0 and the error stayed in each subagent's own transcript. Now each session uses
-  `${TMPDIR:-/tmp}/goalspec-run-<session_id>/`, the same idea as the per-session checkpoint. It is
-  made with mode 0700 and used only if it is a real directory owned by this user with that mode
-  (new `hooks/lib/run_dir.py`). The temp root is resolved to its real path, and every directory on
-  that path must be sticky like `/tmp`, or belong to this user or root without being writable by
-  group or others. So another user can neither replace the directory after the check nor re-point
-  a symlink on the way to it. Only absolute
-  paths are used: a relative `TMPDIR`, `XDG_STATE_HOME` or `HOME` is ignored, so nothing is written
-  relative to the hook's working directory. A payload with no `session_id` writes nothing; `watch`
-  used to key it by the agent id instead.
+- **One state directory per session, in the user's own state directory, instead of one in `/tmp`
+  shared by every user (p-42d7c57137).** `watch-adversary-writes.sh`, `report-adversary-writes.sh`
+  and `remind-handback-verdict.sh` kept their state in a fixed
+  `${TMPDIR:-/tmp}/goalspec-adversary-snap`, made with `mkdir -p` and never checked. On Linux
+  `TMPDIR` is usually unset, so every user shared it and the first one owned it. Measured on a
+  4-developer VPS on 2026-10-17: the directory belonged to one developer (mode 775, a group nobody
+  else was in), and the other three ran 361 goal-adversary subagents between 2026-09-21 and
+  2026-10-16. Every one of those runs hit `Permission denied` on its snapshot, so the write detection
+  never measured anything for them and the hand-back record never landed. Nobody saw it: the hooks
+  exit 0 and the error stayed in each subagent's own transcript.
+
+  Now each session uses `${XDG_STATE_HOME:-~/.local/state}/goalspec/run-<session_id>/`, or
+  `%LOCALAPPDATA%\goalspec\run-<session_id>\` on Windows (new `hooks/lib/run_dir.py`), the same
+  idea as the per-session checkpoint. A first version kept it in the temp root with owner and mode
+  checks, and three review rounds in a row each found another way for another account to swap it.
+  The user's own state directory removes that class. On macOS and Linux the directory is made with
+  mode 0700 and used only if it is a real directory owned by this user with that mode, and every
+  directory on its real path belongs to this user or root and is writable by no one else. A
+  group-writable one is accepted only when the group is private to the user: on the VPS, `~/.local`
+  and `~/.local/state` are mode 775 for all five users, each with a private group. On Windows,
+  `os.getuid` and mode bits do not exist, so only "a real directory, not a symlink or junction" is
+  checked; that branch is simulated in the suite, not run on Windows. When the directory exists but
+  fails the check, it is reported, never routed around to another location. Only absolute paths are
+  used. A payload with no `session_id` writes nothing; `watch` used to key it by the agent id. When
+  the state directory falls inside the repository under review (a repository rooted at the home
+  directory), `watch` notes it and does not measure, because its own snapshot would read as a write.
 - **A failure of that directory is now reported.** When it cannot be used, `run_dir.py` leaves a note
-  in `$XDG_STATE_HOME/goalspec/`, or in `~/.local/state/goalspec/` when that is unset or unusable, and `report-adversary-writes.sh` says on `Stop`,
-  once, that the write check did not run. `Stop` is the event whose output reaches the executor and
-  the human.
+  next to it (or in `~/.local/state/goalspec/` when `XDG_STATE_HOME` is unusable), and
+  `report-adversary-writes.sh` says on `Stop`, once, that the write check did not run. `Stop` is the
+  event whose output reaches the executor and the human.
 
 ### Added
 
-- **`hooks/cleanup-run-dir.sh` (SessionEnd)** removes the session's run directory, only when it
-  passes the same check. The shared directory was never cleaned: one developer's 284 snapshots sat
-  in `/tmp` on the VPS. A crash leaves the directory until the system clears its temp root. The old
-  shared directory is left alone: it belongs to whoever created it.
+- **`hooks/cleanup-run-dir.sh` (SessionEnd)** removes the session's run directory, and this user's
+  run directories older than 7 days (sessions that crashed), only when they pass the same check.
+  The home directory has no system cleanup, so this hook is what keeps it bounded; the shared `/tmp`
+  directory was never cleaned either (one developer's 284 snapshots on the VPS). The old shared
+  directory is left alone: it belongs to whoever created it.
 
 ### Tests
 
 - `adversary-writes-branches.py`: cases 11-18 cover no session id, a wrong-mode or symlinked
-  directory under the session's name, two sessions in one `TMPDIR`, and the SessionEnd cleanup.
-  Cases 19-23 drive `run_dir.py` directly: relative paths ignored, another owner (with `getuid`
-  patched, since a suite cannot be another user), a shared non-sticky parent, a `TMPDIR` symlinked
-  through a shared directory (case 23), and the fallback for the failure note. `classify` reads both layouts, so `--compare` against the 0.60.4 watcher changes
-  only 11-14. New `--selftest`: eight mutations of `run_dir.py` in a copy of the plugin, each caught
-  by its case. This is the proof for the cleanup and the library, which have no older version to
-  compare against.
+  directory under the session's name, two sessions, and the SessionEnd cleanup. Case 30 covers a
+  state directory inside the repository. Cases 19-29 drive `run_dir.py` directly: relative paths
+  ignored, another owner (`getuid` patched, since a suite cannot be another user), a shared
+  directory on the path, an unusable `XDG_STATE_HOME`, a symlinked state directory through a shared
+  directory, a group-writable path with a private and with a shared group, a sticky directory of
+  another owner, the Windows branch (simulated), and the 7-day prune. `classify` reads both layouts,
+  so `--compare` against the 0.60.4 watcher changes only 11-14 and 30. New `--selftest`: 13
+  mutations of `run_dir.py` in a copy of the plugin, each caught by its case. This is the proof for
+  the cleanup and the library, which have no older version to compare against.
 - `adversary-report-branches.py`: cases 13-16 cover the failure note (reported, once, alongside a
   finding) and a wrong-mode directory that is never read. Four new `--selftest` mutations.
   `--compare` against 0.60.4 changes only 13 and 15.
-- `handback-verdict-branches.py`: cases 34-35 cover a wrong-mode or symlinked directory, and four
+- `handback-verdict-branches.py`: cases 34-35 cover a wrong-mode or symlinked directory, and five
   `--selftest` mutations of `run_dir.py`.
 - The hooks find `hooks/lib` through `CLAUDE_PLUGIN_ROOT` when run from a copy, so a `--compare`
-  baseline or a `--selftest` mutant works. The suites keep failure notes inside their own temp
-  directory through `XDG_STATE_HOME`.
+  baseline or a `--selftest` mutant works. The suites point `XDG_STATE_HOME` and `HOME` inside their
+  own temp directory, so none of them writes to the real home.
 
 ## [0.60.4] - 2026-10-17
 

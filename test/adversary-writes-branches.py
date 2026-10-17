@@ -146,6 +146,9 @@ CASES = [
     ("13-run-dir-symlink-refused", append_dirty, None, "refused|noted"),
     # Two sessions sharing one TMPDIR: each records in its own 0700 directory, nothing shared.
     ("14-two-sessions-own-dirs", append_dirty, None, "own-dirs-0700"),
+    # The state directory inside the repository under review (a repo rooted at the home
+    # directory): the snapshot would be one of the files it fingerprints, so it is noted instead.
+    ("30-state-dir-inside-repo-noted", append_dirty, None, "noted-inside-repo"),
 ]
 
 # SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
@@ -159,78 +162,138 @@ CLEANUP_CASES = [
 # run_dir.py driven directly (a suite cannot be another uid, and must not write to the real /tmp or
 # HOME): name, expected. Each runs the library of the plugin under test in a child Python.
 UNIT_CASES = [
-    # A relative TMPDIR / XDG_STATE_HOME / HOME is ignored: nothing relative to the cwd, ever.
+    # A relative XDG_STATE_HOME / HOME is ignored: nothing relative to the cwd, ever.
     ("19-relative-env-never-used", "absolute-only"),
     # The owner check, with getuid() patched to another uid: refused and noted.
     ("20-other-owner-refused", "refused|noted"),
-    # A temp root that is neither sticky nor private (another user could swap the directory after
-    # the check): refused and noted.
-    ("21-shared-non-sticky-parent-refused", "refused|noted"),
-    # A TMPDIR that is a symlink sitting in a shared non-sticky directory, pointing at a private
-    # one: another user could re-point the link, so the whole real path is checked, and refused.
-    ("23-symlinked-tmpdir-in-shared-dir-refused", "refused|noted"),
-    # XDG_STATE_HOME is a regular file: the note falls back to ~/.local/state (HOME redirected).
-    ("22-failure-note-fallback", "noted-in-fallback"),
+    # A directory on the way that another account can write to: refused and noted.
+    ("21-shared-parent-refused", "refused|noted"),
+    # XDG_STATE_HOME is a regular file: the next state directory (~/.local/state, HOME redirected)
+    # is used, for the run directory and for the note.
+    ("22-unusable-xdg-falls-back", "fallback-used"),
+    # XDG_STATE_HOME is a symlink sitting in a shared directory: the whole real path is checked.
+    ("23-symlinked-state-dir-in-shared-dir-refused", "refused|noted"),
+    # Group-writable on the way, group private to this user (Debian/Ubuntu ~/.local is 0775,
+    # measured on the VPS for all five users): accepted.
+    ("24-group-writable-private-group-accepted", "used"),
+    # Group-writable on the way, group shared with others: refused.
+    ("25-group-writable-shared-group-refused", "refused|noted"),
+    # A sticky directory on the way owned by another account (its owner can rename entries in it).
+    ("26-foreign-sticky-parent-refused", "refused|noted"),
+    # Windows: no os.getuid, no mode bits; %LOCALAPPDATA% is used and only "real directory, not a
+    # symlink" is checked (simulated: no Windows runner).
+    ("27-windows-localappdata-used", "used-localappdata"),
+    ("28-windows-symlink-refused", "refused|noted"),
+    # A crashed session's directory older than 7 days is pruned by the next SessionEnd; a fresh one
+    # of another session is kept.
+    ("29-stale-run-dir-pruned", "pruned-stale|kept-fresh"),
 ]
 
 UNIT_SRC = r"""
-import os, stat, sys, json
+import os, stat, sys, time
 sys.path.insert(0, sys.argv[1])
 import run_dir
 case, tmp = sys.argv[2], sys.argv[3]
+state = os.path.join(tmp, "state")
+note = lambda base=state: os.path.isfile(os.path.join(base, "goalspec", "run-dir-failed-sess-abc"))
+def verdict(got, base=state):
+    return ("USED" if got else "refused") + "|" + ("noted" if note(base) else "no-note")
+os.environ.update(XDG_STATE_HOME=state, HOME=os.path.join(tmp, "home"))
 if case == "19":
     os.chdir(tmp)
-    os.environ.update(TMPDIR="rel-tmp", XDG_STATE_HOME="rel-state", HOME="rel-home")
-    p = run_dir.path_for("sess-abc")
-    notes = run_dir._failures_paths("sess-abc")
-    ok = p.startswith("/") and all(n.startswith("/") for n in notes)
-    print("absolute-only" if ok and not os.listdir(tmp) else "relative:%s|%s" % (p, notes))
+    os.environ.update(XDG_STATE_HOME="rel-state", HOME="rel-home", LOCALAPPDATA="rel-lad")
+    bs = run_dir.bases()
+    print("absolute-only" if all(os.path.isabs(b) for b in bs) and not os.listdir(tmp)
+          else "relative:%s" % bs)
 elif case == "20":
-    # A sticky parent, so only the owner check of the directory itself can refuse it.
-    root = os.path.join(tmp, "sticky")
-    os.mkdir(root)
-    os.chmod(root, 0o1700)
-    os.environ.update(TMPDIR=root, XDG_STATE_HOME=os.path.join(tmp, "state"))
     real = os.getuid()
-    d = os.path.join(root, "goalspec-run-sess-abc")
-    os.mkdir(d, 0o700)
+    os.makedirs(os.path.join(state, "goalspec", "run-sess-abc"), 0o700)
     os.getuid = lambda: real + 1
-    # Isolate the owner check: with getuid patched, every ancestor the path check walks would look
-    # foreign too (cases 21 and 23 cover that check).
+    # Isolate the owner check: with getuid patched, every directory on the path would look
+    # foreign too (cases 21, 23, 25 and 26 cover the path check).
     run_dir.check_parent = lambda parent: ""
-    got = run_dir.ensure("sess-abc", "suite")
-    note = os.path.isfile(os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc"))
-    print(("USED" if got else "refused") + "|" + ("noted" if note else "no-note"))
+    print(verdict(run_dir.ensure("sess-abc", "suite")))
 elif case == "21":
-    root = os.path.join(tmp, "shared")
-    os.mkdir(root)
-    os.chmod(root, 0o777)
-    os.environ.update(TMPDIR=root, XDG_STATE_HOME=os.path.join(tmp, "state"))
+    shared = os.path.join(tmp, "shared")
+    os.mkdir(shared)
+    os.chmod(shared, 0o777)
+    st2 = os.path.join(shared, "state")
+    os.environ["XDG_STATE_HOME"] = st2
     got = run_dir.ensure("sess-abc", "suite")
-    note = os.path.isfile(os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc"))
-    print(("USED" if got else "refused") + "|" + ("noted" if note else "no-note"))
+    # the note lands in the same (unsafe) state directory or the fallback; either says it
+    print(("USED" if got else "refused") + "|" + ("noted" if note(st2) or note(os.path.join(tmp, "home", ".local", "state")) else "no-note"))
+elif case == "22":
+    bad = os.path.join(tmp, "xdg-is-a-file")
+    open(bad, "w").close()
+    os.environ["XDG_STATE_HOME"] = bad
+    got = run_dir.ensure("sess-abc", "suite")
+    want = os.path.join(tmp, "home", ".local", "state", "goalspec", "run-sess-abc")
+    run_dir.note_failure("sess-abc", "suite", "why")
+    fb_note = note(os.path.join(tmp, "home", ".local", "state"))
+    print("fallback-used" if got == os.path.realpath(want) and fb_note and run_dir.take_failures("sess-abc")
+          else "not-used:%s" % got)
 elif case == "23":
     shared = os.path.join(tmp, "shared")
     os.mkdir(shared)
     os.chmod(shared, 0o777)
     private = os.path.join(shared, "private")
     os.mkdir(private, 0o700)
-    link = os.path.join(tmp, "link")  # tmp itself is private: the link is ours, its target is not safe
+    link = os.path.join(tmp, "link")
     os.symlink(private, link)
-    os.environ.update(TMPDIR=link, XDG_STATE_HOME=os.path.join(tmp, "state"))
+    os.environ["XDG_STATE_HOME"] = link
     got = run_dir.ensure("sess-abc", "suite")
-    note = os.path.isfile(os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc"))
-    print(("USED" if got else "refused") + "|" + ("noted" if note else "no-note"))
-elif case == "22":
-    bad = os.path.join(tmp, "xdg-is-a-file")
-    open(bad, "w").close()
-    home = os.path.join(tmp, "home")
-    os.mkdir(home)
-    os.environ.update(TMPDIR=tmp, XDG_STATE_HOME=bad, HOME=home)
-    run_dir.note_failure("sess-abc", "suite", "why")
-    fb = os.path.join(home, ".local", "state", "goalspec", "run-dir-failed-sess-abc")
-    print("noted-in-fallback" if os.path.isfile(fb) and run_dir.take_failures("sess-abc")
-          and not os.path.exists(fb) else "lost")
+    print(("USED" if got else "refused") + "|" + ("noted" if note(link) or note(os.path.join(tmp, "home", ".local", "state")) else "no-note"))
+elif case in ("24", "25"):
+    gw = os.path.join(tmp, "gw")
+    os.mkdir(gw)
+    os.chmod(gw, 0o775)
+    os.environ["XDG_STATE_HOME"] = gw
+    run_dir._group_private = lambda gid: case == "24"
+    got = run_dir.ensure("sess-abc", "suite")
+    print("used" if got else verdict(got, gw) if note(gw) else verdict(got, os.path.join(tmp, "home", ".local", "state")))
+elif case == "26":
+    sticky = os.path.join(tmp, "sticky")
+    os.mkdir(sticky)
+    os.chmod(sticky, 0o1777)
+    st2 = os.path.join(sticky, "state")
+    os.environ["XDG_STATE_HOME"] = st2
+    real_lstat, me = os.lstat, os.getuid()
+    class Fake:
+        def __init__(self, st):
+            self._st = st
+        def __getattr__(self, a):
+            if a == "st_uid":
+                return me + 1  # another account owns the sticky directory
+            return getattr(self._st, a)
+    rs = os.path.realpath(sticky)
+    os.lstat = lambda q, real_lstat=real_lstat: Fake(real_lstat(q)) if q == rs else real_lstat(q)
+    got = run_dir.ensure("sess-abc", "suite")
+    print(("USED" if got else "refused") + "|" + ("noted" if note(st2) or note(os.path.join(tmp, "home", ".local", "state")) else "no-note"))
+elif case in ("27", "28"):
+    run_dir.IS_WINDOWS = True
+    del os.getuid  # what Windows Python lacks
+    lad = os.path.join(tmp, "lad")
+    os.mkdir(lad)
+    os.environ["LOCALAPPDATA"] = lad
+    if case == "28":
+        os.makedirs(os.path.join(lad, "goalspec"))
+        target = os.path.join(tmp, "elsewhere")
+        os.mkdir(target)
+        os.symlink(target, os.path.join(lad, "goalspec", "run-sess-abc"))
+    got = run_dir.ensure("sess-abc", "suite")
+    if case == "27":
+        print("used-localappdata" if got and got.startswith(os.path.realpath(lad)) else "not-used:%s" % got)
+    else:
+        print(verdict(got, lad))
+elif case == "29":
+    base = os.path.join(state, "goalspec")
+    for n in ("run-old", "run-fresh"):
+        os.makedirs(os.path.join(base, n), 0o700)
+    old = time.time() - 8 * 24 * 3600
+    os.utime(os.path.join(base, "run-old"), (old, old))
+    run_dir.remove("sess-abc")
+    print(("pruned-stale" if not os.path.exists(os.path.join(base, "run-old")) else "kept-stale") + "|" +
+          ("kept-fresh" if os.path.isdir(os.path.join(base, "run-fresh")) else "removed-fresh"))
 """
 
 
@@ -238,7 +301,12 @@ def unit_case(lib, workdir, name):
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     r = subprocess.run([sys.executable, "-I", "-c", UNIT_SRC, lib, name[:2], tmp],
                        capture_output=True, text=True, timeout=30)
-    return r.stdout.strip() or "ERROR:" + r.stderr.strip()[-120:]
+    return r.stdout.strip() or "ERROR:" + r.stderr.strip()[-160:]
+
+
+def run_dir_of(tmp, session):
+    """Where the hooks keep a session's state under a case's XDG_STATE_HOME (0.62.0)."""
+    return os.path.join(tmp, "state", "goalspec", "run-" + session)
 
 
 def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, session="sess-abc"):
@@ -274,7 +342,8 @@ def classify(res, findings_dir, session="sess-abc"):
     if out:
         return "EMITTED-TO-SUBAGENT"
     # Both layouts, so --compare against a pre-0.62.0 watcher measures behaviour, not a path rename.
-    fpath = os.path.join(findings_dir, "goalspec-run-" + session, "findings")
+    fpath = run_dir_of(findings_dir, session)
+    fpath = os.path.join(fpath, "findings")
     if not os.path.isfile(fpath):
         fpath = os.path.join(findings_dir, "goalspec-adversary-snap", session + ".findings")
     if not os.path.isfile(fpath):
@@ -289,11 +358,16 @@ def classify(res, findings_dir, session="sess-abc"):
 
 
 def files_under(tmp):
-    """Every file the hook left under TMPDIR, the state directory included."""
+    """Every file the hook left under the case directory, the state directory included."""
     out = []
     for dp, _, fns in os.walk(tmp):
         out += [os.path.relpath(os.path.join(dp, f), tmp) for f in fns]
     return sorted(out)
+
+
+def mine(files):
+    """goalspec's own names only: git on macOS can leave its xcrun cache in a fresh TMPDIR."""
+    return [f for f in files if f.startswith(("goalspec", "state" + os.sep, "home" + os.sep))]
 
 
 def run_dir_case(hook, workdir, name, mutate, agent_type):
@@ -302,25 +376,41 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         res, *_ = run_case(hook, workdir, name, mutate, agent_type, False, tmp=tmp, session=None)
         if res.stdout.strip():
             return "EMITTED-TO-SUBAGENT"
-        # goalspec's own names and the state directory only: git on macOS can leave its xcrun
-        # cache in a fresh TMPDIR.
-        left = [f for f in files_under(tmp) if f.startswith(("goalspec", "state" + os.sep))]
+        left = mine(files_under(tmp))
         return "silent|no-files" if not left else "files-left:" + ",".join(left)
     if name.startswith("14"):
         for sess in ("sess-A", "sess-B"):
             run_case(hook, workdir, name + sess, mutate, agent_type, False, tmp=tmp, session=sess)
         tags = []
         for sess in ("sess-A", "sess-B"):
-            d = os.path.join(tmp, "goalspec-run-" + sess)
+            d = run_dir_of(tmp, sess)
             ok = (os.path.isdir(d) and not os.path.islink(d)
                   and stat.S_IMODE(os.lstat(d).st_mode) == 0o700
                   and os.path.isfile(os.path.join(d, "findings")))
             tags.append(ok)
         if all(tags) and not os.path.exists(os.path.join(tmp, "goalspec-adversary-snap")):
             return "own-dirs-0700"
-        return "shared-or-missing:" + ",".join(files_under(tmp))
+        return "shared-or-missing:" + ",".join(mine(files_under(tmp)))
+    if name.startswith("30"):
+        # The state directory inside the repository under review: the snapshot would be one of the
+        # files it fingerprints. Noted, nothing measured, nothing written in the repo.
+        root = make_repo(workdir, name)
+        env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(root, ".state"),
+                   HOME=os.path.join(tmp, "home"), CLAUDE_PLUGIN_ROOT=PLUGIN)
+        for ev, mode in (("SubagentStart", "start"), ("SubagentStop", "stop")):
+            if mode == "stop":
+                mutate(root)
+            subprocess.run(["bash", hook, mode], input=payload(ev, root), capture_output=True,
+                           text=True, env=env, cwd=root, timeout=30)
+        rd = os.path.join(root, ".state", "goalspec")
+        fps = [n for n in (os.listdir(os.path.join(rd, "run-sess-abc")) if os.path.isdir(os.path.join(rd, "run-sess-abc")) else [])]
+        noted = os.path.isfile(os.path.join(rd, "run-dir-failed-sess-abc"))
+        if fps:
+            return "measured-inside-repo:" + ",".join(sorted(fps))
+        return "noted-inside-repo" if noted else "silent-inside-repo"
     # 12 / 13: a directory under the session's name that must not be used.
-    d = os.path.join(tmp, "goalspec-run-sess-abc")
+    d = run_dir_of(tmp, "sess-abc")
+    os.makedirs(os.path.dirname(d), 0o700)
     target = d
     if name.startswith("12"):
         os.mkdir(d)
@@ -334,8 +424,7 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
     used = os.listdir(target)
     if used:
         return "USED:" + ",".join(sorted(used))
-    # Only goalspec's own names count: git on macOS can leave its xcrun cache in a fresh TMPDIR.
-    others = [f for f in files_under(tmp) if f.startswith("goalspec")]
+    others = [f for f in mine(files_under(tmp)) if "run-dir-failed-" not in f]
     if others:
         return "wrote-elsewhere:" + ",".join(others)
     note = os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc")
@@ -345,14 +434,15 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
 def cleanup_case(workdir, name, setup, cleanup_hook=CLEANUP_HOOK):
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
-               CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"))
-    d = os.path.join(tmp, "goalspec-run-sess-abc")
+               HOME=os.path.join(tmp, "home"), CLAUDE_PLUGIN_ROOT=PLUGIN)
+    d = run_dir_of(tmp, "sess-abc")
+    os.makedirs(os.path.dirname(d), 0o700)
     target = d
     if setup == "symlink":
         target = tempfile.mkdtemp(prefix="planted-", dir=workdir)
         os.symlink(target, d)
     elif setup == "other":
-        d = target = os.path.join(tmp, "goalspec-run-sess-OTHER")
+        d = target = run_dir_of(tmp, "sess-OTHER")
         os.mkdir(d, 0o700)
     else:
         os.mkdir(d, 0o700)
@@ -377,7 +467,7 @@ def suite(hook, workdir, plugin=PLUGIN):
     copy, --compare swaps only the watcher."""
     rows = []
     for name, mutate, agent_type, expect in CASES:
-        if name[:2] in ("11", "12", "13", "14"):
+        if name[:2] in ("11", "12", "13", "14", "30"):
             rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
             continue
         res, tmp, root, env, kw = run_case(hook, workdir, name, mutate, agent_type,
@@ -399,7 +489,7 @@ def suite(hook, workdir, plugin=PLUGIN):
 # The cleanup and unit cases have no pre-0.62.0 baseline to --compare against, so this is their proof.
 LIB_MUTATIONS = [
     ("cleanup removes without the check", "    p = existing(session_id)\n    if p:",
-     "    p = path_for(session_id)\n    if p:", "16"),
+     "    p = os.path.join(bases()[0], PREFIX + key(session_id))\n    if p:", "16"),
     ("mode check dropped", "    if mode != 0o700:", "    if False:", "12"),
     ("owner check dropped", "    if st.st_uid != os.getuid():", "    if False:", "20"),
     ("parent check dropped", "    why = check_parent(os.path.dirname(p))\n    if why:",
@@ -409,7 +499,14 @@ LIB_MUTATIONS = [
     ("relative TMPDIR accepted", '    return v if os.path.isabs(v) else ""', "    return v", "19"),
     ("no fallback for the failure note", "            continue  # e.g. XDG_STATE_HOME is a file",
      "            return  # e.g. XDG_STATE_HOME is a file", "22"),
-    ("failure not noted", "        note_failure(session_id, hook, why)\n", "", "12"),
+    ("failure not noted", '    note_failure(session_id, hook, why)\n    return ""', '    return ""', "12"),
+    ("group privacy not checked", "not st.st_mode & stat.S_IWGRP or _group_private(st.st_gid))",
+     "True)", "25"),
+    ("sticky directory of any owner accepted", "            safe = owner_ok\n", "            safe = True\n", "26"),
+    ("Windows branch dropped", '    if IS_WINDOWS:\n        return ""\n    if st.st_uid', '    if st.st_uid', "27"),
+    ("refused directory routed around", "        why = check(p)\n        break",
+     "        why = check(p)\n        if why:\n            continue\n        break", "12"),
+    ("stale directories never pruned", "STALE_SECONDS = 7 * 24 * 3600", "STALE_SECONDS = 10 ** 12", "29"),
 ]
 
 
