@@ -1536,3 +1536,112 @@ def session_title_to_set(items, current_title):
     if cur == want or cur not in names:
         return None
     return want
+
+
+# 0.63.0 (p-c6f0719a23) — work this session left running in the background, which the harness
+# will report back on its own: a subagent launched async (its tool_result is the launch receipt
+# "Async agent launched ... agentId: <id>", toolUseResult.isAsync) or a background Bash that runs
+# the external adversary (toolUseResult.backgroundTaskId). It is back once any later user or
+# attachment event names its id in a hand-back or a task-notification (`<agent-message from="<id>"`,
+# `<task-id><id></task-id>`, or origin.from). A Stop while one is out is a wait, not an ending, so
+# the Stop gate stays quiet about a missing spec or close. Leniency runs one way on purpose: a
+# return seen where there was none only makes the gate speak, as before 0.63.0; a missed return
+# would keep it quiet, so a launch older than IN_FLIGHT_MAX_SECONDS no longer counts (a background
+# agent dies with its session and a resumed session gets no notification).
+IN_FLIGHT_MAX_SECONDS = 2 * 3600
+EXTERNAL_ADVERSARY_CMD_RE = re.compile(r"external-adversary\.sh")
+_RETURN_ID_RE = re.compile(r'<agent-message\s+from="([^"]+)"|<task-id>\s*([^<\s]+)\s*</task-id>')
+
+
+def _ts_seconds(ts):
+    import datetime
+    if not isinstance(ts, str) or not ts:
+        return None
+    try:
+        return datetime.datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return None
+
+
+def _event_texts(ev):
+    """Every string a user/attachment event carries where a hand-back or notification can sit."""
+    out = []
+    att = ev.get("attachment")
+    if isinstance(att, dict):
+        for k in ("prompt", "content"):
+            if isinstance(att.get(k), str):
+                out.append(att[k])
+    origin = ev.get("origin")
+    if isinstance(origin, dict) and isinstance(origin.get("body"), str):
+        out.append(origin["body"])
+    content = (ev.get("message") or {}).get("content")
+    if isinstance(content, str):
+        out.append(content)
+    elif isinstance(content, list):
+        for b in content:
+            if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str):
+                out.append(b["text"])
+    return out
+
+
+def background_work_in_flight(transcript_path, now=None):
+    """-> True when a background subagent, or a background run of the external adversary, that this
+    session launched has not come back yet (see the comment above). False on any error."""
+    import time
+    now = time.time() if now is None else now
+    spawn_ids, bash_ids, launched, returned = set(), set(), {}, set()
+    try:
+        if not transcript_path or not os.path.isfile(transcript_path):
+            return False
+        with open(transcript_path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                try:
+                    ev = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(ev, dict):
+                    continue
+                if ev.get("type") == "assistant":
+                    for blk in ((ev.get("message") or {}).get("content") or []):
+                        if not isinstance(blk, dict) or blk.get("type") != "tool_use":
+                            continue
+                        if blk.get("name") in SPAWN_TOOLS:
+                            spawn_ids.add(blk.get("id"))
+                        elif blk.get("name") == "Bash":
+                            inp = blk.get("input") or {}
+                            if inp.get("run_in_background") is True and isinstance(inp.get("command"), str) \
+                                    and EXTERNAL_ADVERSARY_CMD_RE.search(inp["command"]):
+                                bash_ids.add(blk.get("id"))
+                    continue
+                if ev.get("type") not in ("user", "attachment"):
+                    continue
+                origin = ev.get("origin")
+                if isinstance(origin, dict) and isinstance(origin.get("from"), str):
+                    returned.add(origin["from"])
+                for t in _event_texts(ev):
+                    for m in _RETURN_ID_RE.finditer(t):
+                        returned.add((m.group(1) or m.group(2)).strip())
+                tur = ev.get("toolUseResult")
+                content = (ev.get("message") or {}).get("content")
+                for blk in (content if isinstance(content, list) else []):
+                    if not isinstance(blk, dict) or blk.get("type") != "tool_result" or blk.get("is_error") is True:
+                        continue
+                    tid = blk.get("tool_use_id")
+                    bid = None
+                    if tid in spawn_ids:
+                        text = _tool_result_text(blk.get("content"))
+                        is_async = (isinstance(tur, dict) and tur.get("isAsync") is True) \
+                            or text.lstrip().startswith("Async agent launched")
+                        if is_async:
+                            bid = tur.get("agentId") if isinstance(tur, dict) else None
+                            if not isinstance(bid, str):
+                                am = AGENT_ID_RE.search(text)
+                                bid = am.group(1) if am else None
+                    elif tid in bash_ids and isinstance(tur, dict):
+                        bid = tur.get("backgroundTaskId")
+                    if isinstance(bid, str) and bid:
+                        launched[bid] = _ts_seconds(ev.get("timestamp"))
+    except Exception:
+        return False
+    return any(ts is not None and now - ts <= IN_FLIGHT_MAX_SECONDS
+               for bid, ts in launched.items() if bid not in returned)

@@ -471,13 +471,13 @@ contradicting the code, a cited path that did not exist, an overstated published
 formal block rather than as advisory context, **at most once per user prompt** — the re-entrant
 guard added in 0.18.1 runs ahead of the teeth, so the Stop that follows a block passes. It is not
 "you may not stop until you close." Read the two payloads, not their adjectives: the default emits
-`systemMessage` + `hookSpecificOutput.additionalContext`, and the harness feeds that context back to
+`hookSpecificOutput.additionalContext` (one short Spanish line since 0.63.0), and the harness feeds that context back to
 the model, so **the default also re-enters the turn exactly once, with the same text** — everywhere
 except the convergence floor, which re-enters at most once per prompt with a line of its own
 (v0.43.0; between v0.36.0 and v0.42.1 it re-entered in neither mode). The entire
 measured delta is that the Stop record carries `preventedContinuation:true` instead of `false`, and
-that the block payload now also sets `systemMessage` (until 0.19.0 it omitted that field, which made
-opting into teeth strictly *worse* than the default in one user-facing respect).
+that the line travels as the block's `reason`, which the human also sees (0.19.0 to 0.62.0 added a
+`systemMessage` copy beside it; 0.63.0 dropped it, since both are shown and the copy only doubled the notice).
 
 So the flag is **containment of a promise this harness cannot keep, not the answer to what teeth
 should be** — set it if you want the stronger signal in the Stop record and are content with one

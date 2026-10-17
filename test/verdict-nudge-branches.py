@@ -67,15 +67,23 @@ def run(hook, payload):
     if not out:
         return "silent"
     try:
-        msg = json.loads(out).get("systemMessage") or ""
+        d = json.loads(out)
+        msg = (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
+        human = d.get("systemMessage") or ""
     except Exception:
         return "unparseable"
+    # 0.63.0 (p-c6f0719a23): the branch is read from the agent's text, and the human line must be
+    # short (<= 200 characters) and not the agent's text again.
+    if len(human) > 200 or human == msg:
+        tail = "+long-human-line"
+    else:
+        tail = ""
     if "just came back in this tool result" in msg:
-        return "verdict"
+        return "verdict" + tail
     if "no well-formed" in msg:
-        return "malformed"
+        return "malformed" + tail
     if "no adversary output" in msg:
-        return "launched"
+        return "launched" + tail
     return "unknown-message"
 
 

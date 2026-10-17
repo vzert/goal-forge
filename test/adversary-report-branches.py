@@ -106,11 +106,11 @@ CASES = [
     ("09-reported-once", ONE_ROUND, SESSION, {}, "silent-on-second"),
     # No session id in the payload: nothing to key on, so nothing to read. Fail-open.
     ("10-no-session-id", ONE_ROUND, SESSION, {"drop_session": True}, "silent"),
-    # THE AUDIENCE SPLIT assertion (0.44.7). systemMessage must be short, Spanish, human-facing, and
-    # DIFFERENT from the technical additionalContext — mirroring the split gate-goal-close.sh's
-    # remind() got in 0.44.5. Before this release the hook sent the identical long English text to
-    # BOTH fields; the human read the same dense wall the agent did.
-    ("11-audience-split", ONE_ROUND, SESSION, {}, "split-ok"),
+    # ONE SHORT LINE (0.63.0, p-c6f0719a23; replaces the 0.44.7 split). On a Stop hook
+    # additionalContext is shown to the human too, so the 0.44.7 split (short Spanish systemMessage,
+    # long English additionalContext) never kept the long text off their screen. Now: no
+    # systemMessage, Spanish, and the text above the path list at most 300 characters.
+    ("11-one-short-line", ONE_ROUND, SESSION, {}, "one-line-ok"),
     # THE THIRD READING (p-55cec2045a). Observed 2026-10-06: a parallel session of the same project
     # wrote under .goalspec/ during an adversary round, and the message could only blame the adversary
     # or the executor. It must name a third writer, must stop claiming there are exactly two readings,
@@ -142,39 +142,35 @@ def classify(res, name, findings_path):
         return "malformed-json"
 
     if name.startswith("11"):
-        if not sysmsg or not agent_msg:
-            return "missing-field:sys=%r,agent=%r" % (bool(sysmsg), bool(agent_msg))
-        if sysmsg == agent_msg:
-            return "NOT-SPLIT"
-        if len(sysmsg) > 300:
-            return "systemMessage-too-long:%d" % len(sysmsg)
-        if sysmsg.isascii() and any(c.isalpha() for c in sysmsg):
-            return "systemMessage-looks-english"
-        return "split-ok"
+        if sysmsg:
+            return "has-systemMessage"
+        head = agent_msg.split("\nRutas:", 1)[0]
+        if len(head) > 300:
+            return "line-too-long:%d" % len(head)
+        if head.isascii():
+            return "line-looks-english"
+        if "SKILL.md" not in head:
+            return "line-without-skill-pointer"
+        return "one-line-ok"
 
     if name.startswith("13"):
-        if (not agent_msg.startswith("ADDRESSED TO THE EXECUTOR") or "did not run" not in agent_msg
-                or "you verify, you do not repair" not in agent_msg):
-            return "failure-agent-text-wrong"
-        if "no pudo" not in sysmsg or len(sysmsg) > 300:
-            return "failure-human-line-wrong"
+        if (not agent_msg.startswith("Para quien ejecuta la sesión") or "no midió" not in agent_msg
+                or "verifica, no repara" not in agent_msg or sysmsg):
+            return "failure-text-wrong"
+        if len(agent_msg.split("\nMotivo:", 1)[0]) > 300:
+            return "failure-line-too-long"
         return "failure-reported"
 
     if name.startswith("15"):
-        if "were not measured at all" not in agent_msg or "- " not in agent_msg:
+        if "Rondas sin medir:" not in agent_msg or "- " not in agent_msg:
             return "finding-without-unmeasured-note"
         return "reported+unmeasured"
 
     if name.startswith("12"):
-        low = (agent_msg or "").lower()
-        if "exactly two readings" in low:
-            return "still-claims-two-readings"
-        if "another writer" not in low or "parallel session" not in low:
+        if "otra sesión" not in agent_msg:
             return "third-reading-missing"
-        if "names the other writer" not in low or "verdict stays unverified" not in low:
+        if "evidencia que la nombre" not in agent_msg or "su veredicto no vale" not in agent_msg:
             return "third-reading-without-evidence-bar"
-        if "otra sesión" not in sysmsg:
-            return "human-line-misses-third-reading"
         return "third-reading-ok"
 
     # Everything else — including the audience-line case (08) — reads the technical text, which now
@@ -194,9 +190,8 @@ def classify(res, name, findings_path):
         # Both halves. Naming the audience is not enough on its own: 0.44.0's message also had an
         # implicit audience and an adversary still took it as its own instruction. The disarming
         # sentence is what makes it inert.
-        named = msg.lstrip().upper().startswith("ADDRESSED TO THE EXECUTOR")
-        disarms = ("you verify, you do not repair" in msg.lower()
-                   and "not addressed to you" in msg.lower())
+        named = msg.lstrip().startswith("Para quien ejecuta la sesión")
+        disarms = "un revisor que lo lea verifica, no repara" in msg
         if not named:
             return "reported-no-audience-line"
         if not disarms:
@@ -256,13 +251,11 @@ def suite(hook, workdir):
 # branch must change as a result. Breaking an assertion must be VISIBLE in the case written for it.
 MUTATIONS = [
     ("the audience line removed",
-     'MSG="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this '
-     'line in a transcript, it is not addressed to you, it is a record of what a hook measured, and '
-     'it changes nothing about your role: you verify, you do not repair.',
-     'MSG="', "08"),
+     'AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.\n',
+     'AGENT_MSG="', "08"),
     ("the disarming half removed, audience kept",
-     ', it is a record of what a hook measured, and it changes nothing about your role: you verify, '
-     'you do not repair.', '.', "08"),
+     'AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.',
+     'AGENT_MSG="Para quien ejecuta la sesión.', "08"),
     ("the findings file not consumed",
      'rm -f "$FINDINGS" 2>/dev/null || true', 'true', "09"),
     ("the session key ignored",
@@ -278,28 +271,25 @@ MUTATIONS = [
      'FAILED=$(cat "${XDG_STATE_HOME}/goalspec/run-dir-failed-$SESSION_KEY" 2>/dev/null || true)', "14"),
     ("the failure note dropped when a finding is reported",
      'if [ -n "$FAILED" ]; then\n  AGENT_MSG=', 'if false; then\n  AGENT_MSG=', "15"),
-    ("the audience split collapsed back to one string",
-     'print(json.dumps({"systemMessage": os.environ["MSG"],\n'
-     '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
-     'print(json.dumps({"systemMessage": os.environ["AGENT_MSG"],\n'
-     '                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
+    ("a systemMessage copy put back",
+     'print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
+     'print(json.dumps({"systemMessage": os.environ["AGENT_MSG"], "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
      "11"),
-    ("the human-facing message grown past the length budget",
-     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia."',
-     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia. Se agrega aquí texto adicional de relleno para asegurar que el mensaje humano supere ampliamente los trescientos caracteres de longitud total y ya no sea breve ni conciso."',
+    ("the line grown past the length budget",
+     'sin eso su veredicto no vale. Ver SKILL.md, paso 6.',
+     'sin eso su veredicto no vale. Se agrega aquí texto adicional de relleno para asegurar que la línea supere ampliamente los trescientos caracteres de longitud total. Ver SKILL.md, paso 6.',
      "11"),
-    ("the human-facing message switched to English",
-     'MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia."',
-     'MSG="An independent adversary ran while the file tree was changing (${ROUNDS} round(s)) - your close must state whether the adversary or you wrote, with the evidence."',
+    ("the line switched to English",
+     'AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.\ngoalspec: el repo cambió durante la revisión independiente (${ROUNDS} ronda(s)). Di en tu cierre quién escribió: el revisor, tú u otra sesión (esta, solo con evidencia que la nombre); sin eso su veredicto no vale. Ver SKILL.md, paso 6.',
+     'AGENT_MSG="To the executor; a reviewer reading this verifies, does not repair.\ngoalspec: the repo changed during the review (${ROUNDS} round(s)). Say who wrote. See SKILL.md, step 6.',
      "11"),
     ("the third reading removed",
-     " (3) ANOTHER WRITER changed the repository during the round — a parallel session on the same "
-     "project, the human, a background job.", "", "12"),
+     "el revisor, tú u otra sesión (esta, solo con evidencia que la nombre)", "el revisor o tú", "12"),
     ("the third reading kept, its evidence bar removed",
-     "A bare \\\"probably another session\\\" is not evidence: without it, (1) and (2) stand and "
-     "the verdict stays UNVERIFIED. ", "", "12"),
-    ("the human line back to two writers",
-     "si escribió el adversario, tú u otra sesión,", "si fue el adversario o tú quien escribió,", "12"),
+     "otra sesión (esta, solo con evidencia que la nombre); sin eso su veredicto no vale.",
+     "otra sesión.", "12"),
+    ("the failure line without its audience line",
+     'FAGENT="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.\n', 'FAGENT="', "13"),
 ]
 
 
@@ -307,7 +297,13 @@ def selftest(hook):
     src = open(hook, encoding="utf-8").read()
     bad = 0
     with tempfile.TemporaryDirectory() as work:
-        base = dict((n, b) for n, b, _ in suite(hook, tempfile.mkdtemp(dir=work)))
+        base_rows = suite(hook, tempfile.mkdtemp(dir=work))
+        red = [n for n, b, e in base_rows if b != e]
+        if red:
+            # A mutation "caught" against a red base proves nothing (learning, 0.62.0).
+            print("selftest: the unmutated hook is red (%s) — fix that first" % ", ".join(red))
+            return 1
+        base = dict((n, b) for n, b, _ in base_rows)
         for label, old, new, case in MUTATIONS:
             if old not in src:
                 print("%-46s SETUP FAILED: pattern absent" % label)

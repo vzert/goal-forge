@@ -6,6 +6,46 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.63.0] - 2026-10-17
+
+### Changed
+
+- **Short hook notices for the human (p-c6f0719a23).** On a Stop hook, `additionalContext` is
+  shown to the human as "Stop hook feedback" and a block's `reason` as a hook error (learning 67;
+  209 such errors in the maintainer's last 400 transcripts), so the 0.44.5 split (a short Spanish
+  `systemMessage` beside a long English paragraph for the agent) never kept the paragraph off the
+  human's screen. Now:
+  - `gate-goal-close.sh` sends ONE short Spanish line per branch, in one field (`additionalContext`
+    when advisory, the block `reason` under `GOAL_GATE_ENFORCE=1`), carrying the branch detail and
+    the SKILL.md section that holds the rest. Shown characters, measured by running the old and new
+    hook on the same payloads: missing spec 573 → 230, missing close 1053 → 245, close over a break
+    1282 → 245, unbacked `model=different` 1470 → 293, terminal command after the close ≤ 300. The
+    convergence floor keeps its two audiences, both short (124 + 165).
+  - `report-adversary-writes.sh` sends one Spanish line (audience line first, both halves kept;
+    the third reading and its evidence bar kept) plus the paths, at most 8 listed: 2058 → 333 with
+    two paths; the failure note 973 → 352.
+  - `route-external-adversary.sh` and `remind-quote-verdict.sh` (PreToolUse/PostToolUse, where
+    `additionalContext` is not shown to the human) keep the full text there and show the human one
+    short line: 1291 → 179 and 1665 / 397 / 1308 → 92 / 86 / 74. The external-backend reminder is
+    said once per session (the first goal-adversary spawn; read from the transcript, no state file).
+- **The Stop gate is quiet while background work is out.** A Stop while a subagent this session
+  launched in the background, or a background run of `external-adversary.sh`, has not come back is
+  a wait: the missing-spec and missing-close reminders say nothing, in both modes. Every other check
+  still speaks (a close over a break is still told). New `background_work_in_flight()` in
+  `hooks/lib/terminal_actions.py`: a launch counts until a hand-back or task-notification names its
+  id, and not after two hours (a session that died never gets the notification).
+- `test/claim-surface-carriers.py`: 3 new checks (the external-backend reminder's short human line, said
+  on the first spawn, silent on the second), 240 in total.
+- `test/adversary-report-branches.py --selftest` now requires the unmutated hook green first, as
+  `adversary-writes-branches.py` does since 0.62.0.
+
+### Verification
+
+- `gate-branches.py --compare` against the 0.62.0 gate, default and `GOAL_GATE_ENFORCE=1`: parity
+  OK, 45 branches, 0 changed. The new silence lives in nine new `entry-11`..`19` cases (both modes),
+  three of which fail against the 0.62.0 gate.
+- `verdict-nudge-branches.py --compare`: 5 declared changes (the human line), 0 unexpected.
+
 ## [0.62.0] - 2026-10-17
 
 The version skips 0.61.0: that number reached `main` in e603a20 and was reverted, so an install may

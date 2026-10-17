@@ -189,9 +189,25 @@ def main():
     rcfg = os.path.join(tmp, "..", os.path.basename(tmp) + "-config.json")
     with open(rcfg, "w") as fh:
         json.dump({"adversary": {"backend": "external"}}, fh)
-    route_out = context(emit("route-external-adversary.sh",
-                             {"tool_name": "Task", "tool_input": {"subagent_type": "goal-adversary"}},
-                             env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0])
+    route_raw = emit("route-external-adversary.sh",
+                     {"tool_name": "Task", "tool_input": {"subagent_type": "goal-adversary"}},
+                     env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0]
+    route_out = context(route_raw)
+    # 0.63.0 (p-c6f0719a23): said once per session — a second goal-adversary spawn (an earlier one
+    # with a different tool_use id in the transcript) is silent — and the human line is short.
+    rtx = os.path.join(tmp, "..", os.path.basename(tmp) + "-route.jsonl")
+    with open(rtx, "w") as fh:
+        fh.write(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Agent", "id": "tu-first",
+             "input": {"subagent_type": "goalspec:goal-adversary", "prompt": "p"}}]}}) + "\n")
+    route_first = emit("route-external-adversary.sh",
+                       {"tool_name": "Task", "tool_use_id": "tu-first", "transcript_path": rtx,
+                        "tool_input": {"subagent_type": "goal-adversary"}},
+                       env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0]
+    route_second = emit("route-external-adversary.sh",
+                        {"tool_name": "Task", "tool_use_id": "tu-second", "transcript_path": rtx,
+                         "tool_input": {"subagent_type": "goal-adversary"}},
+                        env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0]
     # report-adversary-writes.sh with one recorded finding for the session.
     rtmp = tempfile.mkdtemp(prefix="report-")
     os.makedirs(os.path.join(rtmp, "state", "goalspec", "run-s"), 0o700)  # the per-session run dir (0.62.0)
@@ -214,8 +230,10 @@ def main():
             "autonomy-violations=0 unsafe=0]")
     spec = "## Goal-spec\nObjective: whatever.\n"
     # gate-goal-close.sh, the branch with a spec and no completion-review.
-    gate_absent = emit("gate-goal-close.sh", {"last_assistant_message": spec,
-                       "transcript_path": jsonl("gate-absent", [spec])})[0]
+    # The text the gate emits, decoded (0.63.0: its Spanish line sits in additionalContext, and the
+    # raw JSON escapes every accented letter).
+    gate_absent = context(emit("gate-goal-close.sh", {"last_assistant_message": spec,
+                               "transcript_path": jsonl("gate-absent", [spec])})[0])
 
     # --- 1. The owner carries the rule and both guards -------------------------------------
     check("skill:rule-present", "claim surface" in skill)
@@ -413,14 +431,21 @@ def main():
           "ADDS the external CLI on terminal actions" in example)
     check("route-hook:external-is-added-not-instead",
           "ADDED to it, not routed " in route_out)
+    _rh = json.loads(route_raw).get("systemMessage", "") if route_raw.strip() else ""
+    check("route-hook:human-line-short", 0 < len(_rh) <= 200 and _rh != route_out, "%d chars" % len(_rh))
+    check("route-hook:first-spawn-speaks", bool(route_first.strip()))
+    check("route-hook:second-spawn-silent", not route_second.strip())
     check("readme:adversary-on-every-run",
           "independent adversary on every run" in readme)
     # Round 1 of 0.47.0 found five more carriers the first sweep missed (both backends agreed on two).
     gate_src = read(os.path.join(P, "hooks", "gate-goal-close.sh"))
     ext_src = read(os.path.join(P, "hooks", "external-adversary.sh"))
+    # 0.63.0 (p-c6f0719a23): the gate's Stop line is one short Spanish sentence (it is shown to the
+    # human too), so it carries the route-to-the-adversary half and points at SKILL.md for the rest;
+    # "none only when no round could run" lives in SKILL.md (checked above), not in the hook.
     check("gate:absent-msg-routes-to-adversary-first",
-          "then route to the adversary (every run since 0.47.0)" in gate_absent
-          and "is only for when no adversary round could run" in gate_absent)
+          "Pasa el resultado al revisor independiente" in gate_absent
+          and "SKILL.md, «Completion-review declaration»" in gate_absent)
     check("external-hook:header-is-additive",
           "this backend is additive" in ext_src)
     check("agent:different-tier-on-every-run",
@@ -466,11 +491,12 @@ def main():
     # The executor-facing message is the other carrier: it has to name its audience AND disarm an
     # adversary reading it, because the executor transcript is what an adversary reads for its
     # principle-4 check. Both halves, or the guard is only half there.
+    # 0.63.0: the report is one short Spanish line on a Stop hook (shown to the human too); the
+    # audience line keeps both halves, in Spanish.
     check("role:report-names-its-audience",
-          "ADDRESSED TO THE EXECUTOR OF THIS SESSION" in report_out)
+          report_out.startswith("Para quien ejecuta la sesión"))
     check("role:report-disarms-an-adversary-reader",
-          "it is not addressed to you" in report_out
-          and "changes nothing about your role: you verify, you do not repair" in report_out)
+          "un revisor que lo lea verifica, no repara" in report_out)
     # And the honest limit must travel with it, or the next reader takes a prose guard for a proof.
     check("role:report-states-the-guard-is-unmeasured",
           "PROSE GUARD and its effect on a model is NOT measured" in report)
@@ -628,12 +654,14 @@ def main():
           and "you verify, you do not repair" in out)
 
     # gate-goal-close.sh, the two executor-facing quote instructions, driven.
-    check("visible:gate-absent-emits", "no valid [COMPLETION-REVIEW] declared" in gate_absent
-          and VIS in gate_absent)
+    # 0.63.0: the short Spanish form of the rule (the long one is in SKILL.md, checked above).
+    VIS_SHORT_ES = "en texto visible (no en el razonamiento)"
+    check("visible:gate-absent-emits", "no hay un cierre válido" in gate_absent
+          and VIS_SHORT_ES in gate_absent)
     lam = spec + hold + "\n[COMPLETION-REVIEW: adversary model=different (x) backends=both]"
     out, _ = emit("gate-goal-close.sh", {"last_assistant_message": lam,
                   "transcript_path": jsonl("gate-model", [lam])})
-    check("visible:gate-model-requote-emits", "vuelve a citar" in out and VIS_ES in out)
+    check("visible:gate-model-requote-emits", "vuelve a citar" in out and "en texto visible" in out)
 
     # --- 0.48.2: moving-tip diff pointer + read the external hook's whole output ---------------
     def flat(t):
@@ -801,7 +829,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 237  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 240  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",
@@ -823,6 +851,8 @@ NO_COMMENT_FORM = {
     "example-config:no-superseded-formulation-survives": "JSON has no comment syntax to plant into",
     "route-hook:old-terminal-only-rule-gone-8": "its needle spans a line that does not start with #, so no "
                                                 "# comment can hold it; it reads the raw source",
+    "route-hook:second-spawn-silent": "structural: asserts the hook says nothing on a second spawn; "
+                                      "a commented-out hook says nothing too",
     "nwd:emitted-account-is-a-pointer": "its negative clause reads the EMITTED prompt; a comment in the hook "
                                         "never reaches it (its positive clauses are proven like the rest)",
 }

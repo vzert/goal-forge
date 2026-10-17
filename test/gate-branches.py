@@ -39,7 +39,7 @@ change, is a declared change that did not happen — a muted alarm of its own, a
 external-adversary case 38 once passed empty. test/expected_check.py holds that check for every
 suite with --expected; it is judged per prefix, so `stale-` passes when any stale case changed.
 """
-import argparse, json, os, re, subprocess, sys, tempfile
+import argparse, json, os, re, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
@@ -343,7 +343,7 @@ def run(gate, name, lam, turns, extra=None):
         return "SILENT", "-", "silent"
     try:
         d = json.loads(out)
-        msg = d.get("systemMessage") or d.get("reason") or ""
+        msg = d.get("systemMessage") or d.get("reason") or (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     except Exception:
         return "UNPARSEABLE", "-", "unparseable"
     decision = "block" if d.get("decision") == "block" else "advisory"
@@ -409,6 +409,9 @@ def stale_repo(name, files_after_review, committer_date, work=None):
     return work
 
 
+RECENT = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 60))
+
+
 def stale_transcript(events, name):
     """events: list of dicts {"timestamp": iso8601, "text": ...} and/or {"timestamp": iso8601,
     "bash": "command"} and/or {"timestamp": iso8601, "write": (file_path, content)} — same
@@ -416,6 +419,8 @@ def stale_transcript(events, name):
     p = os.path.join(STALE_TMP, name + ".jsonl")
     with open(p, "w", encoding="utf-8") as fh:
         for ev in events:
+            if ("spawn" in ev or "bgbash" in ev or "notify" in ev) and "timestamp" not in ev:
+                ev = dict(ev, timestamp=RECENT)
             content = []
             if "bash" in ev:
                 content.append({"type": "tool_use", "name": "Bash", "id": ev.get("bash_id"),
@@ -424,6 +429,41 @@ def stale_transcript(events, name):
                 fp, body = ev["write"]
                 content.append({"type": "tool_use", "name": "Write", "id": ev.get("write_id"),
                                 "input": {"file_path": fp, "content": body}})
+            if "spawn" in ev:
+                # 0.63.0: a subagent spawn and its result. ev["spawn"] = (tool_use_id, agent_id or
+                # None); an agent id makes the result an async launch receipt, None a foreground
+                # report.
+                sid, aid = ev["spawn"]
+                fh.write(json.dumps({"type": "assistant", "timestamp": ev.get("timestamp"),
+                                     "message": {"content": [{"type": "tool_use", "name": "Agent", "id": sid,
+                                                              "input": {"subagent_type": ev.get("type", "goal-adversary"),
+                                                                        "prompt": "p"}}]}}) + "\n")
+                res = ("Async agent launched successfully.\nagentId: %s (internal ID)" % aid) if aid else "report"
+                fh.write(json.dumps({"type": "user", "timestamp": ev.get("timestamp"),
+                                     "toolUseResult": {"isAsync": True, "agentId": aid} if aid else {"status": "completed"},
+                                     "message": {"role": "user", "content": [
+                                         {"type": "tool_result", "tool_use_id": sid,
+                                          "content": [{"type": "text", "text": res}]}]}}) + "\n")
+                continue
+            if "bgbash" in ev:
+                # 0.63.0: a background Bash call and its launch result. ev["bgbash"] = (tool_use_id,
+                # task_id, command).
+                bid, tid, cmd = ev["bgbash"]
+                fh.write(json.dumps({"type": "assistant", "timestamp": ev.get("timestamp"),
+                                     "message": {"content": [{"type": "tool_use", "name": "Bash", "id": bid,
+                                                              "input": {"command": cmd, "run_in_background": True}}]}}) + "\n")
+                fh.write(json.dumps({"type": "user", "timestamp": ev.get("timestamp"),
+                                     "toolUseResult": {"stdout": "", "backgroundTaskId": tid},
+                                     "message": {"role": "user", "content": [
+                                         {"type": "tool_result", "tool_use_id": bid,
+                                          "content": "Command running in background with ID: %s." % tid}]}}) + "\n")
+                continue
+            if "notify" in ev:
+                # 0.63.0: the harness reporting a background task back (queued while busy).
+                fh.write(json.dumps({"type": "attachment", "timestamp": ev.get("timestamp"),
+                                     "attachment": {"type": "queued_command", "prompt":
+                                                    "<task-notification>\n<task-id>%s</task-id>\n<status>completed</status>\n</task-notification>" % ev["notify"]}}) + "\n")
+                continue
             if "user" in ev:
                 # A user event (0.48.0): a typed `/goalspec` reaches the transcript only as the
                 # harness's `<command-name>` tag inside one.
@@ -664,7 +704,7 @@ def run_checkpoint_goalspec(gate, name, events):
         d = json.loads(out)
     except Exception:
         return "unparseable", None
-    msg = d.get("systemMessage") or d.get("reason") or ""
+    msg = d.get("systemMessage") or d.get("reason") or (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     m = re.search(r"\((completion-review:[^)]+)\)", msg)
     return "spoke", (m.group(1) if m else "NO-DETAIL")
 
@@ -715,6 +755,46 @@ ENTRY_NOSPEC_CASES = [
      [{"skill": "goalspec:goalspec"}, {"write": (".goalspec/checkpoint-ab12.md", SPEC)},
       {"text": "still working."}], {}, True,
      ("advisory-or-block", "completion-review:absent", None)),
+    # 0.63.0 (p-c6f0719a23): a Stop while background work this session launched is still out is a
+    # wait. The missing-spec and missing-close reminders stay quiet, in both modes; a returned,
+    # foreground, stale (>2h) or non-adversary background Bash launch does not count, and a turn that
+    # closes over a break is still told.
+    ("entry-11-agent-in-flight-no-spec-SILENT",
+     [{"skill": "goalspec:goalspec"}, {"spawn": ("tu-a", "agA"), "type": "goalspec:explorer"},
+      {"text": "waiting on the explorer."}], {}, True,
+     ("silent", None, False)),
+    ("entry-12-agent-returned-no-spec-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"spawn": ("tu-a", "agA")}, {"notify": "agA"},
+      {"text": "it came back."}], {}, True,
+     ("advisory", "goalspec:entered-no-spec", True)),
+    ("entry-13-foreground-spawn-no-spec-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"spawn": ("tu-a", None)}, {"text": "done."}], {}, True,
+     ("advisory", "goalspec:entered-no-spec", True)),
+    ("entry-14-launch-older-than-2h-no-spec-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"spawn": ("tu-a", "agA"), "timestamp": "2026-01-01T00:00:00Z"},
+      {"text": "waiting."}], {}, True,
+     ("advisory", "goalspec:entered-no-spec", True)),
+    ("entry-15-spec-adversary-in-flight-absent-SILENT",
+     [{"skill": "goalspec:goalspec"}, {"text": SPEC}, {"spawn": ("tu-a", "agA")},
+      {"text": "the adversary is running."}], {}, True,
+     ("silent", None, False)),
+    ("entry-16-spec-adversary-returned-absent-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"text": SPEC}, {"spawn": ("tu-a", "agA")}, {"notify": "agA"},
+      {"text": "it came back."}], {}, True,
+     ("advisory-or-block", "completion-review:absent", None)),
+    ("entry-17-spec-external-adversary-bg-bash-in-flight-SILENT",
+     [{"skill": "goalspec:goalspec"}, {"text": SPEC},
+      {"bgbash": ("tb-1", "bx1", "bash /p/hooks/external-adversary.sh < payload.txt > out.txt")},
+      {"text": "the external review is running."}], {}, True,
+     ("silent", None, False)),
+    ("entry-18-spec-other-bg-bash-absent-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"text": SPEC}, {"bgbash": ("tb-1", "bx1", "npm run dev")},
+      {"text": "server started."}], {}, True,
+     ("advisory-or-block", "completion-review:absent", None)),
+    ("entry-19-close-over-break-while-in-flight-SPEAKS",
+     [{"skill": "goalspec:goalspec"}, {"text": SPEC}, {"spawn": ("tu-a", "agA")},
+      {"text": V_BREAK_A + "\n" + CR_ADV}], {}, True,
+     ("advisory-or-block", "completion-review:closed-over-break", None)),
     ("entry-10-no-lib-degrades-SILENT",
      [{"skill": "goalspec:goalspec"}, {"text": "working on it."}], {}, False,
      ("silent", None, False)),
@@ -741,7 +821,7 @@ def run_entry_nospec(gate, name, events, extra, use_lib, enforce):
         d = json.loads(out)
     except Exception:
         return ("unparseable", None, False)
-    msg = d.get("systemMessage") or d.get("reason") or ""
+    msg = d.get("systemMessage") or d.get("reason") or (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     m = re.search(r"\((goalspec:entered-no-spec|completion-review:[^)]+)\)", msg)
     ctx = ((d.get("hookSpecificOutput") or {}).get("additionalContext") or "")
     return ("block" if d.get("decision") == "block" else "advisory",
@@ -763,7 +843,7 @@ def entry_nospec_failures(gate):
                      "transcript_path": stale_transcript(events, "entry-" + name)}, **extra)),
                     capture_output=True, text=True, env=dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(
                         REPO, "plugins", "goalspec"))).stdout)
-                if "thinking does not count" not in d["hookSpecificOutput"]["additionalContext"]:
+                if "lo que solo planeas en el razonamiento no cuenta" not in d["hookSpecificOutput"]["additionalContext"]:
                     ok = False
             print("%-46s %-8s %-10s %-30s ctx=%-5s%s" % (name, "ENFORCE" if enforce else "default",
                   got[0], got[1] or "", got[2], "" if ok else "   <-- FAILS (want %s)" % (want,)))
@@ -812,8 +892,11 @@ PAYLOAD_SHAPE_CASES = [
     ("floor-reentrant-human-only", SPEC + CR_ADV, FLOOR_TX, False, True, (True, False, False)),
     # Below the floor nothing changes: the advisory still re-enters the turn (that is its consumer),
     # and the opt-in teeth still block. A fix that quietly muted these would be the real regression.
-    ("below-floor-still-re-enters", SPEC + CR_ADV, BELOW_TX, False, False, (True, True, False)),
-    ("below-floor-ENFORCE-still-blocks", SPEC + CR_ADV, BELOW_TX, True, False, (True, False, True)),
+    # 0.63.0: below the floor the one short line goes in ONE field — additionalContext (advisory) or
+    # the block's reason (ENFORCE) — because on a Stop hook both are shown to the human; a
+    # systemMessage copy showed it twice.
+    ("below-floor-still-re-enters", SPEC + CR_ADV, BELOW_TX, False, False, (False, True, False)),
+    ("below-floor-ENFORCE-still-blocks", SPEC + CR_ADV, BELOW_TX, True, False, (False, False, True)),
     # Below the floor and re-entrant: total silence, exactly as 0.18.1 shipped it.
     ("below-floor-reentrant-silent", SPEC + CR_ADV, BELOW_TX, False, True, (False, False, False)),
 ]
@@ -832,7 +915,7 @@ FLOOR_MSG_MAX = 600
 #     property is live. The first version of this line named the waiver and this entry PINNED it —
 #     the suite was asserting the defect. Found by review, not by a suite, which is why it is written
 #     down here as a rule rather than left to the next reader of the 0.18.0 bullet.
-FLOOR_AGENT_MUST = ["STOP running adversary rounds"]
+FLOOR_AGENT_MUST = ["no lances más rondas del revisor"]
 FLOOR_AGENT_MUST_NOT = ["La decisión es tuya", "GOAL-CLOSE-WAIVED"]
 
 
@@ -847,7 +930,7 @@ def run_payload_shape(gate, name, lam, turns, enforce, reentrant=False):
     if not out:
         return (False, False, False), 0, ""
     d = json.loads(out)
-    msg = d.get("systemMessage") or d.get("reason") or ""
+    msg = d.get("systemMessage") or d.get("reason") or (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     ctx = d.get("hookSpecificOutput", {}).get("additionalContext") or ""
     return ((bool(d.get("systemMessage")), bool(ctx), d.get("decision") == "block"), len(msg), ctx)
 
@@ -869,7 +952,7 @@ def run_stale(gate, name, make_repo_fn, events, lam):
         d = json.loads(out)
     except Exception:
         return "unparseable"
-    msg = d.get("systemMessage") or d.get("reason") or ""
+    msg = d.get("systemMessage") or d.get("reason") or (d.get("hookSpecificOutput") or {}).get("additionalContext") or ""
     return "STALE" if "stale-terminal-action-after-close" in msg else ("silent" if not msg else "other:" + msg[:40])
 
 
@@ -891,23 +974,22 @@ def stale_suite(gate):
 # additionalContext is invisible to the human on a Stop hook is false per the official hooks
 # reference (it's literally labeled "Stop hook feedback"), so those two now assert the OPPOSITE:
 # systemMessage == additionalContext. The rest of remind() is untouched and still enforces the split.
+# 0.63.0 (p-c6f0719a23) replaces what this section pins. The split above assumed the long agent
+# text stayed off the human's screen; on a Stop hook it never did (additionalContext is shown as
+# "Stop hook feedback", a block reason as a hook_blocking_error). Every branch now sends ONE short
+# Spanish line, in ONE field, that names what to do and the SKILL.md section holding the detail:
+# no systemMessage, at most STOP_LINE_MAX characters, and the old English paragraph gone.
+STOP_LINE_MAX = 300
 AUDIENCE_SPLIT_CASES = [
-    # (name, lam, turns, enforce, must_be_in_system, must_be_in_agent, unified)
-    # unified=False (default, 0.44.5 shape): systemMessage (short, Spanish, human) MUST differ from
-    # additionalContext/reason (technical, English, agent) — the original split assumption.
-    # unified=True (0.44.8 pilot, two branches only): the split was retired for these — the official
-    # hooks reference confirms additionalContext on a Stop hook is ALWAYS shown to the human as
-    # "Stop hook feedback", so a separate technical string never hid anything; both fields now carry
-    # the SAME short message, pointing at SKILL.md instead of re-deriving the full instruction here.
-    # See memory/_pendientes.md p-a95b61154a for the finding this reverses.
+    # (name, lam, turns, enforce, must_be_in_line, skill_section, unused)
     ("audience-absent-default", SPEC + "I did the work.", None, False,
-     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared", False),
+     "Pasa el resultado al revisor independiente", "SKILL.md, «Completion-review declaration»", None),
     ("audience-absent-ENFORCE", SPEC + "I did the work.", None, True,
-     "Sigue sin haber un cierre formal", "no valid [COMPLETION-REVIEW] declared", False),
+     "Pasa el resultado al revisor independiente", "SKILL.md, «Completion-review declaration»", None),
     ("audience-closed-over-break", SPEC + CR_ADV + V_BREAK_A, None, False,
-     "Un revisor independiente marcó un problema sin resolver", "cannot close over it as-is", False),
-    ("audience-model-diff-unknown-UNIFIED", SPEC + CR_ADV_DIFF + V_HOLD, None, False,
-     "no se pudo confirmar por formato", "SKILL.md, «Completion-review declaration»", True),
+     "el cierre no puede pasarlo por alto", "SKILL.md, paso 6", None),
+    ("audience-model-diff-unknown", SPEC + CR_ADV_DIFF + V_HOLD, None, False,
+     "usa model=same", "SKILL.md, «Completion-review declaration»", None),
 ]
 # audience-stale-terminal-UNIFIED lives with the staleness backstop suite below (run_stale_audience),
 # not here — the stale-terminal-action-after-close DETAIL only fires from the real git/transcript
@@ -1084,17 +1166,16 @@ def main():
         return 1
 
     # Audience split — every remind() branch, not just the floor (0.44.5).
-    print("\n--- audience split: short Spanish systemMessage vs technical additionalContext/reason"
-          " (UNIFIED cases are the 0.44.8 exception: both fields equal on purpose) ---")
+    print("\n--- one short line per branch (0.63.0): no systemMessage, <= %d chars, points at SKILL.md ---"
+          % STOP_LINE_MAX)
     audience_failures = []
     for i, (name, system, agent) in enumerate(audience_split_suite(a.gate)):
-        _, _, _, _, want_system, want_agent, unified = AUDIENCE_SPLIT_CASES[i]
-        same_check = (system == agent) if unified else (system != agent)
-        ok = bool(want_system in system and want_agent in agent and same_check and system)
+        _, _, _, _, want_line, want_section, _ = AUDIENCE_SPLIT_CASES[i]
+        ok = bool(not system and want_line in agent and want_section in agent
+                  and len(agent) <= STOP_LINE_MAX and "no valid [COMPLETION-REVIEW]" not in agent)
         if not ok:
-            audience_failures.append("%s: system=%r agent=%r" % (name, system[:80], agent[:80]))
-        print("%-38s sys=%-60s agentlen=%-4d%s"
-              % (name, system[:60], len(agent), "" if ok else "   <-- FAILS"))
+            audience_failures.append("%s: system=%r line=%r" % (name, system[:80], agent[:120]))
+        print("%-38s len=%-4d %-70s%s" % (name, len(agent), agent[:70], "" if ok else "   <-- FAILS"))
 
     # audience-stale-terminal-UNIFIED — reuses stale-01's own git/transcript fixture, the only way to
     # actually fire completion-review:stale-terminal-action-after-close (see comment above
@@ -1117,13 +1198,14 @@ def main():
     d = json.loads(out) if out else {}
     sys_msg = d.get("systemMessage") or ""
     agent_msg = d.get("hookSpecificOutput", {}).get("additionalContext") or (d.get("reason") or "")
-    want = "ese cierre no la cubre"
-    ok = bool(want in sys_msg and sys_msg == agent_msg and sys_msg)
-    print("%-38s sys=%-60s agentlen=%-4d%s"
-          % ("audience-stale-terminal-UNIFIED", sys_msg[:60], len(agent_msg), "" if ok else "   <-- FAILS"))
+    want = "Si fue real"
+    ok = bool(not sys_msg and want in agent_msg and len(agent_msg) <= STOP_LINE_MAX
+              and "SKILL.md, «A completion-review closes the spec, not the session»" in agent_msg)
+    print("%-38s len=%-4d %-70s%s"
+          % ("audience-stale-terminal", len(agent_msg), agent_msg[:70], "" if ok else "   <-- FAILS"))
     if not ok:
-        audience_failures.append("audience-stale-terminal-UNIFIED: system=%r agent=%r"
-                                 % (sys_msg[:80], agent_msg[:80]))
+        audience_failures.append("audience-stale-terminal: system=%r line=%r"
+                                 % (sys_msg[:80], agent_msg[:120]))
 
     if audience_failures:
         print("\nAUDIENCE-SPLIT FAILURES: %d\n  %s" % (len(audience_failures), "\n  ".join(audience_failures)))

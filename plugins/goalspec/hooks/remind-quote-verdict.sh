@@ -210,8 +210,16 @@ else:
         "you have not actually read yet -- a spawn is not a verification."
     )
 
+# 0.63.0 (p-c6f0719a23): the human gets one short line; the full instruction goes to the agent
+# only (on PostToolUse additionalContext is not shown to the human).
+if verdicts:
+    human = "goalspec: volvió un veredicto del revisor; el agente debe citarlo tal cual en texto visible."
+elif models:
+    human = "goalspec: el revisor respondió sin un veredicto bien formado; no cuenta como aprobado."
+else:
+    human = "goalspec: el revisor corre en segundo plano; su veredicto llegará después."
 print(json.dumps({
-    "systemMessage": msg,
+    "systemMessage": human,
     "hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": msg},
 }))
 ' 2>/dev/null)

@@ -149,6 +149,15 @@ except Exception:
 def fail_open():
     print("OK"); sys.exit(0)
 
+# 0.63.0 (p-c6f0719a23): a Stop while a background subagent or a background external-adversary run
+# of this session is still out is a wait — the harness re-invokes the agent when it comes back. The
+# missing-spec and missing-close reminders stay quiet then; every other check still speaks.
+def work_in_flight():
+    try:
+        return ta is not None and ta.background_work_in_flight(tpath)
+    except Exception:
+        return False
+
 try:
     data = json.load(sys.stdin)
 except Exception:
@@ -269,7 +278,8 @@ if not _goal_spec_present:
                            for it in ta.read_transcript_items(tpath))
         except Exception:
             _entered = False
-    if _entered and not reentrant and not re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I):
+    if _entered and not reentrant and not re.search(r"\[GOAL-CLOSE-WAIVED\s+reason=[^\]]{20,}\]", text, re.I) \
+            and not work_in_flight():
         print("NOSPEC"); sys.exit(0)
     fail_open()
 
@@ -458,6 +468,9 @@ def remind(detail, skip_general_silence=False):
 lam_crs = re.findall(cr_pat, lam_text, re.I)
 crs = lam_crs or re.findall(cr_pat, tx_text, re.I)
 if not crs:
+    # Below the floor only: at the floor the parked-loop rule decides (bash side), unchanged.
+    if streak < 3 and work_in_flight():
+        fail_open()
     remind("completion-review:absent")
 mode, body = crs[-1]
 mode = mode.lower()
@@ -601,9 +614,11 @@ case "$RESULT" in
   NOSPEC)
     # 0.48.0, step 2b above: entered the loop, no spec anywhere. Advisory in BOTH modes, on
     # purpose — it exits here, before the GOAL_GATE_ENFORCE teeth at the end of this file.
-    MSG="goalspec se cargó en esta sesión pero no hay un ## Goal-spec visible (goalspec:entered-no-spec). Sin spec, el cierre no tiene contra qué revisarse."
-    AGENT_MSG="This session loaded the goalspec skill but no \`## Goal-spec\` exists as visible assistant text or in this session's .goalspec/checkpoint (goalspec:entered-no-spec). Write it now as a visible text block — a spec you only planned in your thinking does not count: thinking is not read, even when your screen shows it like a message. Then route the outcome to the adversary and declare [COMPLETION-REVIEW: …] as SKILL.md describes."
-    MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage":os.environ["MSG"],"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":os.environ["AGENT_MSG"]}}))'
+    # 0.63.0: ONE short line, in additionalContext only (the field reaches the agent AND is shown
+    # to the human as Stop hook feedback — learning 67), instead of a human line plus an agent
+    # paragraph that the human also saw. The detail lives in SKILL.md, which the agent carries.
+    MSG="goalspec: el loop está cargado y no hay ## Goal-spec (goalspec:entered-no-spec). Escríbelo en texto visible o con Write en el checkpoint de la sesión; lo que solo planeas en el razonamiento no cuenta. Ver SKILL.md, «The scaffold»."
+    MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":os.environ["MSG"]}}))'
     exit 0 ;;
   REMIND*) : ;;
   *) exit 0 ;;
@@ -627,75 +642,39 @@ case "$STREAK" in ''|*[!0-9]*) STREAK=0 ;; esac
 case "$LAMV" in 0|1) : ;; *) LAMV=1 ;; esac
 case "$REENTRANT" in 0|1) : ;; *) REENTRANT=1 ;; esac
 
-# Every branch below sets TWO variables, MSG and AGENT_MSG (0.44.5 — extends the floor's own
-# audience split, below, to the rest of remind()). MOST branches still carry two DIFFERENT strings:
-# MSG = short, Spanish, human-facing, always carrying the literal "(${DETAIL})" the branch classifier
-# greps for; AGENT_MSG = technical, English, unchanged content.
-# EXCEPTION (0.44.8, pilot on 2 branches — completion-review:stale-terminal-action-after-close and
-# completion-review:model-different-needs-nonunknown-self-report): the split assumed additionalContext
-# was invisible to the human on a Stop hook. The official hooks reference says the opposite —
-# Stop/SubagentStop additionalContext "is shown in the transcript as hook feedback", literally
-# labeled "Stop hook feedback" — so shortening only AGENT_MSG never reduced what the human saw. Those
-# two branches now set AGENT_MSG="$MSG": ONE short message in both fields, pointing at the matching
-# SKILL.md section instead of re-deriving the instruction inline. See memory/_pendientes.md
-# p-a95b61154a for the finding and CHANGELOG [0.44.8]. The other branches below are UNCHANGED and
-# still keep the two-string split until/unless a future release extends this collapse to them.
+# 0.63.0 (p-c6f0719a23): every branch below sets ONE short line, MSG — Spanish, at most ~300
+# characters, carrying the literal "(${DETAIL})" the branch suite greps for and ending in the
+# SKILL.md section that holds the detail. On a Stop hook additionalContext, a block `reason` and
+# systemMessage are ALL shown to the human (additionalContext as "Stop hook feedback": learning 67;
+# a block reason as a hook_blocking_error, 209 of them in the maintainer's last 400 transcripts),
+# so the 0.44.5 split — a short human line plus a long technical one — never kept the long one off
+# their screen; 0.44.8 collapsed two branches, this collapses the rest. The rules the long strings
+# re-stated (the waiver's grammar, model=same on UNKNOWN, where a quote must be) live in SKILL.md,
+# which the agent already carries. The payloads at the end of this file send MSG once.
+# The convergence floor keeps its two audiences (see that block): both lines are short now.
 case "$DETAIL" in
   completion-review:closed-over-break|completion-review:none-but-break-recorded)
-    MSG="Un revisor independiente marcó un problema sin resolver (${DETAIL}) — el cierre no lo puede pasar por alto todavía."
-    AGENT_MSG="Goal-spec present but your operative [ADVERSARY-VERDICT: …] is \`break\` (${DETAIL}) — your [COMPLETION-REVIEW: …] cannot close over it as-is. Do NOT reformulate the completion-review to paper over the break. Pick one, honestly: (1) address the confirmed violation(s) and get a fresh \`hold\` from the adversary — and if the only thing left unverified is the fixes themselves, that is ONE delta-scoped round (payload names the diff since this verdict and the findings each change resolves; it verifies each fix against ground truth AND that it invalidates nothing a prior round held), not a re-run of the whole outcome, which is what makes the loop terminate; (2) if you are stuck (e.g. three consecutive breaks — the design is wrong, not the wording), route to a genuinely different model/vendor and get a hold there; (3) if you've judged the residual break non-actionable, close explicitly with \`[GOAL-CLOSE-WAIVED reason=…]\` (≥20 chars) — this is usable by you, the agent, not only a human operator; it is the honest, greppable way to override, unlike a completion-review that quietly disagrees with its own verdict."
+    MSG="goalspec: el último veredicto del revisor independiente es break (${DETAIL}); el cierre no puede pasarlo por alto. Corrige y pide una ronda sobre el cambio, o cambia de revisor. Ver SKILL.md, paso 6 (convergence guard)."
     ;;
   convergence-floor-only)
     # Dead in practice: this detail is only ever emitted by python when streak>=3, and the
-    # `STREAK -ge 3` block near the end of this file UNCONDITIONALLY overwrites both MSG and
-    # AGENT_MSG below with the floor's own two-string payload before anything is printed. Kept only
-    # so every branch of this case sets both variables uniformly; do not treat this MSG as
-    # user-visible, and do not touch the floor block itself to "consolidate" this — see that block's
-    # own header note for why it stays separate.
-    MSG="Nothing objects to how you closed (${DETAIL}) — the declaration checks all pass. This is the convergence counter speaking on its own branch, because the count behind a clean-looking close is what the loop looks like from outside."
-    AGENT_MSG="$MSG"
+    # `STREAK -ge 3` block near the end of this file overwrites MSG with the floor's own payload
+    # before anything is printed. Kept only so every branch of this case sets MSG.
+    MSG="goalspec: el cierre está bien formado (${DETAIL}); habla el contador de rondas."
     ;;
   completion-review:model-different-needs-nonunknown-self-report)
-    # 0.44.8 — collapsed from two divergent strings (MSG/AGENT_MSG) to one. The split assumed
-    # additionalContext was an agent-only channel on a Stop hook; the official hooks reference says
-    # the opposite — it's the exact field the transcript labels "Stop hook feedback" and shows the
-    # human. So shortening only AGENT_MSG never reduced what the human actually saw. One message now,
-    # short enough for both. Pointing at SKILL.md alone was NOT enough here and shipped that way for
-    # one round (caught by an adversary round on this same release, [ungrounded]): the OLD AGENT_MSG's
-    # three causes split across two homes — SKILL.md:37-38 covers the OUTER grammar (own line, plain
-    # text, nothing after the closing `]`), but the INNER grammar (the id token after `/`, and where
-    # an independence caveat goes) lives only in agents/goal-adversary.md and external-adversary.sh —
-    # files the EXECUTOR reading this hook's output never loads (those are the adversary's own prompt
-    # and the external-backend script). So the inner-grammar detail is repeated here, not pointed at,
-    # because there is nowhere in the executor's own context that already carries it. See
-    # memory/_pendientes.md p-a95b61154a for the finding this whole branch responds to.
-    MSG="model=different no se pudo confirmar por formato (${DETAIL}) — no es defecto grave. Si el adversario reportó UNKNOWN o el mismo modelo, usa model=same. Si no: vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual, en su propia línea, sin negritas ni texto después del \`]\`, en un bloque de texto visible (una cita que solo escribes o planeas en tu razonamiento no cuenta: el razonamiento no se lee, aunque la pantalla lo muestre como un mensaje); el id después de la \`/\` debe ser un solo token sin espacios (nunca prosa), y cualquier aviso de independencia va en la línea SIGUIENTE, nunca dentro del corchete. Ver SKILL.md, «Completion-review declaration», para la gramática externa."
-    AGENT_MSG="$MSG"
+    MSG="goalspec: model=different sin respaldo (${DETAIL}). Si el revisor dijo UNKNOWN o tu modelo, usa model=same; si no, vuelve a citar su línea [ADVERSARY-MODEL: …] tal cual, sola, en texto visible. Ver SKILL.md, «Completion-review declaration»."
     ;;
   completion-review:stale-terminal-action-after-close)
-    # 0.44.8 — same collapse as above, same reason. The waiver mention below needs its own
-    # "(≥20 chars)" qualifier spelled out (caught by an adversary round on this same release,
-    # [incomplete], and its own delta-round found this comment ALSO mis-cited the floor's location —
-    # fixed here too): the mechanical floor lives at step 3 above ("Explicit close-over-break
-    # waiver"), reason=[^\]]{20,} — NOT step 5, whose own reason floor is a DIFFERENT regex
-    # (reason=.{20,}) governing `[COMPLETION-REVIEW: none reason=…]`, not the waiver. Only the
-    # closed-over-break branch already states the waiver's length; the default case ("*", below)
-    # does not — do not assume it does. SKILL.md:164 (the section this message points at) covers
-    # what a stale review means, never the waiver's own grammar — so this detail is stated here, not
-    # assumed inherited.
-    # 0.55.1: the message says what is measured (the TEXT of a command), not that an action
-    # happened. 3-tier-memory session d4f9b656 got it at 7 Stops for heredocs that only named a
-    # push, and had to answer a factual claim that was false. A reflog check that would have kept
-    # it silent there was built and dropped: four adversary rounds kept finding real pushes it
-    # missed (CHANGELOG 0.55.1).
-    MSG="Después del último cierre declarado corrió un comando cuyo texto nombra un push, merge, deploy o borrado (${DETAIL}). Este aviso lee el texto del comando, no lo que hizo. Si fue una acción real, ese cierre no la cubre: repite 4b + 6 para ella y declara un cierre nuevo, o usa [GOAL-CLOSE-WAIVED reason=…] (≥20 chars) si de verdad es bajo riesgo. Si esas palabras solo eran dato (un heredoc, un payload), escribe ese texto con Write en un archivo y pasa el archivo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
-    AGENT_MSG="$MSG"
+    # 0.55.1: say what is measured (the TEXT of a command), not that an action happened —
+    # "nombra" and "si fue real" keep that (3-tier-memory session d4f9b656, CHANGELOG 0.55.1).
+    MSG="goalspec: tras el último cierre corrió un comando que dice push, merge, deploy o borrado (${DETAIL}). Si fue real, repite 4b y 6 y cierra de nuevo; si era solo texto, pásalo en un archivo. Ver SKILL.md, «A completion-review closes the spec, not the session»."
     ;;
   *)
-    MSG="Sigue sin haber un cierre formal de este trabajo (${DETAIL}) — la decisión de cerrarlo o seguir es tuya."
-    AGENT_MSG="Goal-spec present but no valid [COMPLETION-REVIEW] declared (${DETAIL}). Run the inherited-decision sweep + red-team, then route to the adversary (every run since 0.47.0) and declare \`[COMPLETION-REVIEW: adversary …]\` with an [ADVERSARY-VERDICT: …] present -- \`[COMPLETION-REVIEW: none reason=…]\` (≥20 chars) is only for when no adversary round could run or nothing was executed. Both marker lines must be in YOUR turn's text, not only in the subagent's output -- as a visible text block you emit: a quote you only write or plan in your thinking does not count, thinking is not read, even when your screen shows it like a message. A model=different close needs the adversary's own [ADVERSARY-MODEL: …] line naming a real, non-UNKNOWN id in your turn; if it self-reported UNKNOWN or same, say model=same. Stuck over a residual break? \`[GOAL-CLOSE-WAIVED reason=…]\` is usable by you, the agent, not only a human operator."
+    MSG="goalspec: no hay un cierre válido (${DETAIL}). Pasa el resultado al revisor independiente, cita su veredicto en texto visible (no en el razonamiento) y declara [COMPLETION-REVIEW: …]. Ver SKILL.md, «Completion-review declaration»."
     ;;
 esac
+AGENT_MSG="$MSG"
 
 # Convergence floor (see header). Deliberately a claim about TEXT, not about rounds: it is damped
 # toward under-counting, so it tells you to check your own round count instead of asserting one.
@@ -784,7 +763,7 @@ if [ "$STREAK" -ge 3 ]; then
   # decides, on its own, whether to emit the agent-facing half at all based on re-entrancy (see
   # AGENT_MSG below). `Piso de convergencia` is the literal the branch suite keys its CONV/CONV!
   # column on — if this opening is ever reworded, that constant moves with it.
-  MSG="Piso de convergencia (${DETAIL}). Al menos ${STREAK} rondas de revisión independiente objetaron; nadie aprobó este trabajo. La decisión es tuya."
+  MSG="Piso de convergencia (${DETAIL}): al menos ${STREAK} rondas objetaron y nadie aprobó. La decisión es tuya."
   # 0.43.0 — the floor gets an AGENT-FACING line back, and it is NOT the line above.
   #
   # What 0.36.0 got right and this keeps: the message quoted in $MSG is written FOR THE HUMAN. Its
@@ -820,7 +799,7 @@ if [ "$STREAK" -ge 3 ]; then
   # so it is at most ONE re-ask per user prompt and can never be the runaway that made 0.18.1 an
   # emergency. On a re-entrant Stop the human still gets the announcement — that is the hole the
   # second adversary round of 0.36.0 found and it stays closed.
-  AGENT_MSG="goalspec convergence floor (${DETAIL}): at least ${STREAK} independent review rounds objected and nothing has approved this work. STOP running adversary rounds on it — do not spawn another goal-adversary and do not invoke the external backend again. More rounds is the failure mode here, not the fix: at this point the design is wrong, not the wording. Write what you have, say plainly which objection is unresolved, and hand the decision to the human. End the turn with no completion-review: that is a legitimate ending, not a failure to close. Do not treat this line as permission to continue."
+  AGENT_MSG="goalspec: no lances más rondas del revisor. Di qué objeción sigue abierta, deja la decisión al humano y termina el turno sin completion-review. Ver SKILL.md, paso 6."
   if [ "$REENTRANT" = "1" ]; then
     MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage": os.environ["MSG"]}))'
   else
@@ -871,20 +850,16 @@ fi
 # hardening this branch against a self-report you already trust everywhere else would buy nothing
 # while re-arming the loop this release exists to end.
 if [ "${GOAL_GATE_ENFORCE:-}" = "1" ] && [ "$STREAK" -lt 3 ]; then
-  # `reason` is the block explanation the harness/logs carry; `systemMessage` is the user-facing
-  # warning. 0.19.0 made both fields present; 0.44.5 makes them the two DIFFERENT per-audience
-  # strings every other branch now uses: `reason` = $AGENT_MSG (technical — it's the mechanism's own
-  # explanation, not something a human reads on screen), `systemMessage` = $MSG (short, human,
-  # Spanish). The suite classifies by the `decision` field (test/gate-branches.py:341), not by which
-  # message field is present, and derives its detail from `systemMessage or reason` (:338) — it
-  # prefers systemMessage, and $MSG still carries the literal "(${DETAIL})" every branch above sets,
-  # so the classifier is unaffected by the split; only the CONTENT split is new, not detection.
-  MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["AGENT_MSG"],"systemMessage":os.environ["MSG"]}))'
+  # `reason` only (0.63.0). 0.19.0 added a systemMessage beside it so the block was not worse for the
+  # human than the advisory; but a Stop block's reason is itself shown to the human (recorded as a
+  # hook_blocking_error), so the copy only showed the same reminder twice. The suite classifies by
+  # the `decision` field and reads the detail from whichever field carries the message.
+  MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"decision":"block","reason":os.environ["AGENT_MSG"]}))'
   exit 0
 fi
 
-# Default: fail-open advisory. Surface the reminder without blocking the stop. Same split as the
-# floor branch above and the ENFORCE block just above: systemMessage = $MSG (short, human,
-# Spanish), additionalContext = $AGENT_MSG (technical, English — what the agent reads and acts on).
-MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c 'import json,os; print(json.dumps({"systemMessage":os.environ["MSG"],"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":os.environ["AGENT_MSG"]}}))'
+# Default: fail-open advisory. Surface the reminder without blocking the stop: the one short line,
+# in additionalContext only (0.63.0) — it reaches the agent and the human sees it as Stop hook
+# feedback, so a systemMessage copy would show it twice.
+MSG="$MSG" "$PY" -c 'import json,os; print(json.dumps({"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":os.environ["MSG"]}}))'
 exit 0

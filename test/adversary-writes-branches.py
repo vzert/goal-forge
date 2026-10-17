@@ -478,7 +478,10 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
                              cwd=root, timeout=30).stdout
         after = subprocess.run(GIT + ["-C", root, "status", "--porcelain", "--untracked-files=all"],
                                capture_output=True, text=True).stdout
-        said = "did not run" in out
+        try:  # 0.63.0: the note is a Spanish line in additionalContext
+            said = "no midió" in json.loads(out)["hookSpecificOutput"]["additionalContext"]
+        except Exception:
+            said = False
         clean = before == after
         return ("reported-via-git-dir" if said else "silent") + "|" + ("repo-clean" if clean else "REPO-CHANGED")
     if name.startswith("30"):

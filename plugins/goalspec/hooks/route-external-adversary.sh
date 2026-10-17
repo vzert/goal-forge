@@ -55,6 +55,35 @@ for k in ("subagent_type", "subagentType", "agent_type", "agentType"):
 if "goal-adversary" not in subagent.lower():
     silent()
 
+# 1b. Once per session (0.63.0, p-c6f0719a23). The reminder never changes within a session, so it
+#     is said on the first goal-adversary spawn only: an earlier goal-adversary spawn (a different
+#     tool_use id) in the transcript of this session means it was already said. Read from the transcript,
+#     not from a state file. An unreadable transcript speaks, as before.
+def spawned_before(path, current_id):
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                if "goal-adversary" not in line:
+                    continue
+                try:
+                    ev = json.loads(line)
+                except Exception:
+                    continue
+                if not isinstance(ev, dict) or ev.get("type") != "assistant":
+                    continue
+                for blk in ((ev.get("message") or {}).get("content") or []):
+                    if isinstance(blk, dict) and blk.get("type") == "tool_use" \
+                            and blk.get("name") in ("Task", "Agent") and blk.get("id") != current_id \
+                            and "goal-adversary" in str((blk.get("input") or {}).get("subagent_type") or "").lower():
+                        return True
+    except Exception:
+        return False
+    return False
+
+_tp = data.get("transcript_path")
+if isinstance(_tp, str) and _tp and spawned_before(_tp, data.get("tool_use_id")):
+    silent()
+
 # 2. Resolve adversary.backend per key: project .claude/goal.config.json OVERRIDES user-global
 #    ~/.claude/goal.config.json — the SAME precedence external-adversary.sh applies to external_cmd,
 #    so the hook that nudges and the command that runs never disagree.
@@ -93,8 +122,12 @@ msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). T
        "it fires the same either way. If the external binary is unreachable it fails open to an "
        "UNVERIFIED hold — not a block.")
 
+# 0.63.0: the human gets one short line; the full reminder goes to the agent only (on PreToolUse
+# additionalContext is not shown to the human).
+human = ("goalspec: el revisor externo (" + ext_cmd + ") también toca si el trabajo es terminal "
+         "o tras dos breaks seguidos; detalle para el agente.")
 print(json.dumps({
-    "systemMessage": msg,
+    "systemMessage": human,
     "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": msg},
 }))
 ' 2>/dev/null)

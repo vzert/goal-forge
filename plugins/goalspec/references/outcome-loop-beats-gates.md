@@ -51,7 +51,8 @@ The tradeoff is this: every mechanism that *continues* the conversation (`decisi
 enforcement — it is the 0.18.1 runaway, which punished the agent that obeyed. Bounding it to one
 re-entry per user prompt is what makes it safe, and it also makes the enforce branch send the *same
 text, once*, that the advisory branch already sends: the measured delta is `preventedContinuation`
-in the Stop record, plus a `systemMessage` field the block payload used to omit. That is
+in the Stop record (a `systemMessage` copy the block payload carried from 0.19.0 to 0.62.0 was
+dropped in 0.63.0: the block's `reason` is itself shown to the human). That is
 **containment**, not teeth — the flag is honest about being a weaker signal, not a wall.
 
 Which is the principle above arriving at its own tooling: you cannot gate your way out of

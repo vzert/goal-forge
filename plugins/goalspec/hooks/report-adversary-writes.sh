@@ -84,17 +84,17 @@ fi
 # The measurement could not run (0.62.0). Said on its own, because a finding cannot come with it:
 # the run directory was unusable, so no snapshot was taken.
 if [ -n "$FAILED" ] && [ -z "$BODY" ]; then
-  FMSG="La vigilancia del revisor independiente no pudo guardar su estado en esta sesión, así que no comprobó si el revisor cambió archivos."
-  FAGENT="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a transcript, it is not addressed to you and changes nothing about your role: you verify, you do not repair.
-
-The goalspec hooks could not use this session's run directory, so the check that a goal-adversary subagent wrote nothing to the repository did not run, and a background hand-back may not have been recorded:
-$(printf '%s\n' "$FAILED" | sed 's/^/  - /')
-
-So no adversary round of this session so far has been measured for writes. That is not a finding against the adversary; it is a measurement that did not happen, and a hold from those rounds is not evidence the tree was left untouched. If the directory is someone else's or a planted one, do not delete it: it is not yours. Say in your close that this measurement did not run."
-  FMSG="$FMSG" FAGENT="$FAGENT" "$PY" -c '
+  # 0.63.0 (p-c6f0719a23): one short line in additionalContext only — on a Stop hook that field is
+  # shown to the human too (learning 67), so a systemMessage beside it showed the notice twice.
+  # The audience line stays first and keeps its two halves (who is addressed; that a goal-adversary
+  # reading it is not), shortened.
+  FAGENT="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.
+goalspec: la vigilancia del revisor no pudo guardar su estado, así que no midió si cambió archivos y un hold de esas rondas no lo prueba. Dilo en tu cierre; no borres esa carpeta si no es tuya. Ver SKILL.md, paso 6.
+Motivo:
+$(printf '%s\n' "$FAILED" | sed 's/^/  - /')"
+  FAGENT="$FAGENT" "$PY" -c '
 import json, os
-print(json.dumps({"systemMessage": os.environ["FMSG"],
-                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["FAGENT"]}}))
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["FAGENT"]}}))
 ' 2>/dev/null || true
   exit 0
 fi
@@ -106,53 +106,41 @@ PATHS=$(printf '%s\n' "$BODY" | sed -n 's/^path //p' | grep -v '^$' | sort -u ||
 ROUNDS=$(printf '%s\n' "$BODY" | grep -c '^ts=' || true)
 [ -z "$PATHS" ] && exit 0
 
-# Two strings, one per audience (0.44.7 — same split gate-goal-close.sh's remind() got in 0.44.5).
-# MSG = short, Spanish, human-facing: what a non-technical reader needs to know something happened
-# and that the close owes an explanation, nothing more. AGENT_MSG = the full technical text this
-# hook always produced — unchanged content, just no longer sent to systemMessage too.
+# ONE short line (0.63.0, p-c6f0719a23), in additionalContext only. 0.44.7 split it into a short
+# Spanish systemMessage and a long English additionalContext, but on a Stop hook additionalContext
+# is shown to the human as well (learning 67), so the long text never left their screen. The detail
+# the long text carried — the three readings and the evidence the third one costs — is in SKILL.md
+# step 6, which the executor carries; the line keeps what the executor must do and that bar.
 #
-# AUDIENCE LINE FIRST, inside AGENT_MSG. The executor's transcript is what a goal-adversary reads
-# for its own principle-4 dead-handoff check, so this text WILL end up in front of a future
-# adversary. In 0.44.0 an adversary read a second-person message of exactly this kind and concluded
-# its role had changed. So: say who is addressed, and say plainly that reading it changes nothing
-# for anyone else. HONEST LIMIT, because the alternative is the overclaim this project keeps getting
-# broken on: this is a PROSE GUARD and its effect on a model is NOT measured. The suite checks that
-# the line is here and what it says; it cannot check that an adversary reading it behaves
-# differently, and no test in this repo can. The load-bearing fix is the routing change above — this
-# line is a second layer. It stays out of MSG: a human reading systemMessage is not the audience it
-# defends against, and the disarming text is exactly the density this split exists to keep off their
-# screen.
-# THE THIRD READING (p-55cec2045a). Until this change the message offered exactly two readings —
-# the adversary wrote, or the executor did — which assumes one writer per repository. Observed on
-# 2026-10-06: a parallel session of the same project wrote .goalspec/informe-sin-spec.md while an
-# adversary was reviewing a mod OUTSIDE the repo, and the message could only accuse one of the two
-# parties that had not written it. The rejected alternative was to narrow the fingerprint to the
-# paths named in the payload: SubagentStart carries no prompt and no path list, and the recorded
-# 2026-09-12 incident was an adversary writing to five files nobody had pointed it at — exactly what a
-# narrowed fingerprint would stop seeing. So the measurement stays whole and the TEXT stops assuming a
-# single writer. HONEST LIMIT: this is prose; the hook still cannot tell (2) from (3). That is why
-# (3) is the one reading that must name its evidence — otherwise it is a free pass for the executor.
-MSG="Un adversario independiente corrió mientras el árbol de archivos cambiaba (${ROUNDS} ronda(s)) — falta decir en tu cierre si escribió el adversario, tú u otra sesión, con la evidencia."
-
-AGENT_MSG="ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a transcript, it is not addressed to you, it is a record of what a hook measured, and it changes nothing about your role: you verify, you do not repair.
-
-A goal-adversary subagent ran in this session and the repository content changed while it was running ($ROUNDS such round(s)). Paths whose bytes differ between the start and the end of a round:
-$(printf '%s\n' "$PATHS" | sed 's/^/  - /')
-
-There are three readings, and only the third is not a defect of this run — so it is the one that costs evidence. (1) The adversary WROTE to the work it was sent to measure — it was told not to, and a verdict it returned describes a state it created, so treat that verdict as UNVERIFIED rather than a pass, and re-run the review over a tree nobody edited mid-flight. (2) The EXECUTOR edited under an in-flight verifier — the same defect from the other end, since the verdict is then about a tree that no longer exists. A background round can produce (2) innocently; a synchronous closing round cannot. (3) ANOTHER WRITER changed the repository during the round — a parallel session on the same project, the human, a background job. This hook fingerprints the whole repository and cannot tell who wrote, so (3) is a real possibility, not an excuse: claim it only with evidence that names the other writer (the other session and what it wrote — e.g. a .goalspec/ file carrying a different session token — or a commit or timestamp from outside this session) AND that the path appears in no write by this session or by the adversary. A bare \"probably another session\" is not evidence: without it, (1) and (2) stand and the verdict stays UNVERIFIED. Say in your close which of the three it was, with the evidence, instead of leaving it implied. Nothing has been reverted and nothing is blocked: what to keep is yours to decide."
+# AUDIENCE LINE FIRST. The executor's transcript is what a goal-adversary reads for its own
+# principle-4 dead-handoff check, so this text WILL end up in front of a future adversary. In
+# 0.44.0 an adversary read a second-person message of exactly this kind and concluded its role had
+# changed. So it says who is addressed and that reading it changes nothing for a reviewer. HONEST
+# LIMIT: this is a PROSE GUARD and its effect on a model is NOT measured; the suite checks the
+# line is here, not that an adversary reading it behaves differently.
+# THE THIRD READING (p-55cec2045a): another writer (a parallel session, the human) can change the
+# repository during a round, and the hook cannot tell who wrote — so "otra sesión" is offered, and
+# only with evidence that names it; without that the verdict does not count.
+# At most 8 paths are listed; the rest are counted.
+NPATHS=$(printf '%s\n' "$PATHS" | grep -c . || true)
+LISTED=$(printf '%s\n' "$PATHS" | head -8 | sed 's/^/  - /')
+[ "$NPATHS" -gt 8 ] && LISTED="$LISTED
+  - y $((NPATHS - 8)) más"
+AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.
+goalspec: el repo cambió durante la revisión independiente (${ROUNDS} ronda(s)). Di en tu cierre quién escribió: el revisor, tú u otra sesión (esta, solo con evidencia que la nombre); sin eso su veredicto no vale. Ver SKILL.md, paso 6.
+Rutas:
+$LISTED"
 
 # Both happened in one session (a round whose directory was unusable, then one that worked): the
 # finding is reported and the unmeasured rounds are named under it, not dropped.
 if [ -n "$FAILED" ]; then
   AGENT_MSG="$AGENT_MSG
-
-Some rounds of this session were not measured at all, because the run directory could not be used:
+Rondas sin medir:
 $(printf '%s\n' "$FAILED" | sed 's/^/  - /')"
 fi
 
-MSG="$MSG" AGENT_MSG="$AGENT_MSG" "$PY" -c '
+AGENT_MSG="$AGENT_MSG" "$PY" -c '
 import json, os
-print(json.dumps({"systemMessage": os.environ["MSG"],
-                  "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))
 ' 2>/dev/null || true
 exit 0
