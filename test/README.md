@@ -27,20 +27,27 @@ clause (with that clause disabled, the suite still passed under a box). Its own 
 the paths it builds outside `TMPDIR` on purpose, registered with `tmp_cleanup.track(path)`, are
 removed all the same. It does not run on `os._exit`,
 SIGKILL or a killed CI job. **A new suite imports it before it builds any fixture.**
+**Nothing a suite builds goes in `/tmp` itself, unless its name starts with `suite_tmp.PREFIX`**
+(`goalspec-test-fixture-`): terminal-precheck's two fixtures that must sit directly in `/tmp` (a
+symlink outside every mktemp dir, case 133; a sticky `name.XXXXXX` TMPDIR nested in `/tmp`, case
+137b) use it. The checker below looks at nothing else in `/tmp`, so a path built there under another
+name is not seen (p-9991d7ddc9).
 
 `python3 test/temp-leak-check.py` runs every suite again (default mode and `--selftest`), each under
-a fresh `TMPDIR`, and fails if anything is left in it, a new path of yours appeared at any depth
-under `/tmp` (Claude Code's own `/tmp/claude-<uid>` is not walked), or the run
+a fresh `TMPDIR`, and fails if anything is left in it, a new path appeared in `/tmp` under the
+`goalspec-test-fixture-` prefix (or inside such a dir, at any depth), or the run
 exited non-zero (CI runs each `--selftest` only through here).
-`--selftest` plants a suite that leaks and requires a red. CI runs both; `manifest-checks.py` needs
+`--selftest` plants suites that leak (in `TMPDIR`, a prefixed `/tmp` dir, a file inside a
+prefixed dir that already existed) and requires a red for each, and one that leaves an unprefixed
+file in `/tmp`, as another program would, and requires a green. CI runs both; `manifest-checks.py` needs
 PyYAML, so the checker skips it where PyYAML is missing (the `suites` job) and the `manifests` job
 runs it on that file alone. Neither file is a suite.
 Why it exists (p-1a5a4e9828): before this, the suites left ~15 GB a day in `$TMPDIR` (546
 terminal-precheck dirs on 2026-10-14 alone), and a full disk then broke the module-swap recipe below.
 It does not drive `--compare` (that needs a pre-edit hook copy); those runs go through the same
-import. A `/tmp` path another process made during the run shows up as a false red, named; the
-two writers already identified (Claude Code's `/tmp/cc-socks/`, context-mode's
-`/tmp/context-mode-mcp-ready-*`) are listed as `ignored` instead.
+import. Until p-9991d7ddc9 it walked all of `/tmp` and every other writer there (Claude Code's
+sockets, context-mode, a Paperclip read-loop hook) turned it red until it was named in a list; the
+prefix replaced that list.
 
 ## `manifest-checks.py` — the silent-failure classes no branch suite can see
 

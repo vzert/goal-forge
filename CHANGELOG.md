@@ -6,6 +6,21 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [Unreleased]
+
+Tests only; nothing installed changes, so no version bump.
+
+- **temp-leak-check no longer watches all of `/tmp`** (p-9991d7ddc9). It walked every path of this
+  user under `/tmp`, where other programs write all the time (Claude Code's sockets, context-mode, a
+  Paperclip read-loop hook), and each new writer turned it red until it was added to a list of
+  ignored prefixes. Now a suite builds nothing directly in `/tmp` unless its name starts with
+  `goalspec-test-fixture-` (the new side-effect-free `test/suite_tmp.py`), and the checker looks only
+  at the suite's `TMPDIR` and at that prefix; the ignore list is gone. terminal-precheck's two `/tmp`
+  fixtures (`goalspec-outside-<pid>`, `nest.*` with `3t-inner.*` inside) were renamed to it; its 167
+  cases print the same output byte for byte. `--selftest` now also requires a red for a prefixed dir
+  left in `/tmp` and a green for an unprefixed file another program leaves there. The trade: a suite
+  that builds in `/tmp` under another name is not seen; `test/README.md` states the rule.
+
 ## [0.63.0] - 2026-10-17
 
 ### Changed

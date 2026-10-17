@@ -25,6 +25,7 @@ import tmp_cleanup  # removes this run's temp dirs at exit (p-1a5a4e9828)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
+import suite_tmp  # noqa: E402 — the prefix for the two fixtures built directly in /tmp
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # --compare runs this file again in a child process with this variable pointing at the other copy,
@@ -931,7 +932,8 @@ os.symlink(OUTSIDE, LINK)                           # mktemp-shaped name, target
 # long-lived one), and a symlink OUTSIDE every mktemp dir that points into one.
 PERSIST = tempfile.mkdtemp(prefix="claude-state.")
 os.chmod(PERSIST, 0o755)
-OUTDIR = tmp_cleanup.track(os.path.join(os.path.realpath("/tmp"), "goalspec-outside-%d" % os.getpid()))
+OUTDIR = tmp_cleanup.track(os.path.join(os.path.realpath("/tmp"),
+                                       suite_tmp.PREFIX + "outside-%d" % os.getpid()))
 os.makedirs(OUTDIR, exist_ok=True)
 INLINK = os.path.join(OUTDIR, "into-mktemp")
 os.symlink(MKT, INLINK)
@@ -1021,7 +1023,7 @@ case("137-mktemp-dir-only-in-an-error-result-DENY", lambda: _tc(
 # under temp-leak-check on Linux has. The hook used to judge with the first root in set order, so
 # with /tmp first it took the sticky TMPDIR for the mktemp dir and denied; the order is
 # PYTHONHASHSEED's, so the case runs the hook under seeds 1-6 and wants an allow from each.
-NEST = tempfile.mkdtemp(prefix="nest.", dir=os.path.realpath("/tmp"))
+NEST = tempfile.mkdtemp(prefix=suite_tmp.PREFIX + "nest.", dir=os.path.realpath("/tmp"))
 os.chmod(NEST, 0o1777)
 NESTED_MKT = tempfile.mkdtemp(prefix="3t-inner.", dir=NEST)
 

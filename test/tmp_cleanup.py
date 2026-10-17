@@ -6,7 +6,8 @@ handler that removes it. So every temp path of the run lands inside it: the suit
 calls, a nested `--selftest` or `--compare` child (which imports this module again, one level down),
 and what the hooks write from their subprocesses (`mktemp` in bash, state files keyed by session).
 The handler runs after a pass, a failure, an uncaught exception or sys.exit; not on os._exit or
-SIGKILL. Paths a suite builds outside TMPDIR on purpose (terminal-precheck's /tmp fixture) are
+SIGKILL. Paths a suite builds outside TMPDIR on purpose (terminal-precheck's two /tmp fixtures,
+named with suite_tmp.PREFIX so temp-leak-check sees them) are
 registered with `track()`, and so is every mkdtemp/mkstemp given an explicit `dir=`.
 
 The dir is mode 1777 (sticky): hooks/lib/terminal_actions.py counts only a sticky dir, or macOS's

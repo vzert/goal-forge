@@ -97,7 +97,9 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    silent-failure classes no branch suite can see. Needs PyYAML. `--selftest` breaks each of those
    in a throwaway copy and requires the checker to notice; run it after editing that file).
    Plus `python3 test/temp-leak-check.py` (**not a suite**: re-runs every suite, default mode and
-   `--selftest`, each under a fresh `TMPDIR`, and fails if one leaves anything in it or in `/tmp`, or exits non-zero;
+   `--selftest`, each under a fresh `TMPDIR`, and fails if one leaves anything in it or in `/tmp` under the
+   `goalspec-test-fixture-` prefix of `test/suite_tmp.py` (the rest of `/tmp` is not watched, so a
+   suite never builds there under another name), or exits non-zero;
    `--selftest` plants a leaking suite and requires a red). Every suite starts with
    `import tmp_cleanup`, which gives the run its own `TMPDIR` and removes it at exit — a new suite
    must too (p-1a5a4e9828: the suites used to leave ~15 GB a day in `$TMPDIR`).

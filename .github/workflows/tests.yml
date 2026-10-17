@@ -80,7 +80,7 @@ jobs:
           failed=0
           for t in test/*.py; do
             case "$(basename "$t")" in
-              manifest-checks.py|temp-leak-check.py|tmp_cleanup.py|expected_check.py) continue ;;
+              manifest-checks.py|temp-leak-check.py|tmp_cleanup.py|expected_check.py|suite_tmp.py) continue ;;
             esac
             echo "::group::$t"
             python3 "$t"
