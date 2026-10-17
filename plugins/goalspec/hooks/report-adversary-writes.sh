@@ -36,8 +36,9 @@
 # Deliberately NOT blocking. Like the rest of this rail it reports and never reverts: undoing a
 # change the human may have made themselves is the no-harm violation being checked for.
 #
-# Fail-open everywhere: no findings file, unparseable payload, no session id, a run directory that
-# fails the owner/mode check (never read: its content could be planted) -> exit 0, silent.
+# Fail-open everywhere: no findings file, unparseable payload, no session id -> exit 0, silent. A run
+# directory that fails the owner/mode check is never read (its content could be planted); when the
+# watcher could not use it, it left a failure note, and that note is what this hook reports.
 #
 # Registered by hooks/hooks.json on Stop.
 
