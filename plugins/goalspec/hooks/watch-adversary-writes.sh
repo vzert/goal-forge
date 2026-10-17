@@ -101,17 +101,12 @@ REPO_ROOT=$(git -C "$PAYLOAD_CWD" rev-parse --show-toplevel 2>/dev/null) || exit
 # library through CLAUDE_PLUGIN_ROOT, as remind-handback-verdict.sh does.
 RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
 [ -f "$RUN_DIR_PY" ] || RUN_DIR_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/run_dir.py"
-SNAP_DIR=$("$PY" "$RUN_DIR_PY" ensure "$SESSION_KEY" watch-adversary-writes 2>/dev/null)
+# The repo root goes along: a state directory inside the repository under review (a repo rooted at
+# the home directory) would make the snapshot one of the files it fingerprints, so run_dir.py
+# refuses it and leaves a note. Compared in Python, as real case-normalised paths: Git Bash on
+# Windows gives a forward-slash root and Python a backslash path.
+SNAP_DIR=$("$PY" "$RUN_DIR_PY" ensure "$SESSION_KEY" watch-adversary-writes "$REPO_ROOT" 2>/dev/null)
 [ -n "$SNAP_DIR" ] || exit 0
-# The state directory inside the repository under review (a repo rooted at the home directory): the
-# snapshot would be one of the files it fingerprints, and every round would report a write. Say so
-# instead of measuring.
-case "$SNAP_DIR" in
-  "$REPO_ROOT"/*)
-    "$PY" "$RUN_DIR_PY" note "$SESSION_KEY" watch-adversary-writes \
-      "$SNAP_DIR is inside the repository under review ($REPO_ROOT)" >/dev/null 2>&1 || true
-    exit 0 ;;
-esac
 SNAP="$SNAP_DIR/$AGENT_KEY.fp"
 
 # CONTENT, not `git status`. The tree under review is almost always ALREADY dirty (the uncommitted

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # cleanup-run-dir.sh — SessionEnd hook. Removes this session's run directory,
 # ${XDG_STATE_HOME:-~/.local/state}/goalspec/run-<session_id>/ (%LOCALAPPDATA% on Windows), its failure note, and any run directory of this user
-# older than 7 days (hooks/lib/run_dir.py).
+# untouched for 30 days (hooks/lib/run_dir.py).
 #
 # Why (0.62.0): the run directory holds one snapshot per goal-adversary round, plus the findings and
 # hand-back records the other hooks consume. The shared directory it replaced was never cleaned —
@@ -11,7 +11,7 @@
 # It removes ONLY the directory whose name carries the session id in the payload, and only if
 # run_dir.py's check passes: a real directory, not a symlink, owned by this uid, mode 0700. A
 # directory under that name that belongs to someone else is not ours to delete. If SessionEnd never
-# fires (a crash), the directory stays until a later session's SessionEnd prunes it after 7 days. If a
+# fires (a crash), the directory stays until a later session's SessionEnd prunes it after 30 days. If a
 # resumed session keeps its id, the next hook simply creates it again.
 #
 # Fail-open everywhere and silent: no session id, unparseable payload, nothing to remove -> exit 0.

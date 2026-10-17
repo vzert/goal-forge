@@ -542,12 +542,21 @@ verdict stays UNVERIFIED); the human line must name "otra sesión" too.
 **Its baseline is NOT 0.44.0**, and that matters: this hook did not exist then, so "fails against the
 old hook" says nothing about it. An external partner caught exactly that — case 09 passes against the
 0.44.0 watcher for the wrong reason (that hook never reports, so "silent on the second call" is
-trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs ten
+trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs 14
 of them, each required to be noticed by the case written for it.
+
+0.62.0 (p-42d7c57137): the findings live in the session's run directory,
+`${XDG_STATE_HOME:-~/.local/state}/goalspec/run-<session_id>/` (`hooks/lib/run_dir.py`). **13-15**
+pin the failure note `run_dir.py` leaves when that directory cannot be used: reported once, in
+Spanish for the human and with the audience line for the agent, and under a finding when both
+happen. **16** pins that a run directory failing the owner/mode check is never read. Each case
+writes the old layout and the new one, so `--compare` against the 0.60.4 reporter changes only 13
+and 15. The suite points `XDG_STATE_HOME` and `HOME` inside its own temp directory.
 
 ```sh
 python3 test/adversary-report-branches.py
 python3 test/adversary-report-branches.py --selftest
+python3 test/adversary-report-branches.py --compare /tmp/report-BASELINE.sh --expected 13,15
 ```
 
 ## `adversary-writes-branches.py` — the subagent read-only rail
@@ -555,7 +564,8 @@ python3 test/adversary-report-branches.py --selftest
 For `hooks/watch-adversary-writes.sh` (0.44.0), the subagent half of the same rail. Hermetic apart
 from `git`: each case builds a throwaway repo, feeds the hook a synthetic `SubagentStart` payload,
 mutates the repo the way a misbehaving adversary would, then feeds it the matching `SubagentStop`
-payload. `TMPDIR` is redirected per case so snapshots never collide and never touch the project.
+payload. `TMPDIR`, `XDG_STATE_HOME` and `HOME` are redirected per case so snapshots never collide,
+never touch the project and never touch the real home.
 
 Why those two events and not the `Task` hooks already registered on `PreToolUse`/`PostToolUse`:
 subagents run in the **background**, so the `Task` tool result is a handle and `PostToolUse` fires
@@ -577,9 +587,24 @@ then writes again, and 0.44.0 deleted the snapshot on that first stop, so everyt
 unmeasured — which is exactly how the real 2026-09-12 writes escaped. Against the 0.44.0 hook, 02-05
 come back `EMITTED-TO-SUBAGENT` and 10 comes back `silent`.
 
+0.62.0 (p-42d7c57137) moved the state from a fixed `/tmp` directory, shared by every Linux user, to
+a run directory per session in the user's own state directory (`hooks/lib/run_dir.py`). **11-14**
+and **30** run the hook: no session id writes nothing, a wrong-mode or symlinked directory under the
+session's name is refused with a note, two sessions keep separate 0700 directories, and a state
+directory inside the repository is noted instead of measured. **15-18** run the SessionEnd cleanup.
+**19-33** drive `run_dir.py` directly: relative paths, another owner (`getuid` patched; a suite
+cannot be another user), directories on the path that another account can write (shared, symlinked,
+group-writable with a shared group, sticky of another owner), a group-writable path with a private
+group (accepted: the Debian/Ubuntu `~/.local`), an unusable `XDG_STATE_HOME`, the Windows branch
+(simulated, no Windows runner), a planted failure note, and the 30-day prune. `classify` reads both
+layouts, so `--compare` against the 0.60.4 watcher changes only 11-14 and 30. These pieces have no
+older version to compare against, so `--selftest` applies 17 mutations of `run_dir.py` in a copy of
+the plugin and requires the case written for each to change.
+
 ```sh
 python3 test/adversary-writes-branches.py
-python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 02
+python3 test/adversary-writes-branches.py --selftest
+python3 test/adversary-writes-branches.py --compare /tmp/watch-BASELINE.sh --expected 11,12,13,14,30
 ```
 
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
@@ -877,8 +902,8 @@ thinking, four pushes denied). The hook has two halves: `record` on SubagentStop
 goal-adversary type) stores the report's `[ADVERSARY-MODEL]`/`[ADVERSARY-VERDICT]` lines per session
 and prints nothing — SubagentStop output goes to the subagent, not the executor; `remind` on
 UserPromptSubmit consumes them and names the exact lines, unless a text block written after the
-record already quotes them. It never reads `prompt`, which the human can type. 32 cases, hermetic
-(synthetic transcripts, a per-case `TMPDIR`): the reminding ones (hand-back call, last-text fallback,
+record already quotes them. It never reads `prompt`, which the human can type. 34 cases, hermetic
+(synthetic transcripts, a per-case `TMPDIR`, `XDG_STATE_HOME` and `HOME`): the reminding ones (hand-back call, last-text fallback,
 bare type, break with its note, a resumed adversary's latest report, two adversaries, a missing
 model line, an identical line quoted only BEFORE the record), the silent ones (other or look-alike
 type, no verdict, no record, already quoted, other session, a forged prompt, malformed payload,
@@ -889,7 +914,8 @@ python3 test/handback-verdict-branches.py
 python3 test/handback-verdict-branches.py --selftest
 ```
 
-New in 0.46.8, so `--selftest` copies the plugin and applies 15 mutations (type check dropped or
+New in 0.46.8, so `--selftest` copies the plugin and applies 26 mutations (0.62.0 added five of
+`run_dir.py` and cases 34-35, a wrong-mode or symlinked run directory, never used and never read) (type check dropped or
 made a substring, `record` printing, the record not consumed, the quoted check or its time bound
 dropped, text preferred over the hand-back call, the session left out of the key, no per-agent
 dedupe, the model line, break note or visible-text clause dropped, either half firing on any

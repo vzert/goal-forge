@@ -30,8 +30,10 @@ ACL, and %LOCALAPPDATA% is private to the user by default), so only "a real dire
 symlink or junction" is checked there.
 
 Anything else is someone else's or a plant: the hook writes nothing there and a FAILURE NOTE is left
-in the same state directory, which report-adversary-writes.sh turns into one line on `Stop` (the one
-event whose output reaches the executor and the human). A payload with no session_id gets no
+in the first state directory whose path passes the same check (never following a symlink at the
+note's name), which report-adversary-writes.sh turns into one line on `Stop` (the one event whose
+output reaches the executor and the human); a note is read back only from such a directory, so a
+note planted in a refused one is never reported. A payload with no session_id gets no
 directory at all. Only absolute paths are used: a relative XDG_STATE_HOME, LOCALAPPDATA or HOME is
 ignored, so nothing is ever written relative to the hook's working directory.
 
@@ -40,20 +42,21 @@ predictable name, and a swap from another account after the check. Not root, and
 racing its own hooks.
 
 Usable as a module (remind-handback-verdict.sh imports it) and as a command (the bash hooks):
-  run_dir.py ensure <session_id> <hook>          print the directory, creating it; on failure print
-                                                 nothing and leave a failure note
+  run_dir.py ensure <session_id> <hook> [repo]   print the directory, creating it; on failure (or
+                                                 when it lies inside `repo`) print nothing and
+                                                 leave a failure note
   run_dir.py path <session_id>                   print the directory only if it exists and passes
   run_dir.py note <session_id> <hook> <reason>   leave a failure note
   run_dir.py failures <session_id>               print this session's failure notes, delete them
   run_dir.py remove <session_id>                 delete the directory (if it passes), its notes, and
-                                                 this user's run directories older than 7 days
+                                                 this user's run directories untouched for 30 days
 Every command exits 0: a state directory that cannot be used is never a reason to block anything.
 """
 import os, re, shutil, stat, sys, time
 
 IS_WINDOWS = os.name == "nt"
 PREFIX = "run-"
-STALE_SECONDS = 7 * 24 * 3600
+STALE_SECONDS = 30 * 24 * 3600
 
 
 def key(session_id):
@@ -120,6 +123,27 @@ def check_parent(parent):
         d = up
 
 
+def _norm(q):
+    return os.path.normcase(os.path.realpath(q))
+
+
+def _redirected(p):
+    """True when `p` itself resolves somewhere else than where its name sits (a symlink, or a
+    Windows junction, which lstat does not flag on every Python and os.path.isjunction exists only
+    from 3.12)."""
+    return _norm(p) != os.path.join(_norm(os.path.dirname(p)), os.path.normcase(os.path.basename(p)))
+
+
+def inside(path, root):
+    """True when `path` is `root` or lies under it, compared as real, case-normalised paths (Git
+    Bash on Windows hands a forward-slash root, Python a backslash path)."""
+    try:
+        a, b = _norm(path), _norm(root)
+        return os.path.commonpath([a, b]) == b
+    except Exception:
+        return False
+
+
 def check(p):
     """-> "" when `p` is a usable run directory, else the reason it is not."""
     why = check_parent(os.path.dirname(p))
@@ -129,8 +153,8 @@ def check(p):
         st = os.lstat(p)
     except OSError as e:
         return "cannot stat %s: %s" % (p, e.strerror)
-    if stat.S_ISLNK(st.st_mode) or getattr(os.path, "isjunction", lambda _p: False)(p):
-        return "%s is a symlink" % p
+    if stat.S_ISLNK(st.st_mode) or _redirected(p):
+        return "%s is a symlink or junction" % p
     if not stat.S_ISDIR(st.st_mode):
         return "%s is not a directory" % p
     if IS_WINDOWS:
@@ -143,20 +167,35 @@ def check(p):
     return ""
 
 
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def _note_path(b, session_id):
+    return os.path.join(b, "run-dir-failed-" + key(session_id))
+
+
 def note_failure(session_id, hook, reason):
     for b in bases():
         try:
             os.makedirs(b, 0o700, exist_ok=True)
-            with open(os.path.join(b, "run-dir-failed-" + key(session_id)), "a", encoding="utf-8") as fh:
+            # Only where another account cannot plant or redirect the note: the same path check.
+            if check_parent(b) or _redirected(b):
+                continue
+            fp = _note_path(b, session_id)
+            if os.path.islink(fp) or (os.path.lexists(fp) and _redirected(fp)):
+                continue
+            fd = os.open(fp, os.O_WRONLY | os.O_APPEND | os.O_CREAT | _NOFOLLOW, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write("%s: %s\n" % (hook, reason))
             return
         except Exception:
             continue  # e.g. XDG_STATE_HOME is a file: try the next place
-    # nowhere writable to say it: silent, as before
+    # nowhere safe to say it: silent, as before
 
 
-def ensure(session_id, hook):
-    """-> the run directory, created if absent; "" when there is no id or it cannot be used."""
+def ensure(session_id, hook, repo=""):
+    """-> the run directory, created if absent; "" when there is no id, it cannot be used, or it
+    lies inside `repo` (the repository under review would see its own snapshot as a write)."""
     k = key(session_id)
     if not k:
         return ""
@@ -176,10 +215,10 @@ def ensure(session_id, hook):
         # state directory: a refused directory is reported, not routed around.
         why = check(p)
         break
+    if not why and repo and inside(p, repo):
+        why = "%s is inside the repository under review (%s)" % (p, repo)
     if not why:
-        # Real path: the checked chain, never re-followed; and what watch-adversary-writes.sh
-        # compares with the repository root git reports, which is resolved too.
-        return os.path.realpath(p)
+        return os.path.realpath(p)  # the checked chain, never re-followed
     note_failure(session_id, hook, why)
     return ""
 
@@ -202,9 +241,13 @@ def take_failures(session_id):
         return []
     body = ""
     for b in bases():
-        fp = os.path.join(b, "run-dir-failed-" + k)
+        fp = _note_path(b, session_id)
         try:
-            body += open(fp, encoding="utf-8").read()
+            if not os.path.lexists(fp) or check_parent(b) or _redirected(b) or os.path.islink(fp):
+                continue  # a note in a directory another account can write is never believed
+            fd = os.open(fp, os.O_RDONLY | _NOFOLLOW)
+            with os.fdopen(fd, encoding="utf-8") as fh:
+                body += fh.read()
         except Exception:
             continue
         try:
@@ -219,6 +262,16 @@ def take_failures(session_id):
     return out
 
 
+def _newest(q):
+    t = os.lstat(q).st_mtime
+    for e in os.scandir(q):
+        try:
+            t = max(t, e.stat(follow_symlinks=False).st_mtime)
+        except OSError:
+            pass
+    return t
+
+
 def remove(session_id, now=None):
     p = existing(session_id)
     if p:
@@ -231,8 +284,11 @@ def remove(session_id, now=None):
                 os.remove(os.path.join(b, "run-dir-failed-" + k))
             except Exception:
                 pass
-        # A session that crashed never reaches SessionEnd: its directory is pruned here after a week,
-        # under the same check, so the per-user state directory does not grow without end.
+        # A session that crashed never reaches SessionEnd: its directory is pruned here once nothing
+        # in it has changed for 30 days, under the same check, so the per-user state directory does
+        # not grow without end. The newest mtime of anything inside counts, not the directory's own
+        # (rewriting a file in place does not touch it). Limit, stated: a session idle that long
+        # loses its unreported state.
         try:
             names = os.listdir(b)
         except Exception:
@@ -240,7 +296,7 @@ def remove(session_id, now=None):
         for n in names:
             q = os.path.join(b, n)
             try:
-                if n.startswith(PREFIX) and now - os.lstat(q).st_mtime > STALE_SECONDS and not check(q):
+                if n.startswith(PREFIX) and now - _newest(q) > STALE_SECONDS and not check(q):
                     shutil.rmtree(q, ignore_errors=True)
             except Exception:
                 pass
@@ -250,7 +306,7 @@ def main(argv):
     cmd = argv[1] if len(argv) > 1 else ""
     sid = argv[2] if len(argv) > 2 else ""
     if cmd == "ensure":
-        out = ensure(sid, argv[3] if len(argv) > 3 else "hook")
+        out = ensure(sid, argv[3] if len(argv) > 3 else "hook", argv[4] if len(argv) > 4 else "")
         if out:
             print(out)
     elif cmd == "path":

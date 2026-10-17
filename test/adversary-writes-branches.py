@@ -167,26 +167,35 @@ UNIT_CASES = [
     # The owner check, with getuid() patched to another uid: refused and noted.
     ("20-other-owner-refused", "refused|noted"),
     # A directory on the way that another account can write to: refused and noted.
-    ("21-shared-parent-refused", "refused|noted"),
+    ("21-shared-parent-refused", "refused|noted-in-fallback-only"),
     # XDG_STATE_HOME is a regular file: the next state directory (~/.local/state, HOME redirected)
     # is used, for the run directory and for the note.
     ("22-unusable-xdg-falls-back", "fallback-used"),
     # XDG_STATE_HOME is a symlink sitting in a shared directory: the whole real path is checked.
-    ("23-symlinked-state-dir-in-shared-dir-refused", "refused|noted"),
+    ("23-symlinked-state-dir-in-shared-dir-refused", "refused|noted-in-fallback-only"),
     # Group-writable on the way, group private to this user (Debian/Ubuntu ~/.local is 0775,
     # measured on the VPS for all five users): accepted.
     ("24-group-writable-private-group-accepted", "used"),
     # Group-writable on the way, group shared with others: refused.
-    ("25-group-writable-shared-group-refused", "refused|noted"),
+    ("25-group-writable-shared-group-refused", "refused|noted-in-fallback-only"),
     # A sticky directory on the way owned by another account (its owner can rename entries in it).
-    ("26-foreign-sticky-parent-refused", "refused|noted"),
+    ("26-foreign-sticky-parent-refused", "refused|noted-in-fallback-only"),
     # Windows: no os.getuid, no mode bits; %LOCALAPPDATA% is used and only "real directory, not a
     # symlink" is checked (simulated: no Windows runner).
     ("27-windows-localappdata-used", "used-localappdata"),
     ("28-windows-symlink-refused", "refused|noted"),
-    # A crashed session's directory older than 7 days is pruned by the next SessionEnd; a fresh one
-    # of another session is kept.
+    # A crashed session's directory untouched for 30 days is pruned by the next SessionEnd; a fresh
+    # one of another session is kept.
     ("29-stale-run-dir-pruned", "pruned-stale|kept-fresh"),
+    # A failure note planted as a symlink in a refused state directory: never followed (the victim
+    # file is untouched), and a note planted there is never read back as the hook's own.
+    ("31-planted-note-not-followed-nor-read", "victim-untouched|planted-not-read"),
+    # Windows junction where lstat does not flag it and os.path.isjunction is absent (Python < 3.12):
+    # caught by comparing real paths.
+    ("32-windows-junction-without-isjunction-refused", "refused"),
+    # An idle session whose directory mtime is old but whose findings file was rewritten recently:
+    # kept (the newest mtime inside counts).
+    ("33-idle-session-with-recent-file-kept", "kept"),
 ]
 
 UNIT_SRC = r"""
@@ -198,6 +207,13 @@ state = os.path.join(tmp, "state")
 note = lambda base=state: os.path.isfile(os.path.join(base, "goalspec", "run-dir-failed-sess-abc"))
 def verdict(got, base=state):
     return ("USED" if got else "refused") + "|" + ("noted" if note(base) else "no-note")
+fallback = os.path.join(tmp, "home", ".local", "state")
+def fallback_only(got, unsafe):
+    if got:
+        return "USED"
+    if note(unsafe):
+        return "refused|NOTE-IN-UNSAFE-DIR"
+    return "refused|noted-in-fallback-only" if note(fallback) else "refused|no-note"
 os.environ.update(XDG_STATE_HOME=state, HOME=os.path.join(tmp, "home"))
 if case == "19":
     os.chdir(tmp)
@@ -219,9 +235,7 @@ elif case == "21":
     os.chmod(shared, 0o777)
     st2 = os.path.join(shared, "state")
     os.environ["XDG_STATE_HOME"] = st2
-    got = run_dir.ensure("sess-abc", "suite")
-    # the note lands in the same (unsafe) state directory or the fallback; either says it
-    print(("USED" if got else "refused") + "|" + ("noted" if note(st2) or note(os.path.join(tmp, "home", ".local", "state")) else "no-note"))
+    print(fallback_only(run_dir.ensure("sess-abc", "suite"), st2))
 elif case == "22":
     bad = os.path.join(tmp, "xdg-is-a-file")
     open(bad, "w").close()
@@ -241,8 +255,7 @@ elif case == "23":
     link = os.path.join(tmp, "link")
     os.symlink(private, link)
     os.environ["XDG_STATE_HOME"] = link
-    got = run_dir.ensure("sess-abc", "suite")
-    print(("USED" if got else "refused") + "|" + ("noted" if note(link) or note(os.path.join(tmp, "home", ".local", "state")) else "no-note"))
+    print(fallback_only(run_dir.ensure("sess-abc", "suite"), link))
 elif case in ("24", "25"):
     gw = os.path.join(tmp, "gw")
     os.mkdir(gw)
@@ -250,7 +263,7 @@ elif case in ("24", "25"):
     os.environ["XDG_STATE_HOME"] = gw
     run_dir._group_private = lambda gid: case == "24"
     got = run_dir.ensure("sess-abc", "suite")
-    print("used" if got else verdict(got, gw) if note(gw) else verdict(got, os.path.join(tmp, "home", ".local", "state")))
+    print("used" if got and case == "24" else fallback_only(got, gw))
 elif case == "26":
     sticky = os.path.join(tmp, "sticky")
     os.mkdir(sticky)
@@ -267,8 +280,7 @@ elif case == "26":
             return getattr(self._st, a)
     rs = os.path.realpath(sticky)
     os.lstat = lambda q, real_lstat=real_lstat: Fake(real_lstat(q)) if q == rs else real_lstat(q)
-    got = run_dir.ensure("sess-abc", "suite")
-    print(("USED" if got else "refused") + "|" + ("noted" if note(st2) or note(os.path.join(tmp, "home", ".local", "state")) else "no-note"))
+    print(fallback_only(run_dir.ensure("sess-abc", "suite"), st2))
 elif case in ("27", "28"):
     run_dir.IS_WINDOWS = True
     del os.getuid  # what Windows Python lacks
@@ -289,11 +301,60 @@ elif case == "29":
     base = os.path.join(state, "goalspec")
     for n in ("run-old", "run-fresh"):
         os.makedirs(os.path.join(base, n), 0o700)
-    old = time.time() - 8 * 24 * 3600
+    old = time.time() - 31 * 24 * 3600
     os.utime(os.path.join(base, "run-old"), (old, old))
     run_dir.remove("sess-abc")
     print(("pruned-stale" if not os.path.exists(os.path.join(base, "run-old")) else "kept-stale") + "|" +
           ("kept-fresh" if os.path.isdir(os.path.join(base, "run-fresh")) else "removed-fresh"))
+elif case == "31":
+    shared = os.path.join(tmp, "shared")
+    os.mkdir(shared)
+    os.chmod(shared, 0o777)
+    st2 = os.path.join(shared, "state")
+    os.makedirs(os.path.join(st2, "goalspec"))
+    victim = os.path.join(tmp, "victim.txt")
+    open(victim, "w").write("original\n")
+    os.symlink(victim, os.path.join(st2, "goalspec", "run-dir-failed-sess-abc"))
+    os.environ["XDG_STATE_HOME"] = st2
+    run_dir.ensure("sess-abc", "suite")  # refused: the note must not go through the planted link
+    untouched = open(victim).read() == "original\n"
+    os.remove(os.path.join(st2, "goalspec", "run-dir-failed-sess-abc"))
+    open(os.path.join(st2, "goalspec", "run-dir-failed-sess-xyz"), "w").write("forged: planted text\n")
+    read = run_dir.take_failures("sess-xyz")
+    print(("victim-untouched" if untouched else "VICTIM-WRITTEN") + "|" +
+          ("planted-not-read" if not any("forged" in l for l in read) else "PLANTED-READ"))
+elif case == "32":
+    run_dir.IS_WINDOWS = True
+    del os.getuid
+    if hasattr(os.path, "isjunction"):
+        del os.path.isjunction
+    lad = os.path.join(tmp, "lad")
+    os.makedirs(os.path.join(lad, "goalspec"))
+    target = os.path.join(tmp, "elsewhere")
+    os.mkdir(target)
+    j = os.path.join(lad, "goalspec", "run-sess-abc")
+    os.symlink(target, j)
+    os.environ["LOCALAPPDATA"] = lad
+    real_lstat = os.lstat
+    class NotLink:
+        def __init__(self, st):
+            self._st = st
+        def __getattr__(self, a):
+            if a == "st_mode":
+                return stat.S_IFDIR | 0o777  # a junction lstat does not flag
+            return getattr(self._st, a)
+    os.lstat = lambda q, real_lstat=real_lstat: NotLink(real_lstat(q)) if q == j else real_lstat(q)
+    got = run_dir.ensure("sess-abc", "suite")
+    print("refused" if not got and not os.listdir(target) else "USED:%s" % got)
+elif case == "33":
+    base = os.path.join(state, "goalspec")
+    d = os.path.join(base, "run-idle")
+    os.makedirs(d, 0o700)
+    open(os.path.join(d, "findings"), "w").write("ts=1\n")
+    old = time.time() - 31 * 24 * 3600
+    os.utime(d, (old, old))  # directory untouched for a month, its file rewritten just now
+    run_dir.remove("sess-abc")
+    print("kept" if os.path.isdir(d) else "pruned-live")
 """
 
 
@@ -316,6 +377,7 @@ def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, sess
     env["TMPDIR"] = tmp
     # Failure notes go to this user's state directory: keep them inside the case.
     env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
+    env["HOME"] = os.path.join(tmp, "home")  # the fallback state directory, never the real one
     env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
     kw = {"agent_type": agent_type} if agent_type else {}
     kw["session"] = session
@@ -506,7 +568,14 @@ LIB_MUTATIONS = [
     ("Windows branch dropped", '    if IS_WINDOWS:\n        return ""\n    if st.st_uid', '    if st.st_uid', "27"),
     ("refused directory routed around", "        why = check(p)\n        break",
      "        why = check(p)\n        if why:\n            continue\n        break", "12"),
-    ("stale directories never pruned", "STALE_SECONDS = 7 * 24 * 3600", "STALE_SECONDS = 10 ** 12", "29"),
+    ("stale directories never pruned", "STALE_SECONDS = 30 * 24 * 3600", "STALE_SECONDS = 10 ** 12", "29"),
+    ("note written in an unchecked directory", "            if check_parent(b) or _redirected(b):\n                continue\n",
+     "", "21"),
+    ("note read from an unchecked directory",
+     "            if not os.path.lexists(fp) or check_parent(b) or _redirected(b) or os.path.islink(fp):",
+     "            if not os.path.lexists(fp):", "31"),
+    ("junction not detected", "    return _norm(p) != os.path.join(", "    return False and _norm(p) != os.path.join(", "32"),
+    ("prune by directory mtime only", "            t = max(t, e.stat(follow_symlinks=False).st_mtime)", "            pass", "33"),
 ]
 
 
