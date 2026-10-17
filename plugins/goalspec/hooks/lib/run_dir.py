@@ -19,9 +19,10 @@ directory, which report-adversary-writes.sh turns into one line on `Stop` (the o
 output reaches the executor and the human). A payload with no session_id gets no directory at all.
 
 Threat model: catches sessions or users colliding by accident, and a directory planted under the
-predictable name, or swapped for another after the check (the parent must be a sticky temp root or
-this user's own non-shared directory, so another user cannot rename or replace ours). Not root, and
-not this same user racing its own hooks.
+predictable name, or swapped for another after the check: the temp root is resolved to its real
+path, and every directory on that path must be sticky (like /tmp) or belong to this user or root
+without being writable by group or others, so another user can neither rename ours nor redirect a
+symlink on the way to it. Not root, and not this same user racing its own hooks.
 
 Only absolute paths are used: a relative TMPDIR, XDG_STATE_HOME or HOME is ignored (TMPDIR falls
 back to /tmp), so nothing is ever written relative to the hook's working directory.
@@ -53,7 +54,9 @@ def _abs_env(name):
 
 
 def temp_root():
-    return _abs_env("TMPDIR") or "/tmp"
+    # Resolved, so a symlink on the way (macOS /tmp -> /private/tmp, a linked TMPDIR) is checked and
+    # used as the real directory it points to, never re-followed after the check.
+    return os.path.realpath(_abs_env("TMPDIR") or "/tmp")
 
 
 def path_for(session_id):
@@ -64,18 +67,25 @@ def path_for(session_id):
 
 
 def check_parent(parent):
-    """-> "" when nobody but this user (and root) can rename or replace an entry of `parent`: it has
-    the sticky bit (like /tmp), or it is this user's and not writable by group or others (like
-    macOS's per-user T). Else the reason."""
-    try:
-        st = os.stat(parent)
-    except OSError as e:
-        return "cannot stat %s: %s" % (parent, e.strerror)
-    if st.st_mode & stat.S_ISVTX:
-        return ""
-    if st.st_uid == os.getuid() and not st.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
-        return ""
-    return "%s lets other users replace entries in it (not sticky, not private)" % parent
+    """-> "" when nobody but this user (and root) can rename or replace anything on the way to an
+    entry of `parent`: `parent` is resolved to its real path, and each directory from it up to `/`
+    has the sticky bit (like /tmp) or belongs to this user or root and is not writable by group or
+    others (like macOS's per-user T and its ancestors). Else the reason."""
+    real = os.path.realpath(parent)
+    d = real
+    while True:
+        try:
+            st = os.lstat(d)
+        except OSError as e:
+            return "cannot stat %s: %s" % (d, e.strerror)
+        safe = bool(st.st_mode & stat.S_ISVTX) or (
+            st.st_uid in (os.getuid(), 0) and not st.st_mode & (stat.S_IWGRP | stat.S_IWOTH))
+        if not safe:
+            return "%s (on the way to %s) lets other users replace entries in it" % (d, parent)
+        up = os.path.dirname(d)
+        if up == d:
+            return ""
+        d = up
 
 
 def check(p):

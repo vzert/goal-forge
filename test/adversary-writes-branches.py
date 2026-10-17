@@ -166,6 +166,9 @@ UNIT_CASES = [
     # A temp root that is neither sticky nor private (another user could swap the directory after
     # the check): refused and noted.
     ("21-shared-non-sticky-parent-refused", "refused|noted"),
+    # A TMPDIR that is a symlink sitting in a shared non-sticky directory, pointing at a private
+    # one: another user could re-point the link, so the whole real path is checked, and refused.
+    ("23-symlinked-tmpdir-in-shared-dir-refused", "refused|noted"),
     # XDG_STATE_HOME is a regular file: the note falls back to ~/.local/state (HOME redirected).
     ("22-failure-note-fallback", "noted-in-fallback"),
 ]
@@ -192,6 +195,9 @@ elif case == "20":
     d = os.path.join(root, "goalspec-run-sess-abc")
     os.mkdir(d, 0o700)
     os.getuid = lambda: real + 1
+    # Isolate the owner check: with getuid patched, every ancestor the path check walks would look
+    # foreign too (cases 21 and 23 cover that check).
+    run_dir.check_parent = lambda parent: ""
     got = run_dir.ensure("sess-abc", "suite")
     note = os.path.isfile(os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc"))
     print(("USED" if got else "refused") + "|" + ("noted" if note else "no-note"))
@@ -200,6 +206,18 @@ elif case == "21":
     os.mkdir(root)
     os.chmod(root, 0o777)
     os.environ.update(TMPDIR=root, XDG_STATE_HOME=os.path.join(tmp, "state"))
+    got = run_dir.ensure("sess-abc", "suite")
+    note = os.path.isfile(os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc"))
+    print(("USED" if got else "refused") + "|" + ("noted" if note else "no-note"))
+elif case == "23":
+    shared = os.path.join(tmp, "shared")
+    os.mkdir(shared)
+    os.chmod(shared, 0o777)
+    private = os.path.join(shared, "private")
+    os.mkdir(private, 0o700)
+    link = os.path.join(tmp, "link")  # tmp itself is private: the link is ours, its target is not safe
+    os.symlink(private, link)
+    os.environ.update(TMPDIR=link, XDG_STATE_HOME=os.path.join(tmp, "state"))
     got = run_dir.ensure("sess-abc", "suite")
     note = os.path.isfile(os.path.join(tmp, "state", "goalspec", "run-dir-failed-sess-abc"))
     print(("USED" if got else "refused") + "|" + ("noted" if note else "no-note"))
@@ -284,7 +302,9 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         res, *_ = run_case(hook, workdir, name, mutate, agent_type, False, tmp=tmp, session=None)
         if res.stdout.strip():
             return "EMITTED-TO-SUBAGENT"
-        left = files_under(tmp)
+        # goalspec's own names and the state directory only: git on macOS can leave its xcrun
+        # cache in a fresh TMPDIR.
+        left = [f for f in files_under(tmp) if f.startswith(("goalspec", "state" + os.sep))]
         return "silent|no-files" if not left else "files-left:" + ",".join(left)
     if name.startswith("14"):
         for sess in ("sess-A", "sess-B"):
@@ -384,6 +404,8 @@ LIB_MUTATIONS = [
     ("owner check dropped", "    if st.st_uid != os.getuid():", "    if False:", "20"),
     ("parent check dropped", "    why = check_parent(os.path.dirname(p))\n    if why:",
      "    why = \"\"\n    if why:", "21"),
+    ("only the last directory of the path checked", "        up = os.path.dirname(d)\n        if up == d:",
+     "        up = d\n        if up == d:", "23"),
     ("relative TMPDIR accepted", '    return v if os.path.isabs(v) else ""', "    return v", "19"),
     ("no fallback for the failure note", "            continue  # e.g. XDG_STATE_HOME is a file",
      "            return  # e.g. XDG_STATE_HOME is a file", "22"),

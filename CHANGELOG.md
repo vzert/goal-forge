@@ -24,8 +24,10 @@ already hold it in its cache.
   it: the hooks exit 0 and the error stayed in each subagent's own transcript. Now each session uses
   `${TMPDIR:-/tmp}/goalspec-run-<session_id>/`, the same idea as the per-session checkpoint. It is
   made with mode 0700 and used only if it is a real directory owned by this user with that mode
-  (new `hooks/lib/run_dir.py`). Its parent must be a sticky temp root like `/tmp` or this user's own
-  private directory, so another user cannot replace the directory after the check. Only absolute
+  (new `hooks/lib/run_dir.py`). The temp root is resolved to its real path, and every directory on
+  that path must be sticky like `/tmp`, or belong to this user or root without being writable by
+  group or others. So another user can neither replace the directory after the check nor re-point
+  a symlink on the way to it. Only absolute
   paths are used: a relative `TMPDIR`, `XDG_STATE_HOME` or `HOME` is ignored, so nothing is written
   relative to the hook's working directory. A payload with no `session_id` writes nothing; `watch`
   used to key it by the agent id instead.
@@ -45,10 +47,10 @@ already hold it in its cache.
 
 - `adversary-writes-branches.py`: cases 11-18 cover no session id, a wrong-mode or symlinked
   directory under the session's name, two sessions in one `TMPDIR`, and the SessionEnd cleanup.
-  Cases 19-22 drive `run_dir.py` directly: relative paths ignored, another owner (with `getuid`
-  patched, since a suite cannot be another user), a shared non-sticky parent, and the fallback for
-  the failure note. `classify` reads both layouts, so `--compare` against the 0.60.4 watcher changes
-  only 11-14. New `--selftest`: seven mutations of `run_dir.py` in a copy of the plugin, each caught
+  Cases 19-23 drive `run_dir.py` directly: relative paths ignored, another owner (with `getuid`
+  patched, since a suite cannot be another user), a shared non-sticky parent, a `TMPDIR` symlinked
+  through a shared directory (case 23), and the fallback for the failure note. `classify` reads both layouts, so `--compare` against the 0.60.4 watcher changes
+  only 11-14. New `--selftest`: eight mutations of `run_dir.py` in a copy of the plugin, each caught
   by its case. This is the proof for the cleanup and the library, which have no older version to
   compare against.
 - `adversary-report-branches.py`: cases 13-16 cover the failure note (reported, once, alongside a
