@@ -764,7 +764,7 @@ Measured 2026-10-15 over the maintainer's local transcripts: of 188 interactive 
 and a later Bash, Write or Edit, 59 raised any `AskUserQuestion` between the spec and that call — 5
 of 67 on 0.49.0 or later. The sdk-cli and sdk-ts sessions (4555) never got one answered, so they are not held.
 
-41 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
+Denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
 session's checkpoint, VS Code, a modal with no answer yet, a modal raised only before the spec, a
 modal whose result is an error, a harness notification, a new spec after a completion-review written plain, in bold, in backticks or as a bullet, the close
 marker quoted inside the spec, the marker quoted in prose after the modal (asks once more, by
@@ -774,9 +774,22 @@ in the same cycle, a new cycle that was asked, a closed run with no new spec, th
 sdk-cli, sdk-ts, no entrypoint, no loop entry, interview only, a
 subagent call, a checkpoint write, Read, `GOAL_RATIFY_BRAKE=0`, `GOAL_SPEC_BRAKE=0`); and the
 pre-spec hold still comes first. The deny reason must name the modal, its four options, that Stop
-executes nothing, the later-message clause, the text fallback and the human's opt-out. New with no
-predecessor, so `--selftest` applies 26 mutations and requires a case to catch each. What no suite
-can show: that an agent then asks a good question, or honours a Stop.
+executes nothing, the later-message clause, the text fallback, that a relayed approval does not
+release it, and the human's opt-out.
+
+Since 0.61.0 it also drives `hooks/notice-ratify-release.sh` (`terminal_actions.ratify_release_notice`),
+the UserPromptSubmit note that tells a held agent the brake let go (field case 2026-10-16: a
+lookout-supervised agent waited 7 hours after a typed note had already released it). The note
+fires (a typed approval, a lookout note, a prompt the harness already wrote to the transcript, VS
+Code) only when the brake is armed and has denied a call since its spec; it stays silent when no
+deny happened, the brake already let go (answered modal, earlier prompt), the message is a harness
+notification, a cross-session message or a goalspec command, the session is headless, the deny
+belongs to a closed cycle, the error is the pre-spec brake's or another tool's, the user typed the
+deny text, there is no loop, the prompt is empty, or either opt-out is set.
+
+60 cases in all. New with no predecessor, so `--selftest` applies 38 mutations and requires a case
+to catch each. What no suite can show: that an agent then asks a good question, honours a Stop, or
+acts on the note.
 
 ```sh
 python3 test/ratify-brake-branches.py

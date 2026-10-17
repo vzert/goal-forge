@@ -164,10 +164,14 @@ work happens in this session.
 **Every ending that leaves work undone prints a paste, not a sentence** — a stop, a waiver with work
 still open, a cutoff at a limit — not only the ones crossing into a new session. Resuming is a human
 CLI action no agent has a hook into (`references/durable-artifact.md`), so *"we'll continue later"*
-names an action the reader must reconstruct alone. Print a fenced block: `/clear` (drop that line if
-they're continuing right here), then a prompt of **pointers, not narration** — objective in ~3
-lines, the `.goalspec/checkpoint-<session>.md` path, where the work lives, one line of what is
-already decided. Two couplings: the checkpoint must **exist before you print the block**, and step
+names an action the reader must reconstruct alone. Print a fenced block: `/clear`, then a prompt
+that **starts with `/goalspec:goalspec`** (drop both if they're continuing right here: the loop is
+already loaded) and goes on with **pointers, not narration** — objective in ~3 lines, the
+`.goalspec/checkpoint-<session>.md` path, where the work lives, one line of what is already decided.
+The command is what keeps the rails on: a session that never loads the loop has no spec brake, no
+ratify brake and no adversary check, whatever it resumes (measured 2026-10-16: the three newest
+resumed sessions of one project started from a pasted prompt with no command and ran 31, 43 and 81
+Bash calls with every goalspec hook idle). Two couplings: the checkpoint must **exist before you print the block**, and step
 7's delete rule is a **close** rule — on a handoff the file stays, because it *is* the handoff.
 
 **Closing over a residual `break` — `[GOAL-CLOSE-WAIVED reason=<≥20 chars>]`.** If you've tried to resolve it (see the convergence guard in step 6 of the loop below) and judged what's left genuinely non-actionable, this — not a reworded `[COMPLETION-REVIEW: adversary ...]` — is the honest close. It is usable by **you, the agent**, exactly as much as by a human operator; it bypasses the gate's checks entirely, so use it only when you mean it, and say in `reason` what you judged non-actionable and why (e.g. a verified limitation in the adversary's own sandbox, not a defect in the outcome — *verified* meaning the host re-run and write-set check in step 6 ("Every red the adversary ran and did not count")). It is not a substitute for `[COMPLETION-REVIEW: none ...]` on a close where no adversary could run — reach for it only when a `break` is actually on the table and you're choosing to override it in the open. And it is **not** the exit for a break you could act on but cannot resolve: its precondition is narrow and unchanged (non-actionable residue, e.g. the verifier's own environment). When the residue is actionable and you are stuck, stop and hand it back to the human (convergence guard, option (a)) — that costs you nothing and claims nothing false, where a waiver over an actionable break claims something false. **A waiver is an ending**, so the section above applies to it in full: any decision still on the human gets the modal below the block, and anything carrying to another session gets the pasteable continuation prompt.

@@ -716,6 +716,10 @@ def _collect_event(ev, items, state=None):
             # call with no result yet still counts: a parallel call's hook can run before it lands.
             if isinstance(blk, dict) and blk.get("type") == "tool_result" and blk.get("is_error") is True:
                 state.setdefault("failed_tool_uses", set()).add(blk.get("tool_use_id"))
+                # 0.61.0: where the ratify brake denied a call (ratify_release_notice reads it).
+                # Only an errored tool_result: the harness writes it, the agent and the user do not.
+                if RATIFY_DENY_MARK in _tool_result_text(blk.get("content")):
+                    items.append({"kind": "ratify_deny", "timestamp": ev.get("timestamp"), "text": ""})
             elif isinstance(blk, dict) and blk.get("type") == "tool_result":
                 # 0.60.0: an AskUserQuestion counts for the ratify brake only once answered.
                 state.setdefault("answered_tool_uses", set()).add(blk.get("tool_use_id"))
@@ -868,7 +872,7 @@ def _collect_event(ev, items, state=None):
                                           "line": mw.group(0)})
 
 
-def read_transcript_items(transcript_path):
+def read_transcript_items(transcript_path, ratify_denies=False):
     """-> list of {"kind": "text"|"bash", "timestamp": str|None, "text"|"command": str}, in the
     SAME order the content blocks appear (file order, and within a message, block order) — a text
     block and a tool_use block from the same assistant turn are NOT collapsed into one event, so
@@ -876,6 +880,10 @@ def read_transcript_items(transcript_path):
     answerable, not just 'in a later turn'. Empty list on any error (missing path, unparseable
     lines) — the staleness check must treat that the same way gate-goal-close.sh already treats an
     unreadable transcript: fail open, do not flag.
+
+    `ratify_denies=True` also keeps a {"kind": "ratify_deny"} item where the ratify brake denied a
+    call (0.61.0). Off by default: several readers look at the last item, and a new kind there
+    would change what they see.
     """
     items = []
     state = {"adversary_spawns": set(), "adversary_agents": set(), "background_spawns": set()}
@@ -905,7 +913,8 @@ def read_transcript_items(transcript_path):
     return [it for it in items
             if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file")
                     and it.get("id") is not None and it["id"] in failed)
-            and not (it["kind"] == "ask" and it.get("id") not in answered)]
+            and not (it["kind"] == "ask" and it.get("id") not in answered)
+            and (ratify_denies or it["kind"] != "ratify_deny")]
 
 
 def last_completion_review_index(items):
@@ -1141,6 +1150,16 @@ def spec_brake_evidence(items):
 # sdk-cli and sdk-ts sessions (679 and 3876) never got an AskUserQuestion through (0 answered), so
 # they are never braked: there a deny would loop deny -> failed ask -> deny.
 RATIFY_ENTRYPOINTS = ("cli", "claude-vscode")
+# The first words of RATIFY_BRAKE_REASON: how the parser finds the brake's deny in a transcript.
+RATIFY_DENY_MARK = "goalspec: this session posted its ## Goal-spec and has not shown it back"
+RATIFY_RELEASE_NOTICE = (
+    "goalspec: this message releases the ratify brake that denied your Bash, Write or Edit "
+    "earlier in this run. Those tools are no longer held -- if you were waiting for the hook, "
+    "you are not anymore. The brake only checks that the human was asked; it does not read what "
+    "they answered, and it does not see an answer that reached you another way (a message from "
+    "another session or a supervisor). Whether you have their approval for the spec is yours to "
+    "judge: if you have it, here or relayed earlier, proceed; if you do not, keep waiting for it."
+)
 RATIFY_BRAKE_REASON = (
     "goalspec: this session posted its ## Goal-spec and has not shown it back to the human yet, so "
     "this tool call is held until it does (SKILL.md step 4b, 'Ratify the spec before you execute'). "
@@ -1151,7 +1170,9 @@ RATIFY_BRAKE_REASON = (
     "path with that step confirmed separately. Then follow the answer (step 4b, 'Where each answer "
     "goes'; Stop means execute nothing) and call the tool again in a LATER message. If "
     "AskUserQuestion is not available here, end your turn with the same question as text; the "
-    "human's reply releases this. Read, Grep and Glob are not held. Only the human can turn this "
+    "human's reply releases this. Only an answered AskUserQuestion or a message typed in this "
+    "session releases it -- an approval relayed by another session does not -- and when a typed "
+    "message does, a goalspec note tells you so. Read, Grep and Glob are not held. Only the human can turn this "
     "off (GOAL_RATIFY_BRAKE=0 in the environment Claude Code runs in)."
 )
 
@@ -1210,16 +1231,55 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
     prompt releases it because the human then has seen the spec and answered in words. It checks
     that the human was asked, never what they answered: 'Stop' is the written rule's to honour.
     An unknown entrypoint (none in the transcript, or a surface not listed) is not braked."""
-    ep = next((it.get("value") for it in items if it["kind"] == "entrypoint"), None)
-    if ep not in RATIFY_ENTRYPOINTS:
-        return False
-    if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
-        return False
-    cr = _last_close_index(items)
-    i0 = _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)
+    i0 = _ratify_anchor(items, session_id, cwd)
     if i0 is None:
         return False
     return not any(it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:])
+
+
+def _ratify_anchor(items, session_id, cwd):
+    """Index of the spec the ratify brake waits on (the first of the current cycle), or None when
+    the session is not one the brake holds."""
+    ep = next((it.get("value") for it in items if it["kind"] == "entrypoint"), None)
+    if ep not in RATIFY_ENTRYPOINTS:
+        return None
+    if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
+        return None
+    cr = _last_close_index(items)
+    return _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)
+
+
+# 0.61.0 — tell a held agent that the brake let go. Measured 2026-10-16 (3-tier-memory session
+# 69eb8c3a, lookout-supervised): the ratify brake denied a Bash at 19:56:38; the supervisor had
+# already relayed the human's approval by cross-session message, which the brake does not read;
+# at 19:57:31 lookout typed its registration note in the pane, which released the brake. The
+# agent wrote "the brake blocks Bash until Victor types in this pane" and waited 7 hours for a
+# typed "aprobado" it no longer needed. A deny tells the agent it is held; nothing told it when
+# it was not.
+def ratify_release_notice(items, session_id, cwd, prompt):
+    """The notice for the UserPromptSubmit hook, or None. `items` must come from
+    read_transcript_items(..., ratify_denies=True). Fires when the ratify brake is armed, it has
+    denied a call since the spec it waits on, and `prompt` (the message being submitted) is one
+    that releases it: a typed prompt, not a harness-written one and not a goalspec command. The
+    harness may or may not have written the prompt to the transcript yet, so a trailing
+    user_prompt is set aside before the brake is read."""
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    p = prompt.lstrip()
+    if p.startswith(HARNESS_TEXT_PREFIXES) or COMMAND_ENTRY_RE.match(p):
+        return None
+    seq = list(items)
+    if seq and seq[-1]["kind"] == "user_prompt":
+        seq.pop()
+    i0 = _ratify_anchor(seq, session_id, cwd)
+    if i0 is None:
+        return None
+    after = seq[i0 + 1:]
+    if any(it["kind"] in ("ask", "user_prompt") for it in after):
+        return None
+    if not any(it["kind"] == "ratify_deny" for it in after):
+        return None
+    return RATIFY_RELEASE_NOTICE
 
 
 # v3 — what hooks/show-checkpoint-spec.sh shows the human when the spec reaches them only through

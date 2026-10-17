@@ -87,7 +87,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    predecessor, so run `--selftest` too), and `python3 test/ratify-brake-branches.py` (the second
    hold of the spec brake: after the first `## Goal-spec` of each cycle in an interactive session (a
    cycle starts after a `[COMPLETION-REVIEW: ...]`), Bash/Write/Edit wait for an answered
-   `AskUserQuestion` or a typed reply — hermetic, synthetic transcripts; new in 0.60.0
+   `AskUserQuestion` or a typed reply; since 0.61.0 it also covers the UserPromptSubmit note that
+   tells a held agent the brake let go — hermetic, synthetic transcripts; new in 0.60.0
    with no predecessor, so run `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
