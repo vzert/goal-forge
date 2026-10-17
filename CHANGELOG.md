@@ -6,41 +6,29 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
-## [0.61.0] - 2026-10-16
-
-### Added
-
-- **A held agent now learns when the ratify brake lets go.** The brake told an agent when it was
-  held, and nothing told it when it was free. In a 3-tier-memory session supervised by lookout
-  (69eb8c3a, 2026-10-16), the brake denied a Bash. The human's approval then reached the agent
-  through a cross-session message, which the brake does not read. A note that lookout typed in the
-  pane released the brake 14 seconds later. The agent wrote that the brake "blocks Bash until
-  Víctor types in this pane" and waited 7 hours for a typed «aprobado» it no longer needed. New
-  `hooks/notice-ratify-release.sh` (UserPromptSubmit) adds one note for the agent when the brake is
-  armed, has denied a call since its spec, and the message being submitted releases it. The note
-  says the tools are free again, and that the brake does not read the answer, so approval stays the
-  agent's call: proceed if it has approval, here or relayed earlier, and keep waiting if not. It
-  stays silent when no deny happened, when the brake already let go, and for harness notices,
-  cross-session messages, goalspec commands and headless sessions. When the session was replayed
-  through the hook, the note appears at the lookout note and nowhere else. The deny reason now also
-  says that an approval relayed by another session does not release the brake, and that a note
-  tells the agent when a typed message does.
+## [0.60.3] - 2026-10-16
 
 ### Changed
 
 - **The continuation block starts with `/goalspec:goalspec`.** A session that never loads the loop
   has no goalspec hook holding anything. Measured 2026-10-16: the three newest resumed sessions of
   one project started from a pasted prompt with no command and ran 31, 43 and 81 Bash calls, with no
-  spec and no brake. Those prompts came from 3-tier-memory's resume note, not from goalspec, so this
-  change covers only goalspec's own handoff (`SKILL.md`, "Ending a run that did not finish";
-  `references/durable-artifact.md`).
+  goalspec Skill call and no spec. Those prompts came from 3-tier-memory's resume note, not from
+  goalspec, so this change covers only goalspec's own handoff (`SKILL.md`, "Ending a run that did
+  not finish"; `references/durable-artifact.md`). Continuing in the same session drops the command
+  with the `/clear`, because the loop is already loaded.
+- **The ratify brake's deny says what does not release it.** It named what releases it (an answered
+  `AskUserQuestion`, a typed reply) and not what does not. Agents supervised by lookout get their
+  supervisor's decisions by cross-session message. The deny now says that an approval relayed by
+  another session does not release the brake.
 
-### Not changed
+### Dropped before release
 
-- **The ratify brake itself.** Replayed with the 0.60.2 parser over every claude-vzert and
-  cloudflare-expert session since 0.60.0 shipped, it held in every session that loaded the loop: 5
-  agents were denied and asked right away, and 8 asked before any work. The sessions where it seemed
-  absent had either started on 0.58.0 or 0.59.1 hooks, or never loaded goalspec.
+- **A note telling a held agent that the brake let go.** It was built and taken out after the
+  adversary round. In the field session it was built for (3-tier-memory 69eb8c3a), the supervisor's
+  message said it had approved the spec and that the agent should wait for Víctor's typed approval,
+  which came 7 hours later. The note would have told that agent its tools were free and to proceed
+  on an approval relayed earlier, which there was only the supervisor's.
 
 ## [0.60.2] - 2026-10-16
 

@@ -568,7 +568,6 @@ goal-forge/
     hooks/show-checkpoint-spec.sh         # PostToolUse Write|Edit: when the spec reaches the session only through the checkpoint file, shows it to the user
     hooks/nudge-interview-handoff.sh      # advisory: after /goalspec:interview, reminds the agent to invoke the loop and write the spec (UserPromptSubmit, PostToolUse AskUserQuestion)
     hooks/name-session.sh                 # UserPromptSubmit: names the session after the spec's `Session name:` line (same effect as /rename); never overwrites a name it did not set
-    hooks/notice-ratify-release.sh        # UserPromptSubmit (0.61.0): when a typed message releases a ratify brake that denied a call, tells the agent its tools are free again (approval stays its call)
     goal.config.example.json              # optional — copy to .claude/ (project) or ~/.claude/ (all projects)
     references/                           # adaptation guide + the design rationale
 ```

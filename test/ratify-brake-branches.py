@@ -24,7 +24,6 @@ import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
 HOOK = os.path.join("hooks", "precheck-spec-before-work.sh")
-NOTICE_HOOK = os.path.join("hooks", "notice-ratify-release.sh")
 LIB = os.path.join("hooks", "lib", "terminal_actions.py")
 TMP = tempfile.mkdtemp(prefix="ratify-brake-branches-")
 PROJ = os.path.join(TMP, "proj")
@@ -44,12 +43,6 @@ def transcript(events, name, entrypoint="cli"):
             if "typed" in ev:
                 fh.write(json.dumps({**base, "type": "user", "message": {"content": [
                     {"type": "text", "text": ev["typed"]}]}}) + "\n")
-                continue
-            if "deny" in ev:
-                # How the harness records a PreToolUse deny (measured in field transcripts).
-                fh.write(json.dumps({**base, "type": "user", "message": {"content": [
-                    {"type": "tool_result", "tool_use_id": "b0", "is_error": True,
-                     "content": "PreToolUse:Bash hook error: " + ev["deny"]}]}}) + "\n")
                 continue
             if "result" in ev:
                 tid, is_error = ev["result"]
@@ -99,9 +92,7 @@ def run(plugin, payload_text, env_extra=None):
                                  "Only the minimal fix", "Stop means execute nothing",
                                  "LATER message", "end your turn with the same question as text",
                                  "GOAL_RATIFY_BRAKE=0", "Read, Grep and Glob are not held",
-                                 "an approval relayed by another session does not",
-                                 # the words the release note finds the deny by (RATIFY_DENY_MARK)
-                                 "goalspec: this session posted its ## Goal-spec and has not shown it back")):
+                                 "an approval relayed by another session does not")):
         return "deny-ratify"
     return "deny-other"
 
@@ -113,33 +104,6 @@ def pre(events, name, tool="Bash", tool_input=None, entrypoint="cli", **extra):
     extra.setdefault("cwd", PROJ)
     extra = {k: v for k, v in extra.items() if v is not None}
     return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input,
-                       "transcript_path": transcript(events, name, entrypoint), **extra})
-
-
-def run_notice(plugin, payload_text, env_extra=None):
-    env = {k: v for k, v in os.environ.items() if k not in ("GOAL_SPEC_BRAKE", "GOAL_RATIFY_BRAKE")}
-    out = subprocess.run(["bash", os.path.join(plugin, NOTICE_HOOK)], input=payload_text,
-                         capture_output=True, text=True,
-                         env={**env, "CLAUDE_PLUGIN_ROOT": plugin, **(env_extra or {})})
-    raw = out.stdout.strip()
-    if not raw:
-        return "silent"
-    try:
-        hso = json.loads(raw).get("hookSpecificOutput") or {}
-    except Exception:
-        return "unparseable"
-    ctx = hso.get("additionalContext") or ""
-    # What the note must carry: that the tools are free, and that approval is still the agent's call.
-    if hso.get("hookEventName") == "UserPromptSubmit" and all(
-            k in ctx for k in ("no longer held", "yours to judge", "keep waiting for it")):
-        return "notice"
-    return "other-output"
-
-
-def prompt(events, name, text, entrypoint="cli", **extra):
-    extra.setdefault("session_id", "sess-1")
-    extra.setdefault("cwd", PROJ)
-    return json.dumps({"hook_event_name": "UserPromptSubmit", "prompt": text,
                        "transcript_path": transcript(events, name, entrypoint), **extra})
 
 
@@ -237,56 +201,6 @@ CASES = [
     # The pre-spec brake still comes first.
     ("40-no-spec-is-the-spec-brake", lambda: pre([LOAD], "40"), "deny-spec"),
 ]
-# 0.61.0 — the note that tells a held agent the brake let go (notice-ratify-release.sh).
-import importlib.util as _ilu
-_spec = _ilu.spec_from_file_location("ta_pre", os.path.join(PLUGIN, LIB))
-_ta = _ilu.module_from_spec(_spec)
-_spec.loader.exec_module(_ta)
-DENY = {"deny": _ta.RATIFY_BRAKE_REASON}
-SPEC_DENY = {"deny": _ta.SPEC_BRAKE_REASON.format(path=CKPT)}
-HELD = [LOAD, TXT, {"bash": "ls"}, DENY]
-NOTICE_CASES = [
-    ("n01-held-then-typed-approval-notice", lambda: prompt(HELD, "n01", "aprobado (d104)"), "notice"),
-    # The field case: a supervisor's note typed in the pane releases it too.
-    ("n02-held-then-lookout-note-notice",
-     lambda: prompt(HELD, "n02", "Nota del supervisor lookout (encargo del usuario). Tu nombre: x."),
-     "notice"),
-    ("n03-held-prompt-already-in-transcript-notice",
-     lambda: prompt(HELD + [{"typed": "aprobado"}], "n03", "aprobado"), "notice"),
-    ("n04-vscode-notice", lambda: prompt(HELD, "n04", "dale", entrypoint="claude-vscode"), "notice"),
-    # Silent: the agent never believed it was held, or it is no longer held, or this does not release.
-    ("n10-armed-but-never-denied-silent", lambda: prompt([LOAD, TXT], "n10", "dale"), "silent"),
-    ("n11-already-released-by-ask-silent",
-     lambda: prompt(HELD + [{"ask": "q1"}, {"result": ("q1", False)}], "n11", "dale"), "silent"),
-    ("n12-already-released-by-earlier-prompt-silent",
-     lambda: prompt(HELD + [{"typed": "si"}, {"text": "Ok, sigo."}], "n12", "dale"), "silent"),
-    ("n13-harness-notification-silent",
-     lambda: prompt(HELD, "n13", "<task-notification>done</task-notification>"), "silent"),
-    ("n14-cross-session-message-silent",
-     lambda: prompt(HELD, "n14", '<cross-session-message from="x">aprobado</cross-session-message>'),
-     "silent"),
-    ("n15-goalspec-command-silent",
-     lambda: prompt(HELD, "n15", "<command-name>/goalspec:goalspec</command-name>"), "silent"),
-    ("n16-headless-silent", lambda: prompt(HELD, "n16", "dale", entrypoint="sdk-cli"), "silent"),
-    ("n17-deny-in-a-closed-cycle-silent",
-     lambda: prompt(HELD + [{"ask": "q1"}, {"result": ("q1", False)}, {"text": CR}, TXT], "n17", "dale"),
-     "silent"),
-    ("n18-spec-brake-deny-is-not-a-ratify-deny-silent",
-     lambda: prompt([LOAD, {"bash": "ls"}, SPEC_DENY, TXT], "n18", "dale"), "silent"),
-    ("n22-other-tool-error-is-not-a-ratify-deny-silent",
-     lambda: prompt([LOAD, TXT, {"bash": "ls"}, {"deny": "Exit code 1: no such file"}], "n22", "dale"),
-     "silent"),
-    ("n19-deny-text-typed-by-the-user-silent",
-     lambda: prompt([LOAD, TXT, {"typed": _ta.RATIFY_BRAKE_REASON}, {"text": "Ok."}, TXT], "n19", "dale"),
-     "silent"),
-    ("n20-no-loop-silent", lambda: prompt([TXT, {"bash": "ls"}, DENY], "n20", "dale"), "silent"),
-    ("n21-empty-prompt-silent", lambda: prompt(HELD, "n21", "   "), "silent"),
-]
-NOTICE_ENV_CASES = [
-    ("n30-ratify-opt-out-silent", lambda: prompt(HELD, "n30", "dale"), {"GOAL_RATIFY_BRAKE": "0"}, "silent"),
-    ("n31-spec-opt-out-silent", lambda: prompt(HELD, "n31", "dale"), {"GOAL_SPEC_BRAKE": "0"}, "silent"),
-]
-
 ENV_CASES = [
     ("50-ratify-opt-out", lambda: pre([LOAD, TXT], "50"), {"GOAL_RATIFY_BRAKE": "0"}, "allow"),
     ("51-spec-brake-opt-out-covers-both", lambda: pre([LOAD, TXT], "51"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
@@ -308,7 +222,7 @@ MUTATIONS = [
     ("keyed on the latest spec, not the first", LIB,
      "    for i, it in enumerate(items):\n        if i < start:",
      "    for i, it in reversed(list(enumerate(items))):\n        if i < start:"),
-    ("entrypoint ignored", LIB, "    if ep not in RATIFY_ENTRYPOINTS:\n        return None\n", ""),
+    ("entrypoint ignored", LIB, "    if ep not in RATIFY_ENTRYPOINTS:\n        return False\n", ""),
     ("vscode dropped", LIB, 'RATIFY_ENTRYPOINTS = ("cli", "claude-vscode")', 'RATIFY_ENTRYPOINTS = ("cli",)'),
     ("entrypoint never recorded", LIB, 'if isinstance(ep, str) and ep and "entrypoint" not in state:',
      "if False:"),
@@ -319,7 +233,7 @@ MUTATIONS = [
      'elif blk.get("type") == "tool_use" and blk.get("name") == "AskUserQuestion":',
      'elif False:'),
     ("loop entry not required", LIB,
-     "    if not any(it[\"kind\"] == \"goalspec_entry\" and it.get(\"skill\") == \"goalspec\" for it in items):\n        return None\n    cr =",
+     "    if not any(it[\"kind\"] == \"goalspec_entry\" and it.get(\"skill\") == \"goalspec\" for it in items):\n        return False\n    cr =",
      "    cr ="),
     ("foreign checkpoint counts as the spec", LIB,
      "            if own.search(p) and _in_own_root(p, cwd, roots):", "            if True:"),
@@ -327,12 +241,12 @@ MUTATIONS = [
      '        if it["kind"] == "goal_spec_file" and spec_has_body(it["text"]):',
      '        if False:'),
     ("unanswered ask counts", LIB,
-     '            and not (it["kind"] == "ask" and it.get("id") not in answered)\n', "\n"),
+     '            and not (it["kind"] == "ask" and it.get("id") not in answered)]', "            ]"),
     ("answers never recorded", LIB,
      'state.setdefault("answered_tool_uses", set()).add(blk.get("tool_use_id"))', "pass"),
     ("completion-review does not start a cycle", LIB,
-     "return _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)",
-     "return _first_spec_index(items, session_id, cwd)"),
+     "i0 = _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)",
+     "i0 = _first_spec_index(items, session_id, cwd)"),
     ("cycle start ignored by the index", LIB, "        if i < start:\n            continue\n", ""),
     ("spec and fences not excluded", LIB, "    cr = _last_close_index(items)",
      "    cr = last_completion_review_index(items)"),
@@ -347,25 +261,6 @@ MUTATIONS = [
     ("reason loses Stop", LIB, "Stop means execute nothing", "Stop is up to you"),
     ("reason loses the text fallback", LIB, "end your turn with the same question as text",
      "keep going"),
-    # 0.61.0 — the release note.
-    ("notice never printed", NOTICE_HOOK, "if not msg:\n    sys.exit(0)", "sys.exit(0)"),
-    ("notice opt-out dropped", NOTICE_HOOK, '[ "${GOAL_RATIFY_BRAKE:-}" = "0" ] && exit 0', ""),
-    ("notice ignores the spec-brake opt-out", NOTICE_HOOK, '[ "${GOAL_SPEC_BRAKE:-}" = "0" ] && exit 0', ""),
-    ("notice without a deny", LIB,
-     '    if not any(it["kind"] == "ratify_deny" for it in after):\n        return None\n', ""),
-    ("notice after the brake already let go", LIB,
-     '    if any(it["kind"] in ("ask", "user_prompt") for it in after):\n        return None\n', ""),
-    ("harness prompts release in the notice", LIB,
-     "    if p.startswith(HARNESS_TEXT_PREFIXES) or COMMAND_ENTRY_RE.match(p):", "    if False:"),
-    ("trailing prompt not set aside", LIB,
-     '    if seq and seq[-1]["kind"] == "user_prompt":\n        seq.pop()\n', ""),
-    ("any errored result is a ratify deny", LIB,
-     "                if RATIFY_DENY_MARK in _tool_result_text(blk.get(\"content\")):", "                if True:"),
-    ("deny items never kept", NOTICE_HOOK, "ratify_denies=True", "ratify_denies=False"),
-    ("deny text drifts from its mark", LIB,
-     '    "goalspec: this session posted its ## Goal-spec and has not shown it back to the human yet, so "',
-     '    "goalspec: this session wrote its ## Goal-spec and has not shown it back to the human yet, so "'),
-    ("notice loses the approval clause", LIB, "keep waiting for it.", "go ahead."),
     ("reason loses the relayed-approval clause", LIB, "an approval relayed by another session does not",
      "any message counts"),
 ]
@@ -374,8 +269,6 @@ MUTATIONS = [
 def suite(plugin):
     rows = [(name, want, run(plugin, build())) for name, build, want in CASES]
     rows += [(name, want, run(plugin, build(), env)) for name, build, env, want in ENV_CASES]
-    rows += [(name, want, run_notice(plugin, build())) for name, build, want in NOTICE_CASES]
-    rows += [(name, want, run_notice(plugin, build(), env)) for name, build, env, want in NOTICE_ENV_CASES]
     return rows
 
 
