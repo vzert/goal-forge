@@ -148,18 +148,13 @@ purpose: that is the resume case this file exists for, not a defect.
 
 **A deliberate handoff is that same case, chosen rather than suffered (v0.39.0).** On **any** ending
 that leaves work undone — a stop with no marker, a waiver with work still open, a cutoff at a limit
-— `SKILL.md` ("Ending a run that did not finish") has you print a pasteable `/clear` + pointer
-prompt that starts with `/goalspec:goalspec` (0.60.3: without it the resumed session loads the
-loop only if the agent invokes it on its own, and until it does no goalspec hook holds anything), and this file is what that prompt points at. The trigger is *work left undone*, not *a new
-session*: whether the reader clears and starts fresh or keeps going right here is their call, and
-the same block serves both. So it **stays**, for the same
-reason a crash leaves it: the obligation to keep it has not ended. Two consequences worth stating,
-because they invert the default above. Deleting it there does not tidy up a finished run, it aims
-the resume prompt at nothing. And a run that never needed a checkpoint must **write one before
-printing that block** — the handoff is the first reader this file has ever had that was promised in
-advance, and a promised path that does not exist is worse than no promise. The nudge-on-a-later-session
-cost described below is real and is accepted here: a handoff is by construction a run that is not
-over.
+— the file **stays**, for the same reason a crash leaves it: the obligation to keep it has not
+ended, and it is the run state whoever resumes will read. Deleting it there does not tidy up a
+finished run; it throws away the state of one that is not over. From v0.39.0 to 0.60.3 `SKILL.md`
+also had the agent print a pasteable `/clear` + pointer prompt aimed at this file; 0.60.4 retired
+it, because it duplicated the resume note a project's memory tooling already writes after it
+saves, and how to resume is the human's call. The nudge-on-a-later-session cost described below is
+real and is accepted here: a handoff is by construction a run that is not over.
 
 Retire **your own** file and only your own. Another session's checkpoint sitting in the same
 directory is not litter for you to sweep up — it may be the live state of a run that is still

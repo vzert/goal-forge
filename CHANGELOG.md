@@ -6,6 +6,19 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.60.4] - 2026-10-17
+
+### Removed
+
+- **The pasteable continuation block.** Since v0.39.0, every ending that left work undone printed a
+  fenced `/clear` + pointer prompt for the human to paste into a new session; 0.60.3 had made it
+  start with `/goalspec:goalspec`. It duplicated the resume note a project's memory tooling (here
+  3-tier-memory) already writes after it saves, and whether a resumed session uses goalspec is the
+  human's call. Removed from `SKILL.md` ("Ending a run that did not finish", the waiver paragraph,
+  the convergence guard, step 7) and `references/durable-artifact.md`. What stays: an ending still
+  owes the modal, and the checkpoint still stays on an ending that leaves work undone and is still
+  deleted on a clean close.
+
 ## [0.60.3] - 2026-10-16
 
 ### Changed

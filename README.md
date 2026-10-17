@@ -375,8 +375,8 @@ matter what its last line says. A stop with no decision pending still raises one
 continuing. Two failure modes around it are named too: deferring work to "another session" now
 requires a blocker you can name (a permission that is the human's, a hard limit, an unanswering
 dependency) or the work happens now; and when work genuinely does carry over, the agent prints a
-pasteable `/clear` + pointer prompt instead of the sentence "let's continue next session" — resuming
-is a human CLI action no agent has a hook into, so a paste is the only handoff that works.
+pasteable `/clear` + pointer prompt instead of the sentence "let's continue next session" (retired in
+0.60.4: it duplicated the resume note a project's memory tooling writes after it saves).
 **The same release fixes a second defect, found by dogfooding the first one:** verification loops
 that could not terminate. Several adversary rounds of this very release spent findings on
 self-reported tallies the agent had written into its own run state — how many questions it had
