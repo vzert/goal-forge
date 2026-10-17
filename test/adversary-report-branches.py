@@ -64,6 +64,9 @@ path
 end
 """
 
+MANY_PATHS = "ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo\n" + "".join(
+    "path plugins/goalspec/hooks/some-fairly-long-file-name-%02d.sh\n" % i for i in range(12)) + "end\n"
+
 NO_PATHS = """ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo
 end
 """
@@ -127,6 +130,9 @@ CASES = [
     ("15-finding-and-failure-note", ONE_ROUND, SESSION, {"note": True}, "reported+unmeasured"),
     # A run directory that fails the owner/mode check is never read: its content could be planted.
     ("16-run-dir-wrong-mode-not-read", ONE_ROUND, SESSION, {"mode": 0o755}, "silent"),
+    # 0.63.0: the WHOLE notice, lists included, fits in 300 characters (it is shown to the human);
+    # the paths that do not fit are counted, never silently dropped.
+    ("17-many-paths-fit-and-counted", MANY_PATHS, SESSION, {}, "fits-and-counted"),
 ]
 
 
@@ -144,7 +150,9 @@ def classify(res, name, findings_path):
     if name.startswith("11"):
         if sysmsg:
             return "has-systemMessage"
-        head = agent_msg.split("\nRutas:", 1)[0]
+        # The WHOLE shown text, lists included (external review round 1 on 0.63.0 found the first
+        # version measuring only the line above the path list).
+        head = agent_msg
         if len(head) > 300:
             return "line-too-long:%d" % len(head)
         if head.isascii():
@@ -153,11 +161,23 @@ def classify(res, name, findings_path):
             return "line-without-skill-pointer"
         return "one-line-ok"
 
+    if name.startswith("17"):
+        listed = [ln for ln in agent_msg.splitlines() if ln.startswith("  - ") and "más" not in ln]
+        # The rest are counted: "  - y N más" under the listed ones, or "Rutas: N" when none fits.
+        counted = [int(ln.split()[2]) for ln in agent_msg.splitlines() if ln.startswith("  - y ") and "más" in ln]
+        counted += [int(ln.split()[1]) for ln in agent_msg.splitlines()
+                    if ln.startswith("Rutas: ") and ln.split()[1].isdigit()]
+        if len(agent_msg) > 300:
+            return "too-long:%d" % len(agent_msg)
+        if len(counted) != 1 or len(listed) + counted[0] != 12:
+            return "paths-dropped"
+        return "fits-and-counted"
+
     if name.startswith("13"):
-        if (not agent_msg.startswith("Para quien ejecuta la sesión") or "no midió" not in agent_msg
+        if (not agent_msg.startswith("Para quien ejecuta") or "no midió" not in agent_msg
                 or "verifica, no repara" not in agent_msg or sysmsg):
             return "failure-text-wrong"
-        if len(agent_msg.split("\nMotivo:", 1)[0]) > 300:
+        if len(agent_msg) > 300:
             return "failure-line-too-long"
         return "failure-reported"
 
@@ -169,7 +189,7 @@ def classify(res, name, findings_path):
     if name.startswith("12"):
         if "otra sesión" not in agent_msg:
             return "third-reading-missing"
-        if "evidencia que la nombre" not in agent_msg or "su veredicto no vale" not in agent_msg:
+        if "evidencia que la nombre" not in agent_msg or "veredicto no vale" not in agent_msg:
             return "third-reading-without-evidence-bar"
         return "third-reading-ok"
 
@@ -190,7 +210,7 @@ def classify(res, name, findings_path):
         # Both halves. Naming the audience is not enough on its own: 0.44.0's message also had an
         # implicit audience and an adversary still took it as its own instruction. The disarming
         # sentence is what makes it inert.
-        named = msg.lstrip().startswith("Para quien ejecuta la sesión")
+        named = msg.lstrip().startswith("Para quien ejecuta")
         disarms = "un revisor que lo lea verifica, no repara" in msg
         if not named:
             return "reported-no-audience-line"
@@ -251,11 +271,9 @@ def suite(hook, workdir):
 # branch must change as a result. Breaking an assertion must be VISIBLE in the case written for it.
 MUTATIONS = [
     ("the audience line removed",
-     'AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.\n',
-     'AGENT_MSG="', "08"),
+     'HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.\ngoalspec: el repo', 'HEAD="goalspec: el repo', "08"),
     ("the disarming half removed, audience kept",
-     'AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.',
-     'AGENT_MSG="Para quien ejecuta la sesión.', "08"),
+     'HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.\ngoalspec: el repo', 'HEAD="Para quien ejecuta.\ngoalspec: el repo', "08"),
     ("the findings file not consumed",
      'rm -f "$FINDINGS" 2>/dev/null || true', 'true', "09"),
     ("the session key ignored",
@@ -270,26 +288,27 @@ MUTATIONS = [
      'FAILED=$("$PY" "$RUN_DIR_PY" failures "$SESSION_KEY" "$REPO_ROOT" 2>/dev/null || true)',
      'FAILED=$(cat "${XDG_STATE_HOME}/goalspec/run-dir-failed-$SESSION_KEY" 2>/dev/null || true)', "14"),
     ("the failure note dropped when a finding is reported",
-     'if [ -n "$FAILED" ]; then\n  AGENT_MSG=', 'if false; then\n  AGENT_MSG=', "15"),
+     '[ -n "$FAILED" ] && L2=', 'false && L2=', "15"),
     ("a systemMessage copy put back",
-     'print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
-     'print(json.dumps({"systemMessage": os.environ["AGENT_MSG"], "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))',
+     'print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": out}}))',
+     'print(json.dumps({"systemMessage": out, "hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": out}}))',
      "11"),
     ("the line grown past the length budget",
-     'sin eso su veredicto no vale. Ver SKILL.md, paso 6.',
-     'sin eso su veredicto no vale. Se agrega aquí texto adicional de relleno para asegurar que la línea supere ampliamente los trescientos caracteres de longitud total. Ver SKILL.md, paso 6.',
+     'Sin eso su veredicto no vale. SKILL.md paso 6."',
+     'Sin eso su veredicto no vale. Se agrega aquí texto adicional de relleno para asegurar que la línea supere ampliamente los trescientos caracteres de longitud total. SKILL.md paso 6."',
      "11"),
     ("the line switched to English",
-     'AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.\ngoalspec: el repo cambió durante la revisión independiente (${ROUNDS} ronda(s)). Di en tu cierre quién escribió: el revisor, tú u otra sesión (esta, solo con evidencia que la nombre); sin eso su veredicto no vale. Ver SKILL.md, paso 6.',
-     'AGENT_MSG="To the executor; a reviewer reading this verifies, does not repair.\ngoalspec: the repo changed during the review (${ROUNDS} round(s)). Say who wrote. See SKILL.md, step 6.',
+     'HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.\ngoalspec: el repo cambió en la revisión (${ROUNDS} ronda(s)). ¿Escribió el revisor, tú u otra sesión (con evidencia que la nombre)? Sin eso su veredicto no vale. SKILL.md paso 6."',
+     'HEAD="To the executor; a reviewer reading this verifies, does not repair.\ngoalspec: the repo changed during the review (${ROUNDS} round(s)). Say who wrote. See SKILL.md, step 6."',
      "11"),
     ("the third reading removed",
-     "el revisor, tú u otra sesión (esta, solo con evidencia que la nombre)", "el revisor o tú", "12"),
+     "¿Escribió el revisor, tú u otra sesión (con evidencia que la nombre)?", "¿Escribió el revisor o tú?", "12"),
     ("the third reading kept, its evidence bar removed",
-     "otra sesión (esta, solo con evidencia que la nombre); sin eso su veredicto no vale.",
-     "otra sesión.", "12"),
+     "otra sesión (con evidencia que la nombre)? Sin eso su veredicto no vale.", "otra sesión?", "12"),
     ("the failure line without its audience line",
-     'FAGENT="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.\n', 'FAGENT="', "13"),
+     'HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.\ngoalspec: la vigilancia', 'HEAD="goalspec: la vigilancia', "13"),
+    ("the 300-character budget lifted for the lists",
+     "LIMIT = 300", "LIMIT = 3000", "17"),
 ]
 
 

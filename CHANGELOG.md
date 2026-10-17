@@ -21,29 +21,35 @@ version bump are never delivered to already-installed users.
     hook on the same payloads: missing spec 573 → 230, missing close 1053 → 245, close over a break
     1282 → 245, unbacked `model=different` 1470 → 293, terminal command after the close ≤ 300. The
     convergence floor keeps its two audiences, both short (124 + 165).
-  - `report-adversary-writes.sh` sends one Spanish line (audience line first, both halves kept;
-    the third reading and its evidence bar kept) plus the paths, at most 8 listed: 2058 → 333 with
-    two paths; the failure note 973 → 352.
+  - `report-adversary-writes.sh` sends one Spanish notice (audience line first, both halves kept;
+    the third reading and its evidence bar kept) whose whole text, the path list included, is at
+    most 300 characters: paths are listed while they fit and the rest are counted ("y N más", or
+    "Rutas: N" when none fits). 2058 → 266 with two paths; the failure note 973 → 266.
   - `route-external-adversary.sh` and `remind-quote-verdict.sh` (PreToolUse/PostToolUse, where
-    `additionalContext` is not shown to the human) keep the full text there and show the human one
-    short line: 1291 → 179 and 1665 / 397 / 1308 → 92 / 86 / 74. The external-backend reminder is
-    said once per session (the first goal-adversary spawn; read from the transcript, no state file).
+    `additionalContext` "doesn't appear as a chat message in the interface", per the hooks
+    reference, "Add context for Claude") keep the full text there and show the human one short
+    line: 1291 → 120 and 1665 / 397 / 1308 → 92 / 86 / 74. The external-backend reminder is said
+    once per session: on the first spawn whose type is exactly `goal-adversary` (or
+    `plugin:goal-adversary`), read from the transcript, no state file.
 - **The Stop gate is quiet while background work is out.** A Stop while a subagent this session
   launched in the background, or a background run of `external-adversary.sh`, has not come back is
   a wait: the missing-spec and missing-close reminders say nothing, in both modes. Every other check
   still speaks (a close over a break is still told). New `background_work_in_flight()` in
   `hooks/lib/terminal_actions.py`: a launch counts until a hand-back or task-notification names its
   id, and not after two hours (a session that died never gets the notification).
-- `test/claim-surface-carriers.py`: 3 new checks (the external-backend reminder's short human line, said
-  on the first spawn, silent on the second), 240 in total.
+- `test/claim-surface-carriers.py`: 4 new checks (the external-backend reminder's short human line,
+  said on the first spawn, silent on the second, not silenced by a lookalike type), 241 in total.
+- `test/adversary-report-branches.py`: new case 17 (twelve long paths: the notice fits in 300
+  characters and every path is listed or counted) and its mutation (the budget lifted).
 - `test/adversary-report-branches.py --selftest` now requires the unmutated hook green first, as
   `adversary-writes-branches.py` does since 0.62.0.
 
 ### Verification
 
 - `gate-branches.py --compare` against the 0.62.0 gate, default and `GOAL_GATE_ENFORCE=1`: parity
-  OK, 45 branches, 0 changed. The new silence lives in nine new `entry-11`..`19` cases (both modes),
-  three of which fail against the 0.62.0 gate.
+  OK, 45 branches, 0 changed. The new silence lives in nine new `entry-11`..`19` cases (both modes);
+  against the 0.62.0 gate six of them fail: 11, 15 and 17 on the silence, 12, 13 and 14 on the new
+  Spanish line.
 - `verdict-nudge-branches.py --compare`: 5 declared changes (the human line), 0 unexpected.
 
 ## [0.62.0] - 2026-10-17

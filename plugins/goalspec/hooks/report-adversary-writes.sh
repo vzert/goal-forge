@@ -46,6 +46,39 @@ INPUT=$(cat)
 
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
+# 0.63.0 (p-c6f0719a23): print a Stop notice whose WHOLE shown text (the line and its lists) is at
+# most 300 characters: on a Stop hook additionalContext is shown to the human too (learning 67).
+# HEAD is the line; each list is "TITLE<TAB>items, one per line" in LIST1/LIST2. Items are added
+# while they fit; the rest are counted ("y N más"). A list with no room left keeps its title and count.
+emit_notice() {
+  "$PY" -c '
+import json, os
+LIMIT = 300
+out = os.environ["HEAD"]
+for key in ("LIST1", "LIST2"):
+    raw = os.environ.get(key, "")
+    if not raw:
+        continue
+    title, _, body = raw.partition("\t")
+    items = [i for i in body.split("\n") if i.strip()]
+    if not items:
+        continue
+    out += "\n" + title
+    shown = 0
+    for it in items:
+        line = "\n  - " + it
+        rest = len(items) - shown - 1
+        reserve = len("\n  - y %d más" % rest) if rest else 0
+        if len(out) + len(line) + reserve > LIMIT:
+            break
+        out += line
+        shown += 1
+    if shown < len(items):
+        out += "\n  - y %d más" % (len(items) - shown) if shown else " %d" % len(items)
+print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": out}}))
+' 2>/dev/null || true
+}
+
 FIELDS=$(printf '%s' "$INPUT" | "$PY" -c '
 import json, sys, re
 try:
@@ -88,14 +121,9 @@ if [ -n "$FAILED" ] && [ -z "$BODY" ]; then
   # shown to the human too (learning 67), so a systemMessage beside it showed the notice twice.
   # The audience line stays first and keeps its two halves (who is addressed; that a goal-adversary
   # reading it is not), shortened.
-  FAGENT="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.
-goalspec: la vigilancia del revisor no pudo guardar su estado, así que no midió si cambió archivos y un hold de esas rondas no lo prueba. Dilo en tu cierre; no borres esa carpeta si no es tuya. Ver SKILL.md, paso 6.
-Motivo:
-$(printf '%s\n' "$FAILED" | sed 's/^/  - /')"
-  FAGENT="$FAGENT" "$PY" -c '
-import json, os
-print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["FAGENT"]}}))
-' 2>/dev/null || true
+  HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.
+goalspec: la vigilancia del revisor no guardó su estado: no midió si cambió archivos y un hold de esas rondas no lo prueba. Dilo al cerrar; no borres esa carpeta si no es tuya. SKILL.md paso 6." \
+  LIST1="Motivo:	$FAILED" emit_notice
   exit 0
 fi
 [ -z "$BODY" ] && exit 0
@@ -121,26 +149,11 @@ ROUNDS=$(printf '%s\n' "$BODY" | grep -c '^ts=' || true)
 # THE THIRD READING (p-55cec2045a): another writer (a parallel session, the human) can change the
 # repository during a round, and the hook cannot tell who wrote — so "otra sesión" is offered, and
 # only with evidence that names it; without that the verdict does not count.
-# At most 8 paths are listed; the rest are counted.
-NPATHS=$(printf '%s\n' "$PATHS" | grep -c . || true)
-LISTED=$(printf '%s\n' "$PATHS" | head -8 | sed 's/^/  - /')
-[ "$NPATHS" -gt 8 ] && LISTED="$LISTED
-  - y $((NPATHS - 8)) más"
-AGENT_MSG="Para quien ejecuta la sesión; un revisor que lo lea verifica, no repara.
-goalspec: el repo cambió durante la revisión independiente (${ROUNDS} ronda(s)). Di en tu cierre quién escribió: el revisor, tú u otra sesión (esta, solo con evidencia que la nombre); sin eso su veredicto no vale. Ver SKILL.md, paso 6.
-Rutas:
-$LISTED"
-
-# Both happened in one session (a round whose directory was unusable, then one that worked): the
-# finding is reported and the unmeasured rounds are named under it, not dropped.
-if [ -n "$FAILED" ]; then
-  AGENT_MSG="$AGENT_MSG
-Rondas sin medir:
-$(printf '%s\n' "$FAILED" | sed 's/^/  - /')"
-fi
-
-AGENT_MSG="$AGENT_MSG" "$PY" -c '
-import json, os
-print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": os.environ["AGENT_MSG"]}}))
-' 2>/dev/null || true
+# The paths, and the unmeasured rounds when there are any, are listed while the whole notice fits in
+# 300 characters (emit_notice); the rest are counted.
+HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.
+goalspec: el repo cambió en la revisión (${ROUNDS} ronda(s)). ¿Escribió el revisor, tú u otra sesión (con evidencia que la nombre)? Sin eso su veredicto no vale. SKILL.md paso 6."
+L2=""
+[ -n "$FAILED" ] && L2="Rondas sin medir:	$FAILED"
+HEAD="$HEAD" LIST1="Rutas:	$PATHS" LIST2="$L2" emit_notice
 exit 0

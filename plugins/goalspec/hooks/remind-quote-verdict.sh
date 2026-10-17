@@ -211,7 +211,8 @@ else:
     )
 
 # 0.63.0 (p-c6f0719a23): the human gets one short line; the full instruction goes to the agent
-# only (on PostToolUse additionalContext is not shown to the human).
+# only. On PostToolUse additionalContext does not appear as a chat message in the interface
+# (code.claude.com/docs/en/hooks, "Add context for Claude", read 2026-10-17).
 if verdicts:
     human = "goalspec: volvió un veredicto del revisor; el agente debe citarlo tal cual en texto visible."
 elif models:

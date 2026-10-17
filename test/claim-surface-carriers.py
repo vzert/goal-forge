@@ -204,6 +204,17 @@ def main():
                        {"tool_name": "Task", "tool_use_id": "tu-first", "transcript_path": rtx,
                         "tool_input": {"subagent_type": "goal-adversary"}},
                        env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0]
+    # A lookalike type earlier in the transcript does not count as the first spawn (external review
+    # round 1 on 0.63.0: a substring match let it silence the real first reminder).
+    rtx2 = os.path.join(tmp, "..", os.path.basename(tmp) + "-route2.jsonl")
+    with open(rtx2, "w") as fh:
+        fh.write(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Agent", "id": "tu-look",
+             "input": {"subagent_type": "not-goal-adversary-example", "prompt": "p"}}]}}) + "\n")
+    route_after_lookalike = emit("route-external-adversary.sh",
+                                 {"tool_name": "Task", "tool_use_id": "tu-real", "transcript_path": rtx2,
+                                  "tool_input": {"subagent_type": "goal-adversary"}},
+                                 env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0]
     route_second = emit("route-external-adversary.sh",
                         {"tool_name": "Task", "tool_use_id": "tu-second", "transcript_path": rtx,
                          "tool_input": {"subagent_type": "goal-adversary"}},
@@ -435,6 +446,7 @@ def main():
     check("route-hook:human-line-short", 0 < len(_rh) <= 200 and _rh != route_out, "%d chars" % len(_rh))
     check("route-hook:first-spawn-speaks", bool(route_first.strip()))
     check("route-hook:second-spawn-silent", not route_second.strip())
+    check("route-hook:lookalike-does-not-silence", bool(route_after_lookalike.strip()))
     check("readme:adversary-on-every-run",
           "independent adversary on every run" in readme)
     # Round 1 of 0.47.0 found five more carriers the first sweep missed (both backends agreed on two).
@@ -494,7 +506,7 @@ def main():
     # 0.63.0: the report is one short Spanish line on a Stop hook (shown to the human too); the
     # audience line keeps both halves, in Spanish.
     check("role:report-names-its-audience",
-          report_out.startswith("Para quien ejecuta la sesión"))
+          report_out.startswith("Para quien ejecuta;"))
     check("role:report-disarms-an-adversary-reader",
           "un revisor que lo lea verifica, no repara" in report_out)
     # And the honest limit must travel with it, or the next reader takes a prose guard for a proof.
@@ -829,7 +841,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 240  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 241  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",

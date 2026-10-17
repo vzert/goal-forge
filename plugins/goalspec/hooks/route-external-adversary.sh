@@ -57,7 +57,9 @@ if "goal-adversary" not in subagent.lower():
 
 # 1b. Once per session (0.63.0, p-c6f0719a23). The reminder never changes within a session, so it
 #     is said on the first goal-adversary spawn only: an earlier goal-adversary spawn (a different
-#     tool_use id) in the transcript of this session means it was already said. Read from the transcript,
+#     tool_use id, its type exactly goal-adversary or plugin:goal-adversary, the same anchored match
+#     remind-quote-verdict.sh uses: a lookalike type must not silence it, external review round 1)
+#     in the transcript of this session means it was already said. Read from the transcript,
 #     not from a state file. An unreadable transcript speaks, as before.
 def spawned_before(path, current_id):
     try:
@@ -74,7 +76,7 @@ def spawned_before(path, current_id):
                 for blk in ((ev.get("message") or {}).get("content") or []):
                     if isinstance(blk, dict) and blk.get("type") == "tool_use" \
                             and blk.get("name") in ("Task", "Agent") and blk.get("id") != current_id \
-                            and "goal-adversary" in str((blk.get("input") or {}).get("subagent_type") or "").lower():
+                            and re.search(r"(^|:)goal-adversary$", str((blk.get("input") or {}).get("subagent_type") or "").strip().lower()):
                         return True
     except Exception:
         return False
@@ -122,10 +124,12 @@ msg = ("goalspec config resolves adversary.backend=external (" + ext_cmd + "). T
        "it fires the same either way. If the external binary is unreachable it fails open to an "
        "UNVERIFIED hold — not a block.")
 
-# 0.63.0: the human gets one short line; the full reminder goes to the agent only (on PreToolUse
-# additionalContext is not shown to the human).
-human = ("goalspec: el revisor externo (" + ext_cmd + ") también toca si el trabajo es terminal "
-         "o tras dos breaks seguidos; detalle para el agente.")
+# 0.63.0: the human gets one short line; the full reminder goes to the agent only. On PreToolUse
+# additionalContext does not appear as a chat message in the interface (code.claude.com/docs/en/
+# hooks, "Add context for Claude", read 2026-10-17); only Stop/SubagentStop show it as hook
+# feedback. The configured command is left out of the human line so a long one cannot grow it.
+human = ("goalspec: el revisor externo también toca si el trabajo es terminal o tras dos breaks "
+         "seguidos; el detalle va al agente.")
 print(json.dumps({
     "systemMessage": human,
     "hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": msg},
