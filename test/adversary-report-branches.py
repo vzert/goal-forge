@@ -67,6 +67,9 @@ end
 MANY_PATHS = "ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo\n" + "".join(
     "path plugins/goalspec/hooks/some-fairly-long-file-name-%02d.sh\n" % i for i in range(12)) + "end\n"
 
+SHORT_PATHS = "ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo\n" + "".join(
+    "path src/f%02d.py\n" % i for i in range(20)) + "end\n"
+
 NO_PATHS = """ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo
 end
 """
@@ -133,6 +136,9 @@ CASES = [
     # 0.63.0: the WHOLE notice, lists included, fits in 300 characters (it is shown to the human);
     # the paths that do not fit are counted, never silently dropped.
     ("17-many-paths-fit-and-counted", MANY_PATHS, SESSION, {}, "fits-and-counted"),
+    # Both lists at once (paths and unmeasured rounds) still fit: the second list's title and count
+    # are reserved while the first is filled (external review round 2 on 0.63.0).
+    ("18-paths-and-failure-note-fit", SHORT_PATHS, SESSION, {"note": True}, "both-fit"),
 ]
 
 
@@ -172,6 +178,13 @@ def classify(res, name, findings_path):
         if len(counted) != 1 or len(listed) + counted[0] != 12:
             return "paths-dropped"
         return "fits-and-counted"
+
+    if name.startswith("18"):
+        if len(agent_msg) > 300:
+            return "too-long:%d" % len(agent_msg)
+        if "Rondas sin medir" not in agent_msg or "Rutas" not in agent_msg:
+            return "a-list-dropped"
+        return "both-fit"
 
     if name.startswith("13"):
         if (not agent_msg.startswith("Para quien ejecuta") or "no midió" not in agent_msg
@@ -307,6 +320,8 @@ MUTATIONS = [
      "otra sesión (con evidencia que la nombre)? Sin eso su veredicto no vale.", "otra sesión?", "12"),
     ("the failure line without its audience line",
      'HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.\ngoalspec: la vigilancia', 'HEAD="goalspec: la vigilancia', "13"),
+    ("the second list not reserved",
+     "    later = sum(floor(t, i) for t, i in lists[n + 1:])", "    later = 0", "18"),
     ("the 300-character budget lifted for the lists",
      "LIMIT = 300", "LIMIT = 3000", "17"),
 ]

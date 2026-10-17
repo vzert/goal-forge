@@ -52,7 +52,10 @@ for k in ("subagent_type", "subagentType", "agent_type", "agentType"):
     v = ti.get(k)
     if isinstance(v, str) and v:
         subagent = v; break
-if "goal-adversary" not in subagent.lower():
+# Anchored, the same match remind-quote-verdict.sh and the once-per-session check below use: a
+# lookalike type (not-goal-adversary-example, goal-adversary-extra) is not a goal-adversary
+# (external review round 2 on 0.63.0; the substring match predated 0.63.0).
+if not re.search(r"(^|:)goal-adversary$", subagent.strip().lower()):
     silent()
 
 # 1b. Once per session (0.63.0, p-c6f0719a23). The reminder never changes within a session, so it

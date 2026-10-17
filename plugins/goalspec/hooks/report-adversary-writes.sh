@@ -55,21 +55,25 @@ emit_notice() {
 import json, os
 LIMIT = 300
 out = os.environ["HEAD"]
+lists = []
 for key in ("LIST1", "LIST2"):
-    raw = os.environ.get(key, "")
-    if not raw:
-        continue
-    title, _, body = raw.partition("\t")
+    title, _, body = os.environ.get(key, "").partition("\t")
     items = [i for i in body.split("\n") if i.strip()]
-    if not items:
-        continue
+    if title and items:
+        lists.append((title, items))
+# Each list always keeps its title and count, so that much is reserved up front for every list
+# after the one being filled (external review round 2 on 0.63.0: a second list overflowed).
+def floor(title, items):
+    return len("\n%s %d" % (title, len(items)))
+for n, (title, items) in enumerate(lists):
+    later = sum(floor(t, i) for t, i in lists[n + 1:])
     out += "\n" + title
     shown = 0
     for it in items:
         line = "\n  - " + it
         rest = len(items) - shown - 1
         reserve = len("\n  - y %d más" % rest) if rest else 0
-        if len(out) + len(line) + reserve > LIMIT:
+        if len(out) + len(line) + reserve + later > LIMIT:
             break
         out += line
         shown += 1

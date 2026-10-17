@@ -447,6 +447,10 @@ def main():
     check("route-hook:first-spawn-speaks", bool(route_first.strip()))
     check("route-hook:second-spawn-silent", not route_second.strip())
     check("route-hook:lookalike-does-not-silence", bool(route_after_lookalike.strip()))
+    route_lookalike_now = emit("route-external-adversary.sh",
+                               {"tool_name": "Task", "tool_input": {"subagent_type": "goal-adversary-extra"}},
+                               env={"GOAL_CONFIG_PATH": rcfg, "HOME": tmp}, cwd=tmp)[0]
+    check("route-hook:lookalike-spawn-is-silent", not route_lookalike_now.strip())
     check("readme:adversary-on-every-run",
           "independent adversary on every run" in readme)
     # Round 1 of 0.47.0 found five more carriers the first sweep missed (both backends agreed on two).
@@ -841,7 +845,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 241  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 242  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",
@@ -863,6 +867,8 @@ NO_COMMENT_FORM = {
     "example-config:no-superseded-formulation-survives": "JSON has no comment syntax to plant into",
     "route-hook:old-terminal-only-rule-gone-8": "its needle spans a line that does not start with #, so no "
                                                 "# comment can hold it; it reads the raw source",
+    "route-hook:lookalike-spawn-is-silent": "structural: asserts the hook says nothing for a lookalike "
+                                            "type; a commented-out hook says nothing too",
     "route-hook:second-spawn-silent": "structural: asserts the hook says nothing on a second spawn; "
                                       "a commented-out hook says nothing too",
     "nwd:emitted-account-is-a-pointer": "its negative clause reads the EMITTED prompt; a comment in the hook "

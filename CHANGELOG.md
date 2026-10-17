@@ -37,10 +37,15 @@ version bump are never delivered to already-installed users.
   still speaks (a close over a break is still told). New `background_work_in_flight()` in
   `hooks/lib/terminal_actions.py`: a launch counts until a hand-back or task-notification names its
   id, and not after two hours (a session that died never gets the notification).
-- `test/claim-surface-carriers.py`: 4 new checks (the external-backend reminder's short human line,
-  said on the first spawn, silent on the second, not silenced by a lookalike type), 241 in total.
-- `test/adversary-report-branches.py`: new case 17 (twelve long paths: the notice fits in 300
-  characters and every path is listed or counted) and its mutation (the budget lifted).
+- `route-external-adversary.sh` now matches the spawn's own type exactly too (`goal-adversary` or
+  `plugin:goal-adversary`); a lookalike type such as `goal-adversary-extra` no longer gets the
+  reminder. The substring match it replaces predates 0.63.0.
+- `test/claim-surface-carriers.py`: 5 new checks (the external-backend reminder's short human line,
+  said on the first spawn, silent on the second, not silenced by a lookalike type earlier, silent
+  for a lookalike spawn), 242 in total.
+- `test/adversary-report-branches.py`: new cases 17 (twelve long paths: the notice fits in 300
+  characters and every path is listed or counted) and 18 (paths and a failure note together still
+  fit), each with its mutation (the budget lifted; the second list not reserved).
 - `test/adversary-report-branches.py --selftest` now requires the unmutated hook green first, as
   `adversary-writes-branches.py` does since 0.62.0.
 
