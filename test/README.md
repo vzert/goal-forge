@@ -596,7 +596,7 @@ directory inside the repository is noted instead of measured. **15-18** run the 
 cannot be another user), directories on the path that another account can write (shared, symlinked,
 group-writable with a shared group, sticky of another owner), a group-writable path with a private
 group (accepted: the Debian/Ubuntu `~/.local`), an unusable `XDG_STATE_HOME`, the Windows branch
-(simulated, no Windows runner), a planted failure note, and the 30-day prune. `classify` reads both
+(simulated: CI runs Ubuntu and macOS only, with no `windows-latest` job), a planted failure note, and the 30-day prune. `classify` reads both
 layouts, so `--compare` against the 0.60.4 watcher changes only 11-14 and 30. These pieces have no
 older version to compare against, so `--selftest` applies 17 mutations of `run_dir.py` in a copy of
 the plugin and requires the case written for each to change.

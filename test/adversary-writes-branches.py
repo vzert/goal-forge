@@ -181,7 +181,7 @@ UNIT_CASES = [
     # A sticky directory on the way owned by another account (its owner can rename entries in it).
     ("26-foreign-sticky-parent-refused", "refused|noted-in-fallback-only"),
     # Windows: no os.getuid, no mode bits; %LOCALAPPDATA% is used and only "real directory, not a
-    # symlink" is checked (simulated: no Windows runner).
+    # symlink" is checked (simulated here: CI runs Ubuntu and macOS only, no windows-latest job).
     ("27-windows-localappdata-used", "used-localappdata"),
     ("28-windows-symlink-refused", "refused|noted"),
     # A crashed session's directory untouched for 30 days is pruned by the next SessionEnd; a fresh
@@ -335,15 +335,20 @@ elif case == "32":
     j = os.path.join(lad, "goalspec", "run-sess-abc")
     os.symlink(target, j)
     os.environ["LOCALAPPDATA"] = lad
-    real_lstat = os.lstat
-    class NotLink:
-        def __init__(self, st):
-            self._st = st
+    # A junction that lstat does not flag: run_dir reads the mode as "a directory, not a link".
+    # Only run_dir's view of the mode is faked, never os.lstat itself, because realpath walks with
+    # os.lstat and must still resolve the entry (as it does a real junction on Windows); faking
+    # os.lstat made this case pass only where /tmp is a symlink (macOS) and fail on Linux.
+    class JunctionStat:
         def __getattr__(self, a):
-            if a == "st_mode":
-                return stat.S_IFDIR | 0o777  # a junction lstat does not flag
-            return getattr(self._st, a)
-    os.lstat = lambda q, real_lstat=real_lstat: NotLink(real_lstat(q)) if q == j else real_lstat(q)
+            return getattr(stat, a)
+        @staticmethod
+        def S_ISLNK(m):
+            return False
+        @staticmethod
+        def S_ISDIR(m):
+            return True
+    run_dir.stat = JunctionStat()
     got = run_dir.ensure("sess-abc", "suite")
     print("refused" if not got and not os.listdir(target) else "USED:%s" % got)
 elif case == "33":
@@ -469,7 +474,13 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         noted = os.path.isfile(os.path.join(rd, "run-dir-failed-sess-abc"))
         if fps:
             return "measured-inside-repo:" + ",".join(sorted(fps))
-        return "noted-inside-repo" if noted else "silent-inside-repo"
+        if os.path.isdir(os.path.join(rd, "run-sess-abc")):
+            return "dir-left-inside-repo"
+        if noted:
+            return "NOTE-WRITTEN-INSIDE-REPO"
+        # the note goes to the next state directory, outside the repository (HOME redirected)
+        fb = os.path.join(tmp, "home", ".local", "state", "goalspec", "run-dir-failed-sess-abc")
+        return "noted-inside-repo" if os.path.isfile(fb) else "silent-inside-repo"
     # 12 / 13: a directory under the session's name that must not be used.
     d = run_dir_of(tmp, "sess-abc")
     os.makedirs(os.path.dirname(d), 0o700)
@@ -556,12 +567,14 @@ LIB_MUTATIONS = [
     ("owner check dropped", "    if st.st_uid != os.getuid():", "    if False:", "20"),
     ("parent check dropped", "    why = check_parent(os.path.dirname(p))\n    if why:",
      "    why = \"\"\n    if why:", "21"),
+    ("note written inside the repository", "        if repo and inside(b, repo):\n            continue",
+     "        if False:\n            continue", "30"),
     ("only the last directory of the path checked", "        up = os.path.dirname(d)\n        if up == d:",
      "        up = d\n        if up == d:", "23"),
     ("relative TMPDIR accepted", '    return v if os.path.isabs(v) else ""', "    return v", "19"),
     ("no fallback for the failure note", "            continue  # e.g. XDG_STATE_HOME is a file",
      "            return  # e.g. XDG_STATE_HOME is a file", "22"),
-    ("failure not noted", '    note_failure(session_id, hook, why)\n    return ""', '    return ""', "12"),
+    ("failure not noted", '    note_failure(session_id, hook, why, repo)\n    return ""', '    return ""', "12"),
     ("group privacy not checked", "not st.st_mode & stat.S_IWGRP or _group_private(st.st_gid))",
      "True)", "25"),
     ("sticky directory of any owner accepted", "            safe = owner_ok\n", "            safe = True\n", "26"),
@@ -585,7 +598,13 @@ def selftest():
     src = open(os.path.join(PLUGIN, lib_rel), encoding="utf-8").read()
     bad = 0
     with tempfile.TemporaryDirectory() as work:
-        base = {n: b for n, b, _ in suite(DEFAULT_HOOK, tempfile.mkdtemp(dir=work))}
+        rows0 = suite(DEFAULT_HOOK, tempfile.mkdtemp(dir=work))
+        red = [n for n, b, want in rows0 if b != want]
+        if red:
+            # A mutation "caught" against a red baseline proves nothing: the case was already red.
+            print("selftest: the unmutated baseline is red (%s); fix it first" % ", ".join(red))
+            return 1
+        base = {n: b for n, b, _ in rows0}
         for label, old, new, case in LIB_MUTATIONS:
             if src.count(old) != 1:
                 print("%-42s SETUP FAILED: pattern absent or repeated" % label)

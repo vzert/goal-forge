@@ -316,7 +316,7 @@ MUTATIONS = [
      '        why = ""\n        break'),
     ("unusable run directory read anyway", RUN_DIR_REL,
      'if os.path.lexists(p) and not check(p):', 'if os.path.lexists(p):'),
-    ("failure not noted", RUN_DIR_REL, '    note_failure(session_id, hook, why)\n    return ""', '    return ""'),
+    ("failure not noted", RUN_DIR_REL, '    note_failure(session_id, hook, why, repo)\n    return ""', '    return ""'),
     ("refused directory routed around", RUN_DIR_REL, '        why = check(p)\n        break',
      '        why = check(p)\n        if why:\n            continue\n        break'),
     ("no per-agent dedupe", HOOK, 'latest[rec.get("agent") or ""] = rec', 'latest[len(latest)] = rec'),

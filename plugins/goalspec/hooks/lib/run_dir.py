@@ -174,8 +174,10 @@ def _note_path(b, session_id):
     return os.path.join(b, "run-dir-failed-" + key(session_id))
 
 
-def note_failure(session_id, hook, reason):
+def note_failure(session_id, hook, reason, repo=""):
     for b in bases():
+        if repo and inside(b, repo):
+            continue  # never write into the repository under review: it would read as a change
         try:
             os.makedirs(b, 0o700, exist_ok=True)
             # Only where another account cannot plant or redirect the note: the same path check.
@@ -203,6 +205,9 @@ def ensure(session_id, hook, repo=""):
         "LOCALAPPDATA" if IS_WINDOWS else "XDG_STATE_HOME")
     for b in bases():
         p = os.path.join(b, PREFIX + k)
+        if repo and inside(p, repo):
+            why = "%s is inside the repository under review (%s)" % (p, repo)
+            break  # refused before anything is created there
         try:
             os.makedirs(b, 0o700, exist_ok=True)
             os.mkdir(p, 0o700)
@@ -215,11 +220,9 @@ def ensure(session_id, hook, repo=""):
         # state directory: a refused directory is reported, not routed around.
         why = check(p)
         break
-    if not why and repo and inside(p, repo):
-        why = "%s is inside the repository under review (%s)" % (p, repo)
     if not why:
         return os.path.realpath(p)  # the checked chain, never re-followed
-    note_failure(session_id, hook, why)
+    note_failure(session_id, hook, why, repo)
     return ""
 
 

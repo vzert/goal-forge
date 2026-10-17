@@ -36,7 +36,8 @@ already hold it in its cache.
   and `~/.local/state` are mode 775 for all five users, each with a private group. On Windows,
   `os.getuid` and mode bits do not exist, so only "a real directory, not a symlink or junction" is
   checked, by comparing real paths (`os.path.isjunction` exists only from Python 3.12); that branch
-  is simulated in the suite, not run on Windows. When the directory exists but
+  is simulated in the suite, not run on Windows: CI runs Ubuntu and macOS only. GitHub offers
+  `windows-latest` runners; adding that job is open, not done here. When the directory exists but
   fails the check, it is reported, never routed around to another location. Only absolute paths are
   used. A payload with no `session_id` writes nothing; `watch` used to key it by the agent id. When
   the state directory falls inside the repository under review (a repository rooted at the home
