@@ -212,6 +212,16 @@ CASES = [
      None, "recorded:.goalspec/checkpoint-" + OTHER_SID[:8]),
     ("44-no-own-transcript-measures-all", write_runstate("checkpoint-" + OTHER_SID + ".md"), None,
      "recorded:.goalspec/checkpoint-" + OTHER_SID + ".md"),
+    # 0.64.0 (p-4258624faf): the session's cwd is the main checkout and the adversary's prompt names
+    # a path in a linked worktree. The tree to measure is the worktree. Against 0.63.1, 46 comes
+    # back silent (it measured the main checkout and missed the write) and 47 comes back recorded
+    # (another writer's change in the main checkout, reported as the adversary's).
+    ("46-worktree-named-write-in-worktree-recorded", "worktree", None, "recorded:<wt>/tracked.txt"),
+    ("47-worktree-named-write-in-main-silent", "main", None, "silent"),
+    # A prompt that names no path of this repository leaves the measurement where it was.
+    ("48-prompt-names-no-tree-measures-cwd", "main", None, "recorded:tracked.txt"),
+    # A record is used once: the next adversary, spawned with no record, measures the cwd again.
+    ("49-record-used-once", "main", None, "recorded:tracked.txt"),
 ]
 
 # SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
@@ -589,6 +599,57 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
     return "refused|noted" if os.path.isfile(note) else "refused|no-note"
 
 
+def spawn_payload(cwd, prompt, session="sess-abc"):
+    """PreToolUse on the Agent tool: the one event that carries the adversary's prompt."""
+    return json.dumps({"session_id": session, "transcript_path": "/nonexistent/t.jsonl", "cwd": cwd,
+                       "permission_mode": "default", "hook_event_name": "PreToolUse",
+                       "tool_name": "Agent", "tool_input": {
+                           "subagent_type": "goalspec:goal-adversary", "model": "sonnet",
+                           "description": "adversary round", "prompt": prompt}})
+
+
+def worktree_case(hook, workdir, name, where):
+    """The session sits in the main checkout; the work under review is in a linked worktree.
+    `where` says which tree changes during the round."""
+    root = make_repo(workdir, name)
+    wt = tempfile.mkdtemp(prefix="wt-" + name + "-", dir=workdir)
+    subprocess.run(GIT + ["-C", root, "worktree", "add", "-q", "-b", "review", wt], check=True,
+                   capture_output=True)
+    with open(os.path.join(wt, "tracked.txt"), "a") as f:
+        f.write("the work under review, in the worktree\n")
+    tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+    env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
+               HOME=os.path.join(tmp, "home"), CLAUDE_PLUGIN_ROOT=PLUGIN)
+    if name.startswith("48"):
+        prompt = "Verify the claim in %s/notes.md against the transcript %s/t.jsonl" % (tmp, tmp)
+    else:
+        prompt = ("Claim surface: the live goal-spec. The work: %s/tracked.txt, diff main...HEAD "
+                  "in %s." % (wt, wt))
+
+    def run(mode, data):
+        return subprocess.run(["bash", hook, mode], input=data, capture_output=True, text=True,
+                              env=env, cwd=root, timeout=30)
+
+    out = run("spawn", spawn_payload(root, prompt)).stdout.strip()
+    if out:
+        return "SPAWN-EMITTED"
+    if name.startswith("49"):  # a first round on the worktree, then a second with no record
+        run("start", payload("SubagentStart", root, agent_id="first"))
+        run("stop", payload("SubagentStop", root, agent_id="first"))
+        findings = os.path.join(run_dir_of(tmp, "sess-abc"), "findings")
+        if os.path.exists(findings):
+            os.remove(findings)
+    run("start", payload("SubagentStart", root))
+    target = wt if where == "worktree" else root
+    with open(os.path.join(target, "tracked.txt"), "a") as f:
+        f.write("while reviewing I noticed a typo and fixed it\n")
+    res = run("stop", payload("SubagentStop", root))
+    tag = classify(res, tmp)
+    for p in sorted({wt, os.path.realpath(wt)}, key=len, reverse=True):  # /private/var first
+        tag = tag.replace(p, "<wt>")
+    return tag
+
+
 def cleanup_case(workdir, name, setup, cleanup_hook=CLEANUP_HOOK):
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
@@ -627,6 +688,9 @@ def suite(hook, workdir, plugin=PLUGIN):
     for name, mutate, agent_type, expect in CASES:
         if name[:2] in ("11", "12", "13", "14", "30", "34"):
             rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
+            continue
+        if "46" <= name[:2] <= "49":
+            rows.append((name, worktree_case(hook, workdir, name, mutate), expect))
             continue
         sid, tmp = "sess-abc", None
         if "35" <= name[:2] <= "45":

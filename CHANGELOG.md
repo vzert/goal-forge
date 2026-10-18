@@ -16,6 +16,31 @@ Tests only; nothing installed changes, so no version bump.
   kept only `FAIL ... rc=1 (clean dir, but the run failed)` (`gh run view 39082027219 --attempt 1
   --log-failed`); attempt 2 passed. The cause is unknown.
 
+## [0.64.0] - 2026-10-17
+
+### Fixed
+
+- **The subagent adversary-writes rail measures the tree the adversary reviews, not the session's
+  cwd** (p-4258624faf). `watch-adversary-writes.sh` fingerprinted the repository of the session's
+  cwd. An executor working in a separate git worktree (because another session edits the main
+  checkout) keeps its cwd in the main checkout and hands the adversary paths in the worktree, so
+  the rail measured the wrong tree: on 2026-10-17 five Stop notices named only other sessions'
+  writes in the main checkout, and a write by the adversary in the worktree would not have been
+  seen. Neither `SubagentStart` nor `SubagentStop` carries the spawn prompt, so the hook gains a
+  `spawn` mode on `PreToolUse` (`Task|Agent`): every absolute path in a `goal-adversary` prompt
+  that sits in a worktree of the session's repository (same git common directory) names a tree to
+  measure. The next `start` takes that record once and measures those trees; `stop` measures the
+  same ones. A prompt that names no such path changes nothing. A path outside the cwd's repository
+  is reported absolute. Declared limits: a tree the prompt does not name is not measured; two
+  adversaries spawned in one message share the second spawn's record; another writer inside a
+  measured tree still looks like the adversary (p-2bf372e6e3, open). `external-adversary.sh` is
+  unchanged: it runs where the executor runs it.
+
+### Tests
+
+- `adversary-writes-branches.py` cases 46-49. Against 0.63.1, 46 (write in the named worktree)
+  and 47 (write in the main checkout while the worktree is reviewed) change; 48 and 49 do not.
+
 ## [0.63.1] - 2026-10-17
 
 ### Fixed

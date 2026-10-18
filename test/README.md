@@ -642,6 +642,14 @@ and a foreign token with no extension, which is not the `<kind>-<token>.<ext>` s
 Against 0.63.0, 35, 36 and 40 change (`--expected 35,36,40`); 41-45 change only against the first
 0.63.1 draft, which skipped any name ending in 8 hex digits.
 
+**The tree the adversary reviews (0.64.0)**, cases **46-49**. The session's cwd is the main
+checkout and a linked worktree holds the work; each case first sends a synthetic `PreToolUse`
+payload for an `Agent` spawn of `goal-adversary` (`spawn` mode), whose prompt names paths. A write
+in the named worktree is recorded with its absolute path (46); a write in the main checkout during
+that round is not (47); a prompt that names no path of the repository measures the cwd's
+repository as before (48); and a record is used by one round only, so the next adversary with no
+record measures the cwd again (49). Against 0.63.1, 46 and 47 change (`--expected 46,47`).
+
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
 
 Same shape, for `hooks/nudge-decompose.sh` (0.28.0) — Fase 2 of

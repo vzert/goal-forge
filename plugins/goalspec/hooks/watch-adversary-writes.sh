@@ -48,29 +48,59 @@
 # The matcher is belt; the agent_type re-check below is braces — a harness that passes the matcher
 # loosely must not turn this into a fingerprint of every subagent in the session.
 #
-# Usage: watch-adversary-writes.sh start|stop   (payload JSON on stdin)
+# WHICH TREE (0.64.0, p-4258624faf). Until 0.63.1 this measured the repository of the session's cwd.
+# An executor that works in a separate git worktree (another session edits the main checkout) keeps
+# its cwd in the main checkout and hands the adversary paths inside the worktree, so the rail
+# measured the wrong tree: on 2026-10-17 five Stop notices named only other sessions' writes in the
+# main checkout, and a write by the adversary in the worktree would have gone unseen. Neither
+# SubagentStart nor SubagentStop carries the spawn prompt; PreToolUse on Task|Agent does
+# (tool_input.prompt, read by route-external-adversary.sh and precheck-subagent-model.sh too). So a
+# third mode, `spawn`, runs there: every absolute path in the prompt that sits in a worktree of the
+# session's repository (same git common directory, main checkout included) names a tree to measure,
+# recorded in this session's run directory. The next `start` takes that record and deletes it, and
+# writes the roots into the snapshot so `stop` measures the same trees. No such path, no record, and
+# the hook measures the cwd's repository exactly as before.
+# Declared limits: a tree the prompt does not name is not measured; two adversaries spawned in one
+# message share one record (the second spawn's), so the first may be measured on the wrong tree;
+# and a write by another writer inside a measured tree still looks like the adversary's
+# (p-2bf372e6e3). A path outside the cwd's repository is reported absolute, so the human sees which
+# tree it is in; a path in the cwd's repository stays relative, as before.
+# hooks/external-adversary.sh is not changed: it runs in the directory the executor runs it from,
+# so the executor already picks its tree (and it reviews a private copy of it since 0.44.9).
+#
+# Usage: watch-adversary-writes.sh spawn|start|stop   (payload JSON on stdin)
 
 MODE="${1:-}"
-[ "$MODE" = "start" ] || [ "$MODE" = "stop" ] || exit 0
+[ "$MODE" = "spawn" ] || [ "$MODE" = "start" ] || [ "$MODE" = "stop" ] || exit 0
 
 INPUT=$(cat)
 
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
-# Pull the three fields we need. Prints "agent_id<TAB>cwd" only for a real goal-adversary; anything
-# else -> empty, and this hook goes silent.
-FIELDS=$(printf '%s' "$INPUT" | "$PY" -c '
-import json, sys, re
+# Pull the three fields we need. Prints "agent_id<TAB>cwd<TAB>session" only for a real
+# goal-adversary; anything else -> empty, and this hook goes silent. In `spawn` mode the type comes
+# from tool_input and the next lines are the absolute paths the prompt names, one per line.
+FIELDS=$(printf '%s' "$INPUT" | GS_MODE="$MODE" "$PY" -c '
+import json, os, sys, re
 try:
     d = json.load(sys.stdin)
 except Exception:
     sys.exit(0)
-at = d.get("agent_type") or ""
+spawn = os.environ.get("GS_MODE") == "spawn"
+inp = d.get("tool_input") if spawn else None
+if spawn:
+    # A spawn made from inside a subagent is not the executor naming its review (same exit as
+    # precheck-subagent-model.sh).
+    if d.get("tool_name") not in ("Task", "Agent") or d.get("agent_id") or not isinstance(inp, dict):
+        sys.exit(0)
+    at = inp.get("subagent_type") or ""
+else:
+    at = d.get("agent_type") or ""
 # Same anchor remind-quote-verdict.sh uses: "goal-adversary" and "goalspec:goal-adversary" match,
 # "not-goal-adversary-example" does not. That fabricated form slipped a bare substring check once.
 if not (isinstance(at, str) and re.search(r"(^|:)goal-adversary$", at.strip().lower())):
     sys.exit(0)
-aid = d.get("agent_id") or d.get("session_id") or ""
+aid = "spawn" if spawn else (d.get("agent_id") or d.get("session_id") or "")
 cwd = d.get("cwd") or ""
 sid = d.get("session_id") or ""
 # No session id, no run directory (0.62.0). Until then the agent id stood in for it, which put the
@@ -79,13 +109,27 @@ if not aid or not sid:
     sys.exit(0)
 # Keys must be filesystem-safe: ids are harness-generated, so this is hygiene, not distrust.
 safe = lambda v: re.sub(r"[^A-Za-z0-9_.-]", "_", str(v))[:120]
-print(safe(aid) + "\t" + str(cwd) + "\t" + safe(sid))
+print(safe(aid) + "\t" + str(cwd).replace("\n", " ") + "\t" + safe(sid))
+if spawn:
+    seen = set()
+    for m in re.finditer(r"/[^\s`\x27\"<>()\[\]{},;|*?]+", str(inp.get("prompt") or "")):
+        p = m.group(0).rstrip(".:")
+        # A path the review names may not exist yet (a file it will be asked about): its nearest
+        # existing parent still says which tree it is in. The filesystem root says nothing.
+        while p and p != "/" and not os.path.exists(p):
+            p = os.path.dirname(p)
+        if p and p != "/":
+            p = p if os.path.isdir(p) else os.path.dirname(p)
+            if p not in seen:
+                seen.add(p)
+                print(p)
 ' 2>/dev/null)
 
 [ -z "$FIELDS" ] && exit 0
-AGENT_KEY=$(printf '%s' "$FIELDS" | cut -f1)
-PAYLOAD_CWD=$(printf '%s' "$FIELDS" | cut -f2)
-SESSION_KEY=$(printf '%s' "$FIELDS" | cut -f3)
+FIRST=$(printf '%s\n' "$FIELDS" | head -n 1)
+AGENT_KEY=$(printf '%s' "$FIRST" | cut -f1)
+PAYLOAD_CWD=$(printf '%s' "$FIRST" | cut -f2)
+SESSION_KEY=$(printf '%s' "$FIRST" | cut -f3)
 [ -n "$SESSION_KEY" ] || exit 0
 
 # Resolve the repo from the payload cwd, not from this process cwd: a hook runs wherever the harness
@@ -109,6 +153,44 @@ RUN_DIR_PY="$(dirname "$0")/lib/run_dir.py"
 SNAP_DIR=$("$PY" "$RUN_DIR_PY" ensure "$SESSION_KEY" watch-adversary-writes "$REPO_ROOT" 2>/dev/null)
 [ -n "$SNAP_DIR" ] || exit 0
 SNAP="$SNAP_DIR/$AGENT_KEY.fp"
+TARGETS="$SNAP_DIR/target-trees"
+
+# The git common directory of a tree, as a real path: two worktrees of one repository share it.
+_gs_common() {
+  ( cd "$1" 2>/dev/null && _d=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$_d" 2>/dev/null && pwd -P )
+}
+
+# spawn: record the trees the prompt names (see WHICH TREE at the top). Every spawn replaces the
+# record, and a spawn that names none removes it, so a record never outlives the spawn that made it
+# by more than one SubagentStart.
+if [ "$MODE" = "spawn" ]; then
+  MINE=$(_gs_common "$REPO_ROOT")
+  NAMED=$(printf '%s\n' "$FIELDS" | sed -n '2,$p')
+  ROOTS=""
+  if [ -n "$MINE" ]; then
+    while IFS= read -r _p; do
+      [ -n "$_p" ] && [ -d "$_p" ] || continue
+      _top=$(git -C "$_p" rev-parse --show-toplevel 2>/dev/null) || continue
+      [ -n "$_top" ] || continue
+      [ "$(_gs_common "$_top")" = "$MINE" ] || continue
+      case "
+$ROOTS
+" in *"
+$_top
+"*) continue ;; esac
+      ROOTS="${ROOTS:+$ROOTS
+}$_top"
+    done <<EOF_PATHS
+$NAMED
+EOF_PATHS
+  fi
+  if [ -n "$ROOTS" ]; then
+    printf '%s\n' "$ROOTS" > "$TARGETS.tmp" 2>/dev/null && mv -f "$TARGETS.tmp" "$TARGETS" 2>/dev/null
+  else
+    rm -f "$TARGETS" 2>/dev/null
+  fi
+  exit 0
+fi
 
 # CONTENT, not `git status`. The tree under review is almost always ALREADY dirty (the uncommitted
 # work being verified), so a partner that appends one line to an already-modified file leaves the
@@ -154,25 +236,48 @@ _gs_foreign_runstate() {
   return 1
 }
 SESSION_DIR=$(_gs_session_dir "$SESSION_KEY")
-fingerprint() {
-  printf 'HEAD %s\n' "$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)"
-  printf 'staged %s\n' "$(git -C "$REPO_ROOT" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null || echo none)"
-  git -C "$REPO_ROOT" ls-files -m -o -d --exclude-standard -z 2>/dev/null \
+fingerprint_tree() {
+  # $1 = the tree's root. Its paths are relative when it is the cwd's repository (as before 0.64.0)
+  # and absolute otherwise, so the notice says which tree a path is in.
+  _r=$1
+  _pre=""
+  [ "$_r" = "$REPO_ROOT" ] || _pre="$_r/"
+  printf 'HEAD %s\n' "$(git -C "$_r" rev-parse HEAD 2>/dev/null || echo unborn)"
+  printf 'staged %s\n' "$(git -C "$_r" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null || echo none)"
+  git -C "$_r" ls-files -m -o -d --exclude-standard -z 2>/dev/null \
     | while IFS= read -r -d '' p; do
-        if [ -f "$REPO_ROOT/$p" ]; then
-          printf '%s %s\n' "$(git -C "$REPO_ROOT" hash-object -- "$REPO_ROOT/$p" 2>/dev/null || echo unreadable)" "$p"
+        if [ -f "$_r/$p" ]; then
+          printf '%s %s\n' "$(git -C "$_r" hash-object -- "$_r/$p" 2>/dev/null || echo unreadable)" "$_pre$p"
         else
-          printf 'absent %s\n' "$p"
+          printf 'absent %s\n' "$_pre$p"
         fi
       done
-  for f in "$REPO_ROOT"/.goalspec/*; do
+  for f in "$_r"/.goalspec/*; do
     [ -f "$f" ] || continue
     _gs_foreign_runstate "${f##*/}" "$SESSION_KEY" "$SESSION_DIR" && continue
-    printf '%s %s\n' "$(git -C "$REPO_ROOT" hash-object -- "$f" 2>/dev/null || echo unreadable)" "${f#"$REPO_ROOT"/}"
+    printf '%s %s\n' "$(git -C "$_r" hash-object -- "$f" 2>/dev/null || echo unreadable)" "$_pre${f#"$_r"/}"
   done
 }
 
+# Every tree in $ROOTS, each under a `root` line.
+fingerprint() {
+  while IFS= read -r _root; do
+    [ -n "$_root" ] || continue
+    printf 'root %s\n' "$_root"
+    fingerprint_tree "$_root"
+  done <<EOF_ROOTS
+$ROOTS
+EOF_ROOTS
+}
+
 if [ "$MODE" = "start" ]; then
+  # Take the record a spawn left, once; without one, the cwd's repository.
+  ROOTS=""
+  if [ -f "$TARGETS" ]; then
+    ROOTS=$(cat "$TARGETS" 2>/dev/null || true)
+    rm -f "$TARGETS" 2>/dev/null
+  fi
+  [ -n "$ROOTS" ] || ROOTS=$REPO_ROOT
   fingerprint > "$SNAP" 2>/dev/null || true
   exit 0
 fi
@@ -181,6 +286,11 @@ fi
 # a harness that skipped the event). Silence is correct — claiming "no writes detected" from a
 # measurement that never ran is the broken instrument this whole rail is about.
 [ -f "$SNAP" ] || exit 0
+
+# The trees the start measured, from its snapshot; a snapshot without them (0.63.1 or older) was the
+# cwd's repository.
+ROOTS=$(sed -n 's/^root //p' "$SNAP" 2>/dev/null || true)
+[ -n "$ROOTS" ] || ROOTS=$REPO_ROOT
 
 AFTER=$(fingerprint 2>/dev/null || true)
 BEFORE=$(cat "$SNAP" 2>/dev/null || true)
