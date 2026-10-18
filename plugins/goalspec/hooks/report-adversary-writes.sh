@@ -56,7 +56,7 @@ import json, os
 LIMIT = 300
 out = os.environ["HEAD"]
 lists = []
-for key in ("LIST1", "LIST2"):
+for key in ("LIST1", "LIST2", "LIST3"):
     title, _, body = os.environ.get(key, "").partition("\t")
     items = [i for i in body.split("\n") if i.strip()]
     if title and items:
@@ -135,8 +135,25 @@ fi
 # Collect the distinct paths across every record. A malformed line is skipped, not fatal: a
 # reporter that dies on bad input is a reporter that stays silent about a real finding.
 PATHS=$(printf '%s\n' "$BODY" | sed -n 's/^path //p' | grep -v '^$' | sort -u || true)
+# 0.65.0 (p-2bf372e6e3): `other <sid8> <path>` = another session's recorded writes make the whole
+# change of that path (hooks/lib/other_writer.py). Shown as "<path> (<sid8>)".
+OTHERS=$(printf '%s\n' "$BODY" | sed -n 's/^other \([^ ]*\) \(..*\)$/\2 (\1)/p' | sort -u || true)
 ROUNDS=$(printf '%s\n' "$BODY" | grep -c '^ts=' || true)
-[ -z "$PATHS" ] && exit 0
+[ -z "$PATHS" ] && [ -z "$OTHERS" ] && exit 0
+L2=""
+[ -n "$FAILED" ] && L2="Rondas sin medir:	$FAILED"
+L3=""
+[ -n "$OTHERS" ] && L3="De otra sesión:	$OTHERS"
+
+# Every changed path is another session's, proved by its record: the adversary left nothing there,
+# so the question to the executor is gone. What stays is that the tree under review moved during
+# the round, so a verdict about one of those files may describe content that is no longer there.
+if [ -z "$PATHS" ]; then
+  HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.
+goalspec: otra sesión cambió lo revisado en la ronda; el revisor no dejó cambios ahí. El veredicto puede ser de otro contenido. SKILL.md paso 6."
+  HEAD="$HEAD" LIST1="$L3" LIST2="$L2" emit_notice
+  exit 0
+fi
 
 # ONE short line (0.63.0, p-c6f0719a23), in additionalContext only. 0.44.7 split it into a short
 # Spanish systemMessage and a long English additionalContext, but on a Stop hook additionalContext
@@ -152,12 +169,11 @@ ROUNDS=$(printf '%s\n' "$BODY" | grep -c '^ts=' || true)
 # line is here, not that an adversary reading it behaves differently.
 # THE THIRD READING (p-55cec2045a): another writer (a parallel session, the human) can change the
 # repository during a round, and the hook cannot tell who wrote — so "otra sesión" is offered, and
-# only with evidence that names it; without that the verdict does not count.
+# only with evidence that names it; without that the verdict does not count. Since 0.65.0 a path
+# whose whole change another session's record proves is not in this list (see OTHERS above).
 # The paths, and the unmeasured rounds when there are any, are listed while the whole notice fits in
 # 300 characters (emit_notice); the rest are counted.
 HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.
 goalspec: el repo cambió en la revisión (${ROUNDS} ronda(s)). ¿Escribió el revisor, tú u otra sesión (con evidencia que la nombre)? Sin eso su veredicto no vale. SKILL.md paso 6."
-L2=""
-[ -n "$FAILED" ] && L2="Rondas sin medir:	$FAILED"
-HEAD="$HEAD" LIST1="Rutas:	$PATHS" LIST2="$L2" emit_notice
+HEAD="$HEAD" LIST1="Rutas:	$PATHS" LIST2="$L2" LIST3="$L3" emit_notice
 exit 0

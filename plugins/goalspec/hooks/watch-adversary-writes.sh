@@ -62,8 +62,9 @@
 # the hook measures the cwd's repository exactly as before.
 # Declared limits: a tree the prompt does not name is not measured; two adversaries spawned in one
 # message share one record (the second spawn's), so the first may be measured on the wrong tree;
-# and a write by another writer inside a measured tree still looks like the adversary's
-# (p-2bf372e6e3). A path outside the cwd's repository is reported absolute, so the human sees which
+# and a write by another writer inside a measured tree looks like the adversary's unless another
+# session's transcript records its whole change (0.65.0, p-2bf372e6e3: see WHO WROTE IT below).
+# A path outside the cwd's repository is reported absolute, so the human sees which
 # tree it is in; a path in the cwd's repository stays relative, as before.
 # hooks/external-adversary.sh is not changed: it runs in the directory the executor runs it from,
 # so the executor already picks its tree (and it reviews a private copy of it since 0.44.9).
@@ -294,6 +295,9 @@ ROOTS=$(sed -n 's/^root //p' "$SNAP" 2>/dev/null || true)
 
 AFTER=$(fingerprint 2>/dev/null || true)
 BEFORE=$(cat "$SNAP" 2>/dev/null || true)
+# When this round began: the snapshot was last written by `start` or by the previous stop's re-arm.
+# Read before the re-arm below rewrites it; other_writer.py looks only at writes since then.
+START_TS=$("$PY" -c 'import os, sys; print(os.path.getmtime(sys.argv[1]))' "$SNAP" 2>/dev/null || echo 0)
 # RE-ARM, do not delete. A subagent can stop and then keep going (a harness that resumes it, a
 # teammate message, a hook that hands it more context), and 0.44.0 deleted the snapshot on the first
 # stop — so everything the agent did afterwards was unmeasured, silently. That is exactly what
@@ -317,6 +321,20 @@ CHANGED=$(diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") 2>/dev/null 
           | grep -v '^$' | sort -u || true)
 [ -z "$CHANGED" ] && CHANGED="(content changed but no path could be named — inspect \`git status\` by hand)"
 
+# WHO WROTE IT, when the record proves it (0.65.0, p-2bf372e6e3). A path whose whole change is
+# another session's recorded Write/Edit calls, chained from the content before to the content after,
+# becomes an `other <sid8> <path>` line; every other path stays a `path` line, as before.
+# hooks/lib/other_writer.py has the chain and its limits. No library (a --compare baseline copied
+# alone without CLAUDE_PLUGIN_ROOT) or any error -> every path stays a `path` line.
+OTHER_PY="$(dirname "$0")/lib/other_writer.py"
+[ -f "$OTHER_PY" ] || OTHER_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/other_writer.py"
+LINES=""
+if [ -f "$OTHER_PY" ]; then
+  LINES=$(printf '%s\0%s\0%s' "$BEFORE" "$AFTER" "$CHANGED" \
+          | "$PY" "$OTHER_PY" attribute "$SESSION_KEY" "$START_TS" "$REPO_ROOT" 2>/dev/null || true)
+fi
+[ -n "$LINES" ] || LINES=$(printf '%s\n' "$CHANGED" | sed 's/^/path /')
+
 # DO NOT EMIT HERE. This is the half of 0.44.0 that was wrong, and it was worse than useless.
 # MEASURED on 2026-09-12 in a real session (3-tier-memory, session 035edc21): a SubagentStop hook
 # emitting `systemMessage`/`additionalContext` has its output delivered to the SUBAGENT THAT JUST
@@ -337,7 +355,7 @@ CHANGED=$(diff <(printf '%s\n' "$BEFORE") <(printf '%s\n' "$AFTER") 2>/dev/null 
 FINDINGS="$SNAP_DIR/findings"
 {
   printf 'ts=%s agent=%s repo=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_KEY" "$REPO_ROOT"
-  printf '%s\n' "$CHANGED" | sed 's/^/path /'
+  printf '%s\n' "$LINES"
   printf 'end\n'
 } >> "$FINDINGS" 2>/dev/null || true
 exit 0

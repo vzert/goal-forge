@@ -571,7 +571,7 @@ verdict stays UNVERIFIED); the human line must name "otra sesión" too.
 **Its baseline is NOT 0.44.0**, and that matters: this hook did not exist then, so "fails against the
 old hook" says nothing about it. An external partner caught exactly that — case 09 passes against the
 0.44.0 watcher for the wrong reason (that hook never reports, so "silent on the second call" is
-trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs 14
+trivially true). The discriminating baseline is a mutation of *this* hook, and `--selftest` runs 19
 of them, each required to be noticed by the case written for it.
 
 0.62.0 (p-42d7c57137): the findings live in the session's run directory,
@@ -581,6 +581,13 @@ Spanish for the human and with the audience line for the agent, and under a find
 happen. **16** pins that a run directory failing the owner/mode check is never read. Each case
 writes the old layout and the new one, so `--compare` against the 0.60.4 reporter changes only 13
 and 15. The suite points `XDG_STATE_HOME` and `HOME` inside its own temp directory.
+
+0.65.0 (p-2bf372e6e3): **19** is a round where every changed path is another session's, proved by
+its record (an `other <sid8> <path>` line): the notice names the session beside each path, says the
+reviewer left nothing there and that the verdict may describe other content, and no longer asks who
+wrote. **20** has one such path beside an unexplained one: the question stays, and the other
+session's path is listed apart. Against 0.64.x, 19 and 20 change (`--expected 19,20`); 3 more
+mutations in `--selftest` cover them.
 
 ```sh
 python3 test/adversary-report-branches.py
@@ -659,6 +666,21 @@ in the named worktree is recorded with its absolute path (46); a write in the ma
 that round is not (47); a prompt that names no path of the repository measures the cwd's
 repository as before (48); and a record is used by one round only, so the next adversary with no
 record measures the cwd again (49). Against 0.63.1, 46 and 47 change (`--expected 46,47`).
+
+**Another session writing in the measured tree (0.65.0, p-2bf372e6e3)**, cases **50-58**. Between
+start and stop another session writes `tracked.txt` and its transcript (planted in the case's
+`~/.claude/projects/-other-project/`, `CLAUDE_CONFIG_DIR` pointed there) records the Write or Edit,
+shaped like the harness's (`toolUseResult` with `filePath`, `content`/`originalFile`, or
+`originalFile`/`oldString`/`newString`). `hooks/lib/other_writer.py` names that session only when
+its recorded writes chain from the content before the round to the content after: a Write (50), two
+Edits in a row (51), a new file absent at HEAD (52), and beside an unexplained path in the same round
+(58) record an `other <sid8> <path>` line. Anything the chain does not explain stays a `path` line:
+the adversary appended after the other Write (53) or before the other Edit (54), the Write failed
+(55), its timestamp is before the round (56), or the Write is this session's own (57). Against
+0.64.x, 50, 51, 52 and 58 change (`--expected 50,51,52,58`); 53-57 cannot fail against it (it
+reports every path as unexplained), so `--selftest` also applies 6 mutations of `other_writer.py`,
+one per check, each required to turn its case. The suite drops `CLAUDE_CONFIG_DIR` from its own
+environment, so no case reads this machine's transcripts.
 
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
 

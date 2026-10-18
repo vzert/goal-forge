@@ -6,9 +6,40 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
-## [Unreleased]
+## [0.65.0] - 2026-10-17
 
-Tests only; nothing installed changes, so no version bump.
+### Changed
+
+- **The subagent read-only rail names another session when that session's record proves the
+  write** (p-2bf372e6e3). When a path changed during a goal-adversary round, the Stop notice asked
+  "the adversary, you, or another session (with evidence that names it)?", and the executor had no
+  way to bring that evidence although it was on disk: a session's Write and Edit calls are in its
+  transcript with what they wrote. Now `watch-adversary-writes.sh`, on `SubagentStop`, passes every
+  changed path to a new `hooks/lib/other_writer.py`. It reads the Write/Edit results of other
+  sessions (`toolUseResult`, transcripts under `${CLAUDE_CONFIG_DIR:-~/.claude}/projects/`, subagents
+  included, modified since the round began) and names a session only when its recorded writes chain
+  from the content before the round to the content after: each Edit starts from the previous state,
+  a Write replaces the file, the last output is the final content. Then the adversary left nothing
+  on that path. Such a path is recorded as `other <sid8> <path>`, and `report-adversary-writes.sh`
+  lists it apart with its session; when every changed path is of that kind the notice no longer asks
+  who wrote, and says the verdict may describe content that changed under it. Every other path is
+  reported exactly as before.
+  A first design compared names instead (the other session wrote the path, the adversary's own
+  transcript did not name it); it was dropped before any code, because the adversary reads the files
+  it reviews and so names every one of them. The chain's data model was checked on 7 real transcripts
+  of this project: 54 Edit-after-Edit links chained, and the 5 that did not each had a real change by
+  another writer in between.
+  Declared limits: a change with no recorded Write/Edit (a Bash `sed -i`, a git command) is never
+  attributed; this session's own writes are not attributed (the "you" reading stays); a moved HEAD
+  or a changed index attributes nothing in that round; hashes are of the recorded text, so a file
+  under a git clean filter stays unattributed; a forged transcript is out of scope.
+  `external-adversary.sh` is unchanged: it reviews a private copy of the tree since 0.44.9, and its
+  un-isolated fallback keeps its own other-writer hedge.
+  Tests: cases 50-58 in `test/adversary-writes-branches.py` (`--compare` against 0.64.x changes only
+  50, 51, 52 and 58; 6 new `--selftest` mutations of `other_writer.py` turn 52-57), cases 19-20 in
+  `test/adversary-report-branches.py` (`--compare` changes only 19 and 20; 3 new mutations).
+
+### Tests
 
 - **A failed run under temp-leak-check shows its own output.** Its last 40 lines go under the `FAIL`
   line, and under a `LEAK` line when that run also exited non-zero. Why: in GitHub Actions run

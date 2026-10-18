@@ -18,10 +18,13 @@ it. 01 is the control that keeps this from being a mere dirty-tree detector.
     python3 test/adversary-writes-branches.py
     python3 test/adversary-writes-branches.py --compare <pre-edit.sh> --expected 02
 """
-import argparse, json, os, stat, subprocess, sys, tempfile
+import argparse, datetime, json, os, stat, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
+
+# The watcher reads transcripts since 0.65.0: no case may see this machine's real ones.
+os.environ.pop("CLAUDE_CONFIG_DIR", None)
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DEFAULT_HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "watch-adversary-writes.sh")
@@ -222,6 +225,27 @@ CASES = [
     ("48-prompt-names-no-tree-measures-cwd", "main", None, "recorded:tracked.txt"),
     # A record is used once: the next adversary, spawned with no record, measures the cwd again.
     ("49-record-used-once", "main", None, "recorded:tracked.txt"),
+    # 0.65.0 (p-2bf372e6e3): another session writes in the measured tree during the round, and its
+    # transcript records it. A path whose whole change is that record's Write/Edit chain is named as
+    # that session's; anything the chain does not explain stays the adversary's, you or someone.
+    # Against 0.64.x every one of these is recorded as an unexplained path.
+    ("50-other-session-write-attributed", "write", None, "recorded:other(831306ab):tracked.txt"),
+    ("51-other-session-edit-chain-attributed", "edit-chain", None,
+     "recorded:other(831306ab):tracked.txt"),
+    ("52-new-file-by-other-session-attributed", "new-file", None,
+     "recorded:other(831306ab):notes.md"),
+    # The adversary appended after the other session's Write: the output is not the final content.
+    ("53-other-write-then-more-unexplained", "write-then-append", None, "recorded:tracked.txt"),
+    # The adversary appended before the other session's Edit: the Edit did not start from the
+    # content before the round.
+    ("54-change-before-other-edit-unexplained", "append-then-edit", None, "recorded:tracked.txt"),
+    ("55-failed-write-not-counted", "write-error", None, "recorded:tracked.txt"),
+    ("56-write-before-round-not-counted", "write-early", None, "recorded:tracked.txt"),
+    # This session's own Write is not another writer.
+    ("57-own-session-write-not-counted", "write-own", None, "recorded:tracked.txt"),
+    # One path explained, one not: only the explained one moves.
+    ("58-other-and-unexplained-together", "write-plus-new", None,
+     "recorded:adversary-notes.md,other(831306ab):tracked.txt"),
 ]
 
 # SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
@@ -457,6 +481,8 @@ def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, sess
     env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
     env["HOME"] = os.path.join(tmp, "home")  # the fallback state directory, never the real one
     env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
+    # Transcripts are read (0.65.0): never the real ones, whatever this machine has set.
+    env["CLAUDE_CONFIG_DIR"] = os.path.join(tmp, "home", ".claude")
     kw = {"agent_type": agent_type} if agent_type else {}
     kw["session"] = session
 
@@ -489,7 +515,12 @@ def classify(res, findings_dir, session="sess-abc"):
     if not os.path.isfile(fpath):
         return "silent"
     body = open(fpath).read()
-    paths = sorted({ln[5:].strip() for ln in body.splitlines() if ln.startswith("path ")})
+    paths = {ln[5:].strip() for ln in body.splitlines() if ln.startswith("path ")}
+    for ln in body.splitlines():  # 0.65.0: `other <sid8> <path>`
+        if ln.startswith("other "):
+            _, sids, p = ln.split(" ", 2)
+            paths.add("other(%s):%s" % (sids, p.strip()))
+    paths = sorted(paths)
     if not paths:
         return "recorded-unnamed"
     rounds = body.count("ts=")
@@ -650,6 +681,71 @@ def worktree_case(hook, workdir, name, where):
     return tag
 
 
+def record_write(tmp, sid, path, kind, original, output, error=False, when=None):
+    """One successful (or failed) Write/Edit of `path` in session `sid`'s transcript, shaped like
+    the harness's: a user line with the tool_result and its toolUseResult."""
+    d = os.path.join(tmp, "home", ".claude", "projects", "-other-project")
+    os.makedirs(d, exist_ok=True)
+    t = time.time() if when is None else when
+    ts = datetime.datetime.fromtimestamp(t, datetime.timezone.utc).isoformat(
+        timespec="milliseconds").replace("+00:00", "Z")
+    if kind == "write":
+        r = {"type": "update" if original is not None else "create", "filePath": path,
+             "content": output, "originalFile": original, "structuredPatch": [], "userModified": False}
+    else:
+        tail = output[len(original):]
+        r = {"filePath": path, "oldString": original[-10:], "newString": original[-10:] + tail,
+             "originalFile": original, "replaceAll": False, "structuredPatch": [], "userModified": False}
+    block = {"type": "tool_result", "tool_use_id": "toolu_suite", "content": "ok"}
+    if error:
+        block["is_error"] = True
+    line = {"type": "user", "timestamp": ts, "sessionId": sid, "isSidechain": False,
+            "message": {"role": "user", "content": [block]}, "toolUseResult": r}
+    with open(os.path.join(d, sid + ".jsonl"), "a") as f:
+        f.write(json.dumps(line) + "\n")
+
+
+def other_case(hook, workdir, name, how):
+    """Cases 50-58: between start and stop, another session (OTHER_SID) writes in the measured tree
+    and its transcript says so — or the record does not explain the change."""
+    tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
+    plant_transcripts(tmp)  # this session's own transcript exists, and the other's
+
+    def mutate(root):
+        time.sleep(0.05)  # the record's millisecond timestamp falls after the snapshot's mtime
+        p = os.path.join(root, "tracked.txt")
+        before = open(p).read()
+        sid = OWN_SID if how == "write-own" else OTHER_SID
+        if how == "append-then-edit":
+            append_dirty(root)
+            before = open(p).read()  # what the other session's Edit then reads
+        if how in ("write", "write-then-append", "write-error", "write-early", "write-own",
+                   "write-plus-new", "append-then-edit", "edit-chain"):
+            out = before + "the other session's line\n"
+            kind = "edit" if how in ("append-then-edit", "edit-chain") else "write"
+            with open(p, "w") as f:
+                f.write(out)
+            record_write(tmp, sid, p, kind, before, out, error=(how == "write-error"),
+                         when=(time.time() - 3600 if how == "write-early" else None))
+            if how == "edit-chain":
+                out2 = out + "and a second edit\n"
+                with open(p, "w") as f:
+                    f.write(out2)
+                record_write(tmp, sid, p, "edit", out, out2)
+        if how == "write-then-append":
+            append_dirty(root)
+        if how == "write-plus-new":
+            new_file(root)
+        if how == "new-file":
+            n = os.path.join(root, "notes.md")
+            with open(n, "w") as f:
+                f.write("written by the other session\n")
+            record_write(tmp, OTHER_SID, n, "write", None, "written by the other session\n")
+
+    res, tmp, *_ = run_case(hook, workdir, name, mutate, None, False, tmp=tmp, session=OWN_SID)
+    return classify(res, tmp, OWN_SID)
+
+
 def cleanup_case(workdir, name, setup, cleanup_hook=CLEANUP_HOOK):
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
@@ -691,6 +787,9 @@ def suite(hook, workdir, plugin=PLUGIN):
             continue
         if "46" <= name[:2] <= "49":
             rows.append((name, worktree_case(hook, workdir, name, mutate), expect))
+            continue
+        if "50" <= name[:2] <= "58":
+            rows.append((name, other_case(hook, workdir, name, mutate), expect))
             continue
         sid, tmp = "sess-abc", None
         if "35" <= name[:2] <= "45":
@@ -747,11 +846,26 @@ LIB_MUTATIONS = [
     ("prune by directory mtime only", "            t = max(t, e.stat(follow_symlinks=False).st_mtime)", "            pass", "33"),
 ]
 
+# 0.65.0: break other_writer.py the same way. The negative cases 53-57 have no baseline that can
+# fail them (0.64.x reports every path as unexplained), so these are their proof.
+OW_MUTATIONS = [
+    ("final content not compared", "    return sids if state == after else None", "    return sids", "53"),
+    ("edit not required to start from before", '        if kind == "edit" and blob(orig) != state:',
+     "        if False:", "54"),
+    ("failed write counted", '                        isinstance(b, dict) and b.get("type") == "tool_result" and b.get("is_error")',
+     "                        False", "55"),
+    ("write before the round counted", "                if t is None or t < start:", "                if t is None:", "56"),
+    ("own session counted as another", "                if not sid or sid.startswith(session_key):",
+     "                if not sid:", "57"),
+    ("file absent at HEAD not recognised", 'return out.stdout.strip() if out.returncode == 0 else "absent"',
+     'return out.stdout.strip() if out.returncode == 0 else "unknown"', "52"),
+]
+
 
 def selftest():
     import shutil
-    lib_rel = os.path.join("hooks", "lib", "run_dir.py")
-    src = open(os.path.join(PLUGIN, lib_rel), encoding="utf-8").read()
+    libs = {f: open(os.path.join(PLUGIN, "hooks", "lib", f), encoding="utf-8").read()
+            for f in ("run_dir.py", "other_writer.py")}
     bad = 0
     with tempfile.TemporaryDirectory() as work:
         rows0 = suite(DEFAULT_HOOK, tempfile.mkdtemp(dir=work))
@@ -761,7 +875,10 @@ def selftest():
             print("selftest: the unmutated baseline is red (%s); fix it first" % ", ".join(red))
             return 1
         base = {n: b for n, b, _ in rows0}
-        for label, old, new, case in LIB_MUTATIONS:
+        todo = [m + ("run_dir.py",) for m in LIB_MUTATIONS] + [m + ("other_writer.py",) for m in OW_MUTATIONS]
+        for label, old, new, case, lib in todo:
+            src = libs[lib]
+            lib_rel = os.path.join("hooks", "lib", lib)
             if src.count(old) != 1:
                 print("%-42s SETUP FAILED: pattern absent or repeated" % label)
                 bad += 1

@@ -70,6 +70,18 @@ MANY_PATHS = "ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo\n" + "".
 SHORT_PATHS = "ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo\n" + "".join(
     "path src/f%02d.py\n" % i for i in range(20)) + "end\n"
 
+# 0.65.0 (p-2bf372e6e3): a path whose whole change another session's record proves.
+OTHER_ONLY = """ts=2026-10-17T22:10:00Z agent=subagent_xyz repo=/tmp/repo
+other 831306ab tracked.txt
+end
+"""
+
+OTHER_AND_PATH = """ts=2026-10-17T22:10:00Z agent=subagent_xyz repo=/tmp/repo
+path CHANGELOG.md
+other 831306ab tracked.txt
+end
+"""
+
 NO_PATHS = """ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo
 end
 """
@@ -139,6 +151,13 @@ CASES = [
     # Both lists at once (paths and unmeasured rounds) still fit: the second list's title and count
     # are reserved while the first is filled (external review round 2 on 0.63.0).
     ("18-paths-and-failure-note-fit", SHORT_PATHS, SESSION, {"note": True}, "both-fit"),
+    # 0.65.0 (p-2bf372e6e3): every changed path is another session's, proved by its record. The
+    # notice names the session per path and says the reviewer left nothing there, and no longer asks
+    # who wrote; it still says the tree moved under the verdict. Before 0.65.0: silent (no `path`).
+    ("19-other-session-only", OTHER_ONLY, SESSION, {}, "other-only-ok"),
+    # A path nobody's record explains AND one another session's record does: the question stays for
+    # the first, and the second is listed apart with its session.
+    ("20-other-session-and-unexplained", OTHER_AND_PATH, SESSION, {}, "mixed-ok"),
 ]
 
 
@@ -185,6 +204,28 @@ def classify(res, name, findings_path):
         if "Rondas sin medir" not in agent_msg or "Rutas" not in agent_msg:
             return "a-list-dropped"
         return "both-fit"
+
+    if name.startswith("19"):
+        if len(agent_msg) > 300:
+            return "too-long:%d" % len(agent_msg)
+        if not agent_msg.startswith("Para quien ejecuta") or "verifica, no repara" not in agent_msg:
+            return "no-audience-line"
+        if "tracked.txt (831306ab)" not in agent_msg:
+            return "session-not-named"
+        if "¿Escribió" in agent_msg or "Rutas:" in agent_msg:
+            return "still-asks-who-wrote"
+        if "el revisor no dejó cambios" not in agent_msg or "veredicto" not in agent_msg:
+            return "other-text-wrong"
+        return "other-only-ok"
+
+    if name.startswith("20"):
+        if len(agent_msg) > 300:
+            return "too-long:%d" % len(agent_msg)
+        if "¿Escribió" not in agent_msg or "- CHANGELOG.md" not in agent_msg:
+            return "unexplained-path-not-asked"
+        if "tracked.txt (831306ab)" not in agent_msg:
+            return "session-not-named"
+        return "mixed-ok"
 
     if name.startswith("13"):
         if (not agent_msg.startswith("Para quien ejecuta") or "no midió" not in agent_msg
@@ -324,6 +365,12 @@ MUTATIONS = [
      "    later = sum(floor(t, i) for t, i in lists[n + 1:])", "    later = 0", "18"),
     ("the 300-character budget lifted for the lists",
      "LIMIT = 300", "LIMIT = 3000", "17"),
+    ("another session's lines ignored",
+     "OTHERS=$(printf '%s\\n' \"$BODY\" | sed -n", "OTHERS=$(true | sed -n", "19"),
+    ("the other-session notice dropped",
+     'if [ -z "$PATHS" ]; then', 'if false; then', "19"),
+    ("the other-session list dropped beside unexplained paths",
+     'LIST3="$L3" emit_notice', 'emit_notice', "20"),
 ]
 
 
