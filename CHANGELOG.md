@@ -6,6 +6,35 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.65.1] - 2026-10-18
+
+### Fixed
+
+- **The missing-close reminder of the Stop gate is said again in a real session.** The parked-turn
+  silence (0.44.5) keeps a reminder from being repeated on a second turn that adds nothing. It
+  read the transcript one assistant record at a time, and Claude Code writes each text block of a
+  turn as its own record. So an earlier message of the same turn, or the records that follow the
+  `## Goal-spec` in its own turn, counted as "the previous parked turn", and the first reminder of
+  the run was never said. Observed in an interactive session on 2026-10-18: the turn with a spec,
+  no close and nothing in the background got no reminder, and replaying that Stop through the
+  0.65.0 gate gives silence, while the 0.65.1 gate gives `completion-review:absent`.
+  - `gate-goal-close.sh` now builds the turns that silence reads from the boundaries the harness
+    writes: a `stop_hook_summary` record ends a turn, and a human prompt or a subagent hand-back
+    starts one. A tool result and a skill body injected with `isMeta` do not. The text that ends
+    the turn joins its turn when the file does not hold it yet, and a verdict quoted anywhere in
+    the turn counts as news for that turn.
+  - A transcript with no boundary at all keeps the per-record reading (the suite fixtures, and the
+    `sdk-ts` transcripts, which hold no `stop_hook_summary`).
+  - The convergence floor still counts per record, as before. Grouping it too would change when a
+    turn that quotes a break and then a hold resets the streak, which is a separate decision.
+  - A transcript line that is valid JSON but not an object is now skipped. Before, it ended the
+    transcript read.
+- `test/gate-branches.py`: 8 new cases (`turns-01`..`08`) with real turn boundaries. Six fail on
+  the 0.65.0 gate. Five mutations of the new code (a skill body as a boundary, a tool result as a
+  boundary, no silence with boundaries, no mid-turn signal, no joining of the turn-ending text) each
+  turn at least one case red. `--compare` against the 0.65.0 gate: parity OK, 45 branches, 0
+  changed, in both modes.
+
 ## [0.65.0] - 2026-10-17
 
 ### Changed

@@ -1053,6 +1053,86 @@ def silence_suite(gate):
     return [(name, run_silence(gate, name, lam, turns)) for name, lam, turns, _ in SILENCE_CASES]
 
 
+# --- the parked-turn silence reads real turns (0.65.1) --------------------------------------------
+# Claude Code writes each text block of a turn as its own assistant record, so the per-record
+# reading above counted one turn of four records as four parked turns, and the first missing-close
+# reminder of the run was never said (session 1adc5585, 2026-10-18). These transcripts carry the
+# turn boundaries the harness writes: a Stop record after every Stop, a human prompt or a subagent
+# hand-back at the start of a turn. Each case is (name, events, lam, want); an event is
+# ("prompt", text), ("peer", text), ("text", text), ("stop",), ("meta", text) for a skill body the
+# harness injects mid-turn, or ("tool",) for a tool call and its result. Every "-SPEAKS" case but
+# the control is silent on the 0.65.0 gate.
+TURN_GROUP_CASES = [
+    ("turns-01-multi-record-parked-turn-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "next"), ("text", "a1"), ("text", "a2")],
+     "a2", "spoke"),
+    ("turns-02-spec-turn-trailing-records-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("text", "launching"), ("text", "waiting"), ("stop",),
+      ("peer", "[Subagent hand-back] report")],
+     "it came back.", "spoke"),
+    ("turns-03-second-parked-multi-record-turn-SILENT",
+     [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "a"), ("text", "a1"), ("text", "a2"),
+      ("stop",), ("prompt", "b"), ("text", "b1"), ("text", "b2")],
+     "b2", "silent"),
+    ("turns-04-last-record-not-yet-in-file-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "next"), ("text", "a1")],
+     "a2", "spoke"),
+    ("turns-05-verdict-mid-turn-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "a"), ("text", "p1"), ("stop",),
+      ("peer", "[Subagent hand-back] report"), ("text", V_HOLD), ("text", "x"), ("text", "fin")],
+     "fin", "spoke"),
+    ("turns-06-skill-body-mid-turn-is-not-a-boundary-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("text", "a1"), ("meta", "Base directory for this skill"),
+      ("text", "a2"), ("stop",), ("prompt", "next")],
+     "c", "spoke"),
+    ("turns-07-tool-result-is-not-a-boundary-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "next"), ("text", "a1"), ("tool",),
+      ("text", "a2")],
+     "a2", "spoke"),
+    # Control, also true on 0.65.0: one record per turn, a parked turn right after the spec turn.
+    ("turns-08-control-single-record-turn-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "next"), ("text", "a1")],
+     "a1", "spoke"),
+]
+
+
+def turn_group_transcript(events, name):
+    p = os.path.join(TMP, "turns-" + name + ".jsonl")
+    with open(p, "w", encoding="utf-8") as fh:
+        for i, ev in enumerate(events):
+            kind = ev[0]
+            if kind == "prompt":
+                rec = {"type": "user", "origin": {"kind": "human"},
+                       "message": {"role": "user", "content": ev[1]}}
+            elif kind == "peer":
+                rec = {"type": "user", "isMeta": True, "origin": {"kind": "peer", "from": "ag1"},
+                       "message": {"role": "user", "content": ev[1]}}
+            elif kind == "meta":
+                rec = {"type": "user", "isMeta": True,
+                       "message": {"role": "user", "content": [{"type": "text", "text": ev[1]}]}}
+            elif kind == "stop":
+                rec = {"type": "system", "subtype": "stop_hook_summary", "hookAdditionalContext": []}
+            elif kind == "tool":
+                fh.write(json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "name": "Read", "id": "tu-%d" % i, "input": {}}]}}) + "\n")
+                rec = {"type": "user", "message": {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "tu-%d" % i, "content": "ok"}]}}
+            else:
+                rec = {"type": "assistant", "message": {"content": [{"type": "text", "text": ev[1]}]}}
+            fh.write(json.dumps(rec) + "\n")
+    return p
+
+
+def turn_group_suite(gate):
+    out = []
+    for name, events, lam, _ in TURN_GROUP_CASES:
+        payload = {"last_assistant_message": lam, "transcript_path": turn_group_transcript(events, name)}
+        res = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+                             env=os.environ).stdout.strip()
+        out.append((name, "silent" if not res else "spoke"))
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("gate", nargs="?", default=DEFAULT_GATE)
@@ -1222,6 +1302,18 @@ def main():
         print("%-46s %-8s%s" % (name, got, "" if ok else "   <-- FAILS (want %s)" % want))
     if silence_failures:
         print("\nSILENCE FAILURES: %d\n  %s" % (len(silence_failures), "\n  ".join(silence_failures)))
+        return 1
+
+    print("\n--- the parked-turn silence reads real turns (0.65.1) ---")
+    turn_failures = []
+    for name, got in turn_group_suite(a.gate):
+        want = dict((n, w) for n, _, _, w in TURN_GROUP_CASES)[name]
+        ok = got == want
+        if not ok:
+            turn_failures.append("%s: want %s, got %s" % (name, want, got))
+        print("%-52s %-8s%s" % (name, got, "" if ok else "   <-- FAILS (want %s)" % want))
+    if turn_failures:
+        print("\nTURN-GROUP FAILURES: %d\n  %s" % (len(turn_failures), "\n  ".join(turn_failures)))
         return 1
 
     return 0

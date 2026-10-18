@@ -200,7 +200,42 @@ lam_text = lam if isinstance(lam, str) else ""
 #    tx_turns holds ONE entry per assistant turn (its text blocks joined) — the unit the convergence
 #    floor counts in. tx_text is derived from it and is byte-identical to the flat block join it
 #    replaced, so every pre-existing check sees exactly the same string it saw before.
+#    That comment is the convergence floor contract, and it is what the floor still gets. The code
+#    below appends one entry per assistant RECORD, and Claude Code writes each text block of a turn
+#    as a record of its own, so one turn of the human is often several entries. 0.65.1 leaves the
+#    floor on those entries and builds, beside them, tx_groups: one entry per real turn, cut at a
+#    turn boundary the harness wrote (see _is_turn_boundary). Only the parked-turn silence below
+#    reads it. Measured in session 1adc5585 (2026-10-18): a turn of four text records after the spec
+#    counted as four parked turns, so the first missing-close reminder of the run was never said.
+#    A transcript with no boundary at all (the suite fixtures, a harness that writes none) keeps the
+#    per-record reading, unchanged.
 tx_turns = []
+tx_groups = []
+tx_group_open = False
+tx_boundary_seen = False
+
+def _is_turn_boundary(ev):
+    # A Stop record ends a turn: Claude Code writes one after every Stop (measured: present in all
+    # 137 cli and both vscode transcripts among the 300 newest local ones). A human prompt or a
+    # subagent hand-back starts one. A tool result does not, and neither does text the harness
+    # injects mid-turn with isMeta and no origin (a skill body loading).
+    if ev.get("type") == "system":
+        return ev.get("subtype") == "stop_hook_summary"
+    if ev.get("type") != "user":
+        return False
+    origin = ev.get("origin")
+    if isinstance(origin, dict) and origin.get("kind") in ("human", "peer"):
+        return True
+    if ev.get("isMeta"):
+        return False
+    content = (ev.get("message") or {}).get("content")
+    if isinstance(content, str):
+        return bool(content.strip())
+    if isinstance(content, list):
+        kinds = [b.get("type") for b in content if isinstance(b, dict)]
+        return "text" in kinds and "tool_result" not in kinds
+    return False
+
 tpath = data.get("transcript_path")
 if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
     try:
@@ -212,6 +247,12 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
                 try:
                     ev = json.loads(line)
                 except Exception:
+                    continue
+                if not isinstance(ev, dict):
+                    continue
+                if _is_turn_boundary(ev):
+                    tx_boundary_seen = True
+                    tx_group_open = False
                     continue
                 if ev.get("type") != "assistant":
                     continue
@@ -226,6 +267,11 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
                             blocks.append(blk.get("text") or "")
                 if blocks:
                     tx_turns.append("\n".join(blocks))
+                    if tx_group_open and tx_groups:
+                        tx_groups[-1] = tx_groups[-1] + "\n" + "\n".join(blocks)
+                    else:
+                        tx_groups.append("\n".join(blocks))
+                    tx_group_open = True
     except Exception:
         pass
 
@@ -363,10 +409,27 @@ def turn_has_signal(t):
 # either way, which does not change the silence outcome — so this is safe even on the coincidence.
 lam_has_signal = turn_has_signal(lam_text)
 _lam_norm_full = re.sub(r"\s+", " ", lam_text).strip().lower()
-_tail_norm_full = re.sub(r"\s+", " ", tx_turns[-1]).strip().lower() if tx_turns else ""
-sig_turns = list(tx_turns)
-if not (tx_turns and _lam_norm_full and _lam_norm_full == _tail_norm_full):
-    sig_turns.append(lam_text)
+if tx_boundary_seen:
+    # 0.65.1: real turns (tx_groups, see the transcript read). The current turn is the open group
+    # when no boundary came after the last text record; lam joins it unless the file already holds
+    # it (containment, because lam is the last text block and the group is the whole turn). After a
+    # boundary, lam is a turn of its own the file has not caught up with. The current turn counts as
+    # signalling when ANY of its records did: a verdict quoted mid-turn is news even when the text
+    # that ends the turn is not.
+    sig_turns = list(tx_groups)
+    _norm = lambda s: re.sub(r"\s+", " ", s).strip().lower()
+    if tx_group_open and sig_turns:
+        if _lam_norm_full and _lam_norm_full not in _norm(sig_turns[-1]):
+            sig_turns[-1] = sig_turns[-1] + "\n" + lam_text
+    elif not (sig_turns and _lam_norm_full and _lam_norm_full == _norm(sig_turns[-1])):
+        sig_turns.append(lam_text)
+    if sig_turns:
+        lam_has_signal = lam_has_signal or turn_has_signal(sig_turns[-1])
+else:
+    _tail_norm_full = re.sub(r"\s+", " ", tx_turns[-1]).strip().lower() if tx_turns else ""
+    sig_turns = list(tx_turns)
+    if not (tx_turns and _lam_norm_full and _lam_norm_full == _tail_norm_full):
+        sig_turns.append(lam_text)
 
 # Unlike the OTHER window (_cycle_start above, for `turns`), this one starts AFTER the goal-spec
 # turn, not AT it: the spec-announcement turn itself never carries a verdict or a completion-review
