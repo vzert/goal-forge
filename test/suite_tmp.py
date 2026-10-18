@@ -13,6 +13,16 @@ Chosen because nothing else used it in /tmp on 2026-10-17. "goalspec-suite-" was
 was already taken: 13 `goalspec-suite-<suite>.py.out` logs and two mktemp dirs, written 2026-10-12..15
 by some other run on this machine.
 
+temp-leak-check gives each run its own prefix, BASE + "<its pid>-", through GOALSPEC_TEST_FIXTURE_PREFIX,
+and watches only that one: two runs at once on one machine (two adversaries verifying the same tree,
+2026-10-17) each saw the other's fixtures appear and turned red. A value that does not start with
+BASE, or carries a "/" or a ".", is ignored (a "." would make the dir's name look like mktemp's).
+
 Not a suite: the name does not end in `-branches.py`.
 """
-PREFIX = "goalspec-test-fixture-"
+import os
+
+BASE = "goalspec-test-fixture-"
+ENV = "GOALSPEC_TEST_FIXTURE_PREFIX"
+_env = os.environ.get(ENV, "")
+PREFIX = _env if _env.startswith(BASE) and not set("/.") & set(_env) else BASE

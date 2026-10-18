@@ -20,6 +20,9 @@ Tests only; nothing installed changes, so no version bump.
   cases print the same output byte for byte. `--selftest` now also requires a red for a prefixed dir
   left in `/tmp` and a green for an unprefixed file another program leaves there. The trade: a suite
   that builds in `/tmp` under another name is not seen; `test/README.md` states the rule.
+  Each checker run hands its suites its own prefix (`goalspec-test-fixture-<pid>-`, through
+  `GOALSPEC_TEST_FIXTURE_PREFIX`) and watches only that one, so two runs at once on one machine no
+  longer turn each other red (both adversaries of this change saw that happen, running in parallel).
 
 ## [0.63.0] - 2026-10-17
 

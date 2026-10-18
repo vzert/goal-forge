@@ -31,7 +31,9 @@ SIGKILL or a killed CI job. **A new suite imports it before it builds any fixtur
 (`goalspec-test-fixture-`): terminal-precheck's two fixtures that must sit directly in `/tmp` (a
 symlink outside every mktemp dir, case 133; a sticky `name.XXXXXX` TMPDIR nested in `/tmp`, case
 137b) use it. The checker below looks at nothing else in `/tmp`, so a path built there under another
-name is not seen (p-9991d7ddc9).
+name is not seen (p-9991d7ddc9). A suite builds the name from `suite_tmp.PREFIX`, never from the
+literal: under the checker that value is `goalspec-test-fixture-<the checker's pid>-`, so two
+checker runs at once on one machine do not see each other's fixtures as leaks.
 
 `python3 test/temp-leak-check.py` runs every suite again (default mode and `--selftest`), each under
 a fresh `TMPDIR`, and fails if anything is left in it, a new path appeared in `/tmp` under the
@@ -39,7 +41,8 @@ a fresh `TMPDIR`, and fails if anything is left in it, a new path appeared in `/
 exited non-zero (CI runs each `--selftest` only through here).
 `--selftest` plants suites that leak (in `TMPDIR`, a prefixed `/tmp` dir, a file inside a
 prefixed dir that already existed) and requires a red for each, and one that leaves an unprefixed
-file in `/tmp`, as another program would, and requires a green. CI runs both; `manifest-checks.py` needs
+file in `/tmp`, as another program would, or a fixture of another checker run (the base prefix
+with another pid), and requires a green. CI runs both; `manifest-checks.py` needs
 PyYAML, so the checker skips it where PyYAML is missing (the `suites` job) and the `manifests` job
 runs it on that file alone. Neither file is a suite.
 Why it exists (p-1a5a4e9828): before this, the suites left ~15 GB a day in `$TMPDIR` (546

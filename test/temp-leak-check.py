@@ -4,7 +4,7 @@
 Not a suite (the name does not end in `-branches.py`, so the suite counts in manifest-checks do not
 see it). It runs the other suites, each with TMPDIR pointed at a fresh dir of its own, and fails if
 anything is left in that dir afterwards, if a new path appeared in /tmp under a name that starts
-with suite_tmp.PREFIX (or inside such a dir, at any depth: terminal-precheck builds two fixtures
+with this run's prefix, suite_tmp.BASE + its pid (or inside such a dir, at any depth: terminal-precheck builds two fixtures
 there on purpose, outside every TMPDIR), or if the run exited non-zero. The rest of /tmp is not
 looked at: other programs of this user write there all the time (p-9991d7ddc9).
 
@@ -36,7 +36,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 SKIP = {"temp-leak-check.py", "expected_check.py", "tmp_cleanup.py", "suite_tmp.py"}
 sys.path.insert(0, HERE)
-from suite_tmp import PREFIX  # noqa: E402 — not tmp_cleanup: importing that would redirect TMPDIR
+import suite_tmp  # noqa: E402 — not tmp_cleanup: importing that would redirect TMPDIR
+# This run's own prefix, handed to every suite it starts (suite_tmp.ENV): a second run at the same
+# time uses another pid, so neither sees the other's fixtures as its leak.
+PREFIX = suite_tmp.BASE + "%d-" % os.getpid()
 try:
     import yaml  # noqa: F401  (only to know whether manifest-checks.py can run here)
     HAVE_YAML = True
@@ -79,7 +82,7 @@ def run_one(path, args):
     # root first, in set order, and deny case 117 or a gate case at random (CI 38700885747, ubuntu).
     box = tempfile.mkdtemp(prefix="temp-leak-check-")
     os.chmod(box, 0o1777)
-    env = dict(os.environ, TMPDIR=box)
+    env = dict(os.environ, TMPDIR=box, **{suite_tmp.ENV: PREFIX})
     env.setdefault("CLAUDE_PLUGIN_ROOT", os.path.join(REPO, "plugins", "goalspec"))
     before = tmp_entries()
     try:
@@ -140,6 +143,16 @@ def selftest():
         prefixed = os.path.join(work, "prefixed.py")
         with open(prefixed, "w") as f:
             f.write("import tempfile\ntempfile.mkdtemp(prefix=%r, dir='/tmp')\n" % (PREFIX + "left-"))
+        # A fixture of another temp-leak-check run going on at the same time: BASE with another pid.
+        other_path = os.path.join("/tmp", suite_tmp.BASE + "%d-other" % (os.getpid() + 1))
+        other = os.path.join(work, "other.py")
+        with open(other, "w") as f:
+            f.write("open(%r, 'w').close()\n" % other_path)
+        # The prefix a suite gets must be this run's: a suite that writes with suite_tmp.PREFIX.
+        via_module = os.path.join(work, "via_module.py")
+        with open(via_module, "w") as f:
+            f.write("import sys, tempfile\nsys.path.insert(0, %r)\nimport suite_tmp\n"
+                    "tempfile.mkdtemp(prefix=suite_tmp.PREFIX + 'mod-', dir='/tmp')\n" % HERE)
         # Another program's file in /tmp, made during the run and left there: not a suite's, so
         # not a leak (the old checker called it one). Removed below by its fixed name.
         foreign_path = os.path.join("/tmp", "temp-leak-foreign-%d" % os.getpid())
@@ -157,6 +170,22 @@ def selftest():
             ok = False
         for p in sorted(tmp_entries() - before, reverse=True):
             shutil.rmtree(p, ignore_errors=True)
+        before = tmp_entries()
+        if check([via_module]) != 1:
+            print("SELFTEST FAIL: a dir left with suite_tmp.PREFIX did not turn it red (prefix not handed down)")
+            ok = False
+        for p in sorted(tmp_entries() - before, reverse=True):
+            shutil.rmtree(p, ignore_errors=True)
+        if check([other]) != 0:
+            print("SELFTEST FAIL: another run's fixture (same base, other pid) turned it red")
+            ok = False
+        if not os.path.exists(other_path):
+            print("SELFTEST FAIL: the planted other-run file was never written, so its case proved nothing")
+            ok = False
+        try:
+            os.unlink(other_path)
+        except OSError:
+            pass
         if check([foreign]) != 0:
             print("SELFTEST FAIL: a file another program left in /tmp, without the prefix, turned it red")
             ok = False
