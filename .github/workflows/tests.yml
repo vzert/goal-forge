@@ -80,7 +80,7 @@ jobs:
           failed=0
           for t in test/*.py; do
             case "$(basename "$t")" in
-              manifest-checks.py|temp-leak-check.py|tmp_cleanup.py|expected_check.py|suite_tmp.py) continue ;;
+              manifest-checks.py|temp-leak-check.py|tmp_cleanup.py|expected_check.py|suite_tmp.py|suite_bash.py) continue ;;
             esac
             echo "::group::$t"
             python3 "$t"
@@ -105,6 +105,70 @@ jobs:
           export CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE/plugins/goalspec"
           python3 test/temp-leak-check.py --selftest
           python3 test/temp-leak-check.py
+
+  windows:
+    # Windows, under Git Bash with python.exe (no python3), as Claude Code runs the hooks there.
+    # Until 0.65.2 nothing ran on Windows, and three defects stayed invisible: the Stop gate handed
+    # python a program over the 32767-character command-line cap (silent on every Stop), the
+    # read-only rail read a C:/ path in the review prompt as a tree that does not exist, and the
+    # suites themselves started the WSL launcher (System32\bash.exe) instead of Git Bash
+    # (test/suite_bash.py). Cases about POSIX mode bits, uids, process groups or chmod denials print
+    # "skipped (windows): <reason>" there; nothing is dropped silently. temp-leak-check and the
+    # --selftest runs are not repeated here: they run on Ubuntu and macOS.
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Report the interpreters actually in use
+        run: |
+          bash --version | head -1
+          python --version
+          git --version
+          python -c "import os; print('os.name =', os.name)"
+
+      - name: run_dir on a real Windows host (the LOCALAPPDATA branch)
+        run: |
+          set -euo pipefail
+          got=$(python plugins/goalspec/hooks/lib/run_dir.py ensure ci-windows-1 ci)
+          echo "ensure: $got"
+          case "$got" in
+            *'\AppData\Local\goalspec\run-ci-windows-1') ;;
+            *) echo "unexpected run dir: $got"; exit 1 ;;
+          esac
+          [ -d "$got" ]
+          [ "$(python plugins/goalspec/hooks/lib/run_dir.py path ci-windows-1)" = "$got" ]
+          python plugins/goalspec/hooks/lib/run_dir.py remove ci-windows-1 >/dev/null 2>&1 || true
+
+      - name: Run every suite
+        run: |
+          set -uo pipefail
+          export CLAUDE_PLUGIN_ROOT="$GITHUB_WORKSPACE/plugins/goalspec"
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+          failed=0
+          for t in test/*.py; do
+            case "$(basename "$t")" in
+              manifest-checks.py|temp-leak-check.py|tmp_cleanup.py|expected_check.py|suite_tmp.py|suite_bash.py) continue ;;
+            esac
+            echo "::group::$t"
+            python "$t"
+            rc=$?
+            if [ $rc -eq 0 ]; then
+              echo "PASS $t"
+            else
+              echo "FAIL $t (exit $rc)"
+              failed=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $failed
 
   manifests:
     # One platform is enough: this reads files and parses them. PyYAML is the only dependency, and

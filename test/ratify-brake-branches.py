@@ -20,6 +20,7 @@ case to fail under each.
 """
 import json, os, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
@@ -71,7 +72,7 @@ def transcript(events, name, entrypoint="cli"):
 
 def run(plugin, payload_text, env_extra=None):
     env = {k: v for k, v in os.environ.items() if k not in ("GOAL_SPEC_BRAKE", "GOAL_RATIFY_BRAKE")}
-    out = subprocess.run(["bash", os.path.join(plugin, HOOK)], input=payload_text,
+    out = subprocess.run([BASH, os.path.join(plugin, HOOK)], input=payload_text,
                          capture_output=True, text=True,
                          env={**env, "CLAUDE_PLUGIN_ROOT": plugin, **(env_extra or {})})
     raw = out.stdout.strip()

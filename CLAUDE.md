@@ -22,9 +22,12 @@ Layout: `plugins/goalspec/` (skill + agent + hooks + config), `.claude-plugin/ma
 
 ## Verifying a change (manual acid-test)
 CI runs the mechanical half on every push and PR (`.github/workflows/tests.yml`): all the suites on
-**both** Ubuntu and macOS, plus `bash -n` — and on macOS also `/bin/bash -n`, because /bin/bash there
+Ubuntu and macOS, plus `bash -n` — and on macOS also `/bin/bash -n`, because /bin/bash there
 is 3.2 and the one recorded way this repo shipped a dead hook (an unbalanced apostrophe in an
-unquoted heredoc) parses fine under bash 5. A second job runs `test/manifest-checks.py`.
+unquoted heredoc) parses fine under bash 5. A second job runs the suites on Windows (Git Bash,
+`python.exe`, since 0.65.2; POSIX-only cases print as skipped), and a third runs
+`test/manifest-checks.py`. Every suite starts `bash` through `test/suite_bash.py` (on Windows a bare
+"bash" from Python is the WSL launcher).
 **A green CI run is not the acid test**: it does not observe an agent obeying a written rule, a
 hook firing in a real session, or an adversary round running, so every "observe in the wild"
 pendiente stays manual. That is a scoping decision, not an impossibility: `claude --help` documents

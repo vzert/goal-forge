@@ -20,6 +20,7 @@ it. 01 is the control that keeps this from being a mere dirty-tree detector.
 """
 import argparse, datetime, json, os, stat, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -278,7 +279,7 @@ UNIT_CASES = [
     # A sticky directory on the way owned by another account (its owner can rename entries in it).
     ("26-foreign-sticky-parent-refused", "refused|noted-in-fallback-only"),
     # Windows: no os.getuid, no mode bits; %LOCALAPPDATA% is used and only "real directory, not a
-    # symlink" is checked (simulated here: CI runs Ubuntu and macOS only, no windows-latest job).
+    # symlink" is checked. Simulated on Ubuntu and macOS; the windows-latest job runs them natively.
     ("27-windows-localappdata-used", "used-localappdata"),
     ("28-windows-symlink-refused", "refused|noted"),
     # A crashed session's directory untouched for 30 days is pruned by the next SessionEnd; a fresh
@@ -311,7 +312,8 @@ def fallback_only(got, unsafe):
     if note(unsafe):
         return "refused|NOTE-IN-UNSAFE-DIR"
     return "refused|noted-in-fallback-only" if note(fallback) else "refused|no-note"
-os.environ.update(XDG_STATE_HOME=state, HOME=os.path.join(tmp, "home"))
+os.environ.update(XDG_STATE_HOME=state, LOCALAPPDATA=state, HOME=os.path.join(tmp, "home"),
+                  USERPROFILE=os.path.join(tmp, "home"))
 if case == "19":
     os.chdir(tmp)
     os.environ.update(XDG_STATE_HOME="rel-state", HOME="rel-home", LOCALAPPDATA="rel-lad")
@@ -332,11 +334,13 @@ elif case == "21":
     os.chmod(shared, 0o777)
     st2 = os.path.join(shared, "state")
     os.environ["XDG_STATE_HOME"] = st2
+    os.environ["LOCALAPPDATA"] = st2
     print(fallback_only(run_dir.ensure("sess-abc", "suite"), st2))
 elif case == "22":
     bad = os.path.join(tmp, "xdg-is-a-file")
     open(bad, "w").close()
     os.environ["XDG_STATE_HOME"] = bad
+    os.environ["LOCALAPPDATA"] = bad
     got = run_dir.ensure("sess-abc", "suite")
     want = os.path.join(tmp, "home", ".local", "state", "goalspec", "run-sess-abc")
     run_dir.note_failure("sess-abc", "suite", "why")
@@ -352,12 +356,14 @@ elif case == "23":
     link = os.path.join(tmp, "link")
     os.symlink(private, link)
     os.environ["XDG_STATE_HOME"] = link
+    os.environ["LOCALAPPDATA"] = link
     print(fallback_only(run_dir.ensure("sess-abc", "suite"), link))
 elif case in ("24", "25"):
     gw = os.path.join(tmp, "gw")
     os.mkdir(gw)
     os.chmod(gw, 0o775)
     os.environ["XDG_STATE_HOME"] = gw
+    os.environ["LOCALAPPDATA"] = gw
     run_dir._group_private = lambda gid: case == "24"
     got = run_dir.ensure("sess-abc", "suite")
     print("used" if got and case == "24" else fallback_only(got, gw))
@@ -367,6 +373,7 @@ elif case == "26":
     os.chmod(sticky, 0o1777)
     st2 = os.path.join(sticky, "state")
     os.environ["XDG_STATE_HOME"] = st2
+    os.environ["LOCALAPPDATA"] = st2
     real_lstat, me = os.lstat, os.getuid()
     class Fake:
         def __init__(self, st):
@@ -380,7 +387,8 @@ elif case == "26":
     print(fallback_only(run_dir.ensure("sess-abc", "suite"), st2))
 elif case in ("27", "28"):
     run_dir.IS_WINDOWS = True
-    del os.getuid  # what Windows Python lacks
+    if hasattr(os, "getuid"):
+        del os.getuid  # what Windows Python lacks
     lad = os.path.join(tmp, "lad")
     os.mkdir(lad)
     os.environ["LOCALAPPDATA"] = lad
@@ -413,6 +421,7 @@ elif case == "31":
     open(victim, "w").write("original\n")
     os.symlink(victim, os.path.join(st2, "goalspec", "run-dir-failed-sess-abc"))
     os.environ["XDG_STATE_HOME"] = st2
+    os.environ["LOCALAPPDATA"] = st2
     run_dir.ensure("sess-abc", "suite")  # refused: the note must not go through the planted link
     untouched = open(victim).read() == "original\n"
     os.remove(os.path.join(st2, "goalspec", "run-dir-failed-sess-abc"))
@@ -422,7 +431,8 @@ elif case == "31":
           ("planted-not-read" if not any("forged" in l for l in read) else "PLANTED-READ"))
 elif case == "32":
     run_dir.IS_WINDOWS = True
-    del os.getuid
+    if hasattr(os, "getuid"):
+        del os.getuid
     if hasattr(os.path, "isjunction"):
         del os.path.isjunction
     lad = os.path.join(tmp, "lad")
@@ -460,6 +470,21 @@ elif case == "33":
 """
 
 
+# Cases about POSIX ownership and mode bits. On Windows run_dir checks only "a real directory, not a
+# link or junction" (no os.getuid, no mode bits, access by ACL), so these do not apply there; the
+# Windows branch has its own cases (27, 28, 32), which run on both.
+POSIX_ONLY_UNIT = {
+    "20": "owner uid check",
+    "21": "a world-writable parent",
+    "22": "the ~/.local/state fallback",
+    "23": "a symlink inside a world-writable directory",
+    "24": "group-writable bits",
+    "25": "group-writable bits",
+    "26": "a sticky directory owned by another uid",
+    "31": "a world-writable parent",
+}
+
+
 def unit_case(lib, workdir, name):
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     r = subprocess.run([sys.executable, "-I", "-c", UNIT_SRC, lib, name[:2], tmp],
@@ -479,7 +504,9 @@ def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, sess
     env["TMPDIR"] = tmp
     # Failure notes go to this user's state directory: keep them inside the case.
     env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
+    env["LOCALAPPDATA"] = env["XDG_STATE_HOME"]  # what run_dir reads on Windows
     env["HOME"] = os.path.join(tmp, "home")  # the fallback state directory, never the real one
+    env["USERPROFILE"] = env["HOME"]  # what python reads as ~ on Windows
     env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
     # Transcripts are read (0.65.0): never the real ones, whatever this machine has set.
     env["CLAUDE_CONFIG_DIR"] = os.path.join(tmp, "home", ".claude")
@@ -487,10 +514,10 @@ def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, sess
     kw["session"] = session
 
     if not skip_start:
-        subprocess.run(["bash", hook, "start"], input=payload("SubagentStart", root, **kw),
+        subprocess.run([BASH, hook, "start"], input=payload("SubagentStart", root, **kw),
                        capture_output=True, text=True, env=env, cwd=root, timeout=30)
     mutate(root)
-    res = subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
+    res = subprocess.run([BASH, hook, "stop"], input=payload("SubagentStop", root, **kw),
                          capture_output=True, text=True, env=env, cwd=root, timeout=30)
     return res, tmp, root, env, kw
 
@@ -556,7 +583,7 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         for sess in ("sess-A", "sess-B"):
             d = run_dir_of(tmp, sess)
             ok = (os.path.isdir(d) and not os.path.islink(d)
-                  and stat.S_IMODE(os.lstat(d).st_mode) == 0o700
+                  and (os.name == "nt" or stat.S_IMODE(os.lstat(d).st_mode) == 0o700)
                   and os.path.isfile(os.path.join(d, "findings")))
             tags.append(ok)
         if all(tags) and not os.path.exists(os.path.join(tmp, "goalspec-adversary-snap")):
@@ -566,14 +593,15 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         root = make_repo(workdir, name)
         before = subprocess.run(GIT + ["-C", root, "status", "--porcelain", "--untracked-files=all"],
                                 capture_output=True, text=True).stdout
-        env = dict(os.environ, TMPDIR=tmp, HOME=root, CLAUDE_PLUGIN_ROOT=PLUGIN)
+        env = dict(os.environ, TMPDIR=tmp, HOME=root, USERPROFILE=root, CLAUDE_PLUGIN_ROOT=PLUGIN)
         env.pop("XDG_STATE_HOME", None)
-        subprocess.run(["bash", hook, "start"], input=payload("SubagentStart", root), capture_output=True,
+        env.pop("LOCALAPPDATA", None)  # Windows: HOME\AppData\Local, inside the repo too
+        subprocess.run([BASH, hook, "start"], input=payload("SubagentStart", root), capture_output=True,
                        text=True, env=env, cwd=root, timeout=30)
         report = os.path.join(os.path.dirname(hook), "report-adversary-writes.sh")
         if not os.path.isfile(report):  # a --compare baseline copied alone: use the plugin's
             report = os.path.join(PLUGIN, "hooks", "report-adversary-writes.sh")
-        out = subprocess.run(["bash", report], input=json.dumps({"session_id": "sess-abc", "cwd": root,
+        out = subprocess.run([BASH, report], input=json.dumps({"session_id": "sess-abc", "cwd": root,
                              "hook_event_name": "Stop"}), capture_output=True, text=True, env=env,
                              cwd=root, timeout=30).stdout
         after = subprocess.run(GIT + ["-C", root, "status", "--porcelain", "--untracked-files=all"],
@@ -589,11 +617,13 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         # files it fingerprints. Noted, nothing measured, nothing written in the repo.
         root = make_repo(workdir, name)
         env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(root, ".state"),
-                   HOME=os.path.join(tmp, "home"), CLAUDE_PLUGIN_ROOT=PLUGIN)
+                   LOCALAPPDATA=os.path.join(root, ".state"),
+                   HOME=os.path.join(tmp, "home"), USERPROFILE=os.path.join(tmp, "home"),
+                   CLAUDE_PLUGIN_ROOT=PLUGIN)
         for ev, mode in (("SubagentStart", "start"), ("SubagentStop", "stop")):
             if mode == "stop":
                 mutate(root)
-            subprocess.run(["bash", hook, mode], input=payload(ev, root), capture_output=True,
+            subprocess.run([BASH, hook, mode], input=payload(ev, root), capture_output=True,
                            text=True, env=env, cwd=root, timeout=30)
         rd = os.path.join(root, ".state", "goalspec")
         fps = [n for n in (os.listdir(os.path.join(rd, "run-sess-abc")) if os.path.isdir(os.path.join(rd, "run-sess-abc")) else [])]
@@ -605,7 +635,8 @@ def run_dir_case(hook, workdir, name, mutate, agent_type):
         if noted:
             return "NOTE-WRITTEN-INSIDE-REPO"
         # the note goes to the next state directory, outside the repository (HOME redirected)
-        fb = os.path.join(tmp, "home", ".local", "state", "goalspec", "run-dir-failed-sess-abc")
+        sub = os.path.join("AppData", "Local") if os.name == "nt" else os.path.join(".local", "state")
+        fb = os.path.join(tmp, "home", sub, "goalspec", "run-dir-failed-sess-abc")
         return "noted-inside-repo" if os.path.isfile(fb) else "silent-inside-repo"
     # 12 / 13: a directory under the session's name that must not be used.
     d = run_dir_of(tmp, "sess-abc")
@@ -649,8 +680,9 @@ def worktree_case(hook, workdir, name, where):
     with open(os.path.join(wt, "tracked.txt"), "a") as f:
         f.write("the work under review, in the worktree\n")
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
-    env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
-               HOME=os.path.join(tmp, "home"), CLAUDE_PLUGIN_ROOT=PLUGIN)
+    env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"), LOCALAPPDATA=os.path.join(tmp, "state"),
+               HOME=os.path.join(tmp, "home"), USERPROFILE=os.path.join(tmp, "home"),
+                   CLAUDE_PLUGIN_ROOT=PLUGIN)
     if name.startswith("48"):
         prompt = "Verify the claim in %s/notes.md against the transcript %s/t.jsonl" % (tmp, tmp)
     else:
@@ -658,7 +690,7 @@ def worktree_case(hook, workdir, name, where):
                   "in %s." % (wt, wt))
 
     def run(mode, data):
-        return subprocess.run(["bash", hook, mode], input=data, capture_output=True, text=True,
+        return subprocess.run([BASH, hook, mode], input=data, capture_output=True, text=True,
                               env=env, cwd=root, timeout=30)
 
     out = run("spawn", spawn_payload(root, prompt)).stdout.strip()
@@ -676,7 +708,9 @@ def worktree_case(hook, workdir, name, where):
         f.write("while reviewing I noticed a typo and fixed it\n")
     res = run("stop", payload("SubagentStop", root))
     tag = classify(res, tmp)
-    for p in sorted({wt, os.path.realpath(wt)}, key=len, reverse=True):  # /private/var first
+    forms = {wt, os.path.realpath(wt)}
+    forms |= {f.replace("\\", "/") for f in forms}  # git prints C:/... on Windows
+    for p in sorted(forms, key=len, reverse=True):  # /private/var first
         tag = tag.replace(p, "<wt>")
     return tag
 
@@ -748,8 +782,9 @@ def other_case(hook, workdir, name, how):
 
 def cleanup_case(workdir, name, setup, cleanup_hook=CLEANUP_HOOK):
     tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
-    env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"),
-               HOME=os.path.join(tmp, "home"), CLAUDE_PLUGIN_ROOT=PLUGIN)
+    env = dict(os.environ, TMPDIR=tmp, XDG_STATE_HOME=os.path.join(tmp, "state"), LOCALAPPDATA=os.path.join(tmp, "state"),
+               HOME=os.path.join(tmp, "home"), USERPROFILE=os.path.join(tmp, "home"),
+                   CLAUDE_PLUGIN_ROOT=PLUGIN)
     d = run_dir_of(tmp, "sess-abc")
     os.makedirs(os.path.dirname(d), 0o700)
     target = d
@@ -765,7 +800,7 @@ def cleanup_case(workdir, name, setup, cleanup_hook=CLEANUP_HOOK):
             os.chmod(d, 0o755)
     with open(os.path.join(target, "findings"), "w") as f:
         f.write("ts=1\npath x\nend\n")
-    subprocess.run(["bash", cleanup_hook], input=json.dumps({"session_id": "sess-abc",
+    subprocess.run([BASH, cleanup_hook], input=json.dumps({"session_id": "sess-abc",
                    "hook_event_name": "SessionEnd", "reason": "other"}),
                    capture_output=True, text=True, env=env, timeout=30)
     gone = not os.path.lexists(d)
@@ -782,6 +817,9 @@ def suite(hook, workdir, plugin=PLUGIN):
     copy, --compare swaps only the watcher."""
     rows = []
     for name, mutate, agent_type, expect in CASES:
+        if os.name == "nt" and name[:2] == "12":
+            rows.append((name, "skipped (windows): mode bits", "skipped (windows): mode bits"))
+            continue
         if name[:2] in ("11", "12", "13", "14", "30", "34"):
             rows.append((name, run_dir_case(hook, workdir, name, mutate, agent_type), expect))
             continue
@@ -800,13 +838,20 @@ def suite(hook, workdir, plugin=PLUGIN):
                                            skip_start=name.startswith("09"), tmp=tmp, session=sid)
         if name.startswith("10"):
             new_file(root)
-            res = subprocess.run(["bash", hook, "stop"], input=payload("SubagentStop", root, **kw),
+            res = subprocess.run([BASH, hook, "stop"], input=payload("SubagentStop", root, **kw),
                                  capture_output=True, text=True, env=env, cwd=root, timeout=30)
         rows.append((name, classify(res, tmp, sid), expect))
     for name, setup, expect in CLEANUP_CASES:
+        if os.name == "nt" and name[:2] == "16":
+            rows.append((name, "skipped (windows): mode bits", "skipped (windows): mode bits"))
+            continue
         rows.append((name, cleanup_case(workdir, name, setup,
                                         os.path.join(plugin, "hooks", "cleanup-run-dir.sh")), expect))
     for name, expect in UNIT_CASES:
+        if os.name == "nt" and name[:2] in POSIX_ONLY_UNIT:
+            skip = "skipped (windows): " + POSIX_ONLY_UNIT[name[:2]]
+            rows.append((name, skip, skip))
+            continue
         rows.append((name, unit_case(os.path.join(plugin, "hooks", "lib"), workdir, name), expect))
     return rows
 

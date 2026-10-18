@@ -235,7 +235,8 @@ if kind == "destructive":
                  "$VAR, no glob, nothing chained): a path inside a name.XXXXXX directory you own with "
                  "mode 0700 (what mktemp -d makes) under the system temp root, whose path an "
                  "earlier command of this session printed (mktemp does), symlinks checked at both "
-                 "ends, is not terminal and passes.")
+                 "ends, is not terminal and passes. On Windows it never passes: there are no mode "
+                 "bits there to check.")
 text_note = (" This hook matches the whole command text, heredoc bodies and -c strings included. "
              "If those words are only data (a string, a payload), write the text to a file with the "
              "Write tool and pass the file -- this hook reads the command text, never the contents of a "

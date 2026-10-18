@@ -113,13 +113,22 @@ safe = lambda v: re.sub(r"[^A-Za-z0-9_.-]", "_", str(v))[:120]
 print(safe(aid) + "\t" + str(cwd).replace("\n", " ") + "\t" + safe(sid))
 if spawn:
     seen = set()
-    for m in re.finditer(r"/[^\s`\x27\"<>()\[\]{},;|*?]+", str(inp.get("prompt") or "")):
+    # 0.65.2: on Windows a path may also start with a drive (C:\x or C:/x), the way prompts name
+    # paths there; until then only a leading "/" counted, so a Windows prompt named no tree at all
+    # (and C:/x lost its drive). The lookbehind keeps the "s:" of https:// from reading as a drive.
+    # Elsewhere the pattern is the 0.65.1 one: there "x:/abs/f" is a path after a word, not a drive.
+    head = r"(?:(?<![A-Za-z0-9])[A-Za-z]:[\\/]|/)" if os.name == "nt" else r"/"
+    for m in re.finditer(head + r"[^\s`\x27\"<>()\[\]{},;|*?]+", str(inp.get("prompt") or "")):
         p = m.group(0).rstrip(".:")
+        # The Git Bash form of a drive (/c/Users/x): python on Windows reads it as C:/Users/x.
+        if os.name == "nt" and re.match(r"/[A-Za-z](/|$)", p):
+            p = p[1].upper() + ":" + (p[2:] or "/")
         # A path the review names may not exist yet (a file it will be asked about): its nearest
-        # existing parent still says which tree it is in. The filesystem root says nothing.
-        while p and p != "/" and not os.path.exists(p):
-            p = os.path.dirname(p)
-        if p and p != "/":
+        # existing parent still says which tree it is in. A root (/, or a drive) says nothing.
+        while p and not os.path.exists(p):
+            q = os.path.dirname(p)
+            p = "" if q == p else q
+        if p and os.path.dirname(p) != p:
             p = p if os.path.isdir(p) else os.path.dirname(p)
             if p not in seen:
                 seen.add(p)

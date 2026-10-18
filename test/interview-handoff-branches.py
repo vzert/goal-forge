@@ -14,6 +14,7 @@ mutation at a time to the component itself, and requires at least one case to fa
 """
 import json, os, re, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
@@ -51,7 +52,7 @@ def transcript(events, name):
 
 
 def run(plugin, payload_text):
-    out = subprocess.run(["bash", os.path.join(plugin, "hooks", "nudge-interview-handoff.sh")],
+    out = subprocess.run([BASH, os.path.join(plugin, "hooks", "nudge-interview-handoff.sh")],
                          input=payload_text, capture_output=True, text=True,
                          env={**os.environ, "CLAUDE_PLUGIN_ROOT": plugin})
     raw = out.stdout.strip()

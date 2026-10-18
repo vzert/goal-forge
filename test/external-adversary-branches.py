@@ -53,6 +53,7 @@ The two 0.21.1 fixes are the point of this file:
 """
 import argparse, os, re, signal, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -106,8 +107,8 @@ echo "%s"
 """ % (MODEL, 'echo "- probe: one real evidence line"\n', HOLD)
 
 STUB_PWD = """#!/bin/bash
-echo "STUB-PWD=$(pwd)"
-echo "STUB-GCD=$(cd "$(git rev-parse --git-common-dir)" && pwd)"
+echo "STUB-PWD=$(pwd -W 2>/dev/null || pwd)"
+echo "STUB-GCD=$(cd "$(git rev-parse --git-common-dir)" && { pwd -W 2>/dev/null || pwd; })"
 echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
@@ -393,8 +394,8 @@ CASES = [
     ("58-scratch-removed-mutated", "STUB_SCRATCH_MUTATE", {}, "MUTREPO",
      "mutation-unverified+scratch-removed"),
     # 59: Git Bash on Windows. A fake `cygpath` on PATH stands in for the real one; TMP and TEMP must
-    # carry its Windows form of the path while TMPDIR keeps the POSIX one. Simulated, not run on
-    # Windows (p-86ce4d5857 adds that runner).
+    # carry its Windows form of the path while TMPDIR keeps the POSIX one. The fake cygpath is used
+    # on every platform, the windows-latest job included.
     ("59-scratch-native-path-via-cygpath", "STUB_SCRATCH", {}, None,
      "pass+scratch-removed+native"),
     # 60: the hook killed by SIGTERM (a timeout, Ctrl-C) to its process group while the partner
@@ -599,23 +600,46 @@ TAIL_MARKERS = {
 }
 
 
+def _native(p):
+    """A Git Bash path (/tmp/x, /c/Users/x) in Windows form; unchanged elsewhere."""
+    if os.name != "nt" or not p.startswith("/"):
+        return p
+    r = subprocess.run([BASH, "-c", 'cygpath -w "$1"', "_", p], capture_output=True, text=True)
+    return r.stdout.strip() or p
+
+
+def _same_path(a, b):
+    """Same parent (resolved, so 8.3 short names match) and same last name; works once b is gone."""
+    def parent(x):
+        return os.path.normcase(os.path.realpath(os.path.dirname(x.rstrip("\\/"))))
+    return parent(a) == parent(b) and \
+        os.path.basename(a.rstrip("\\/")).lower() == os.path.basename(b.rstrip("\\/")).lower()
+
+
 def scratch_suffix(text, case_name, caller_tmpdir):
     """Cases 55-60: the private scratch directory the partner saw, and whether it is gone."""
     m = re.search(r"STUB-SCRATCH=([^|\n]*)\|([^|\n]*)\|([^\n]*)", text)
     if not m:
         return "+scratch-unseen"
     tmpdir, tmp, temp = m.group(1).rstrip("/"), m.group(2), m.group(3)
+    # On Windows the partner's TMPDIR is a Git Bash path (/tmp/...) and TMP/TEMP are its Windows
+    # form; python reads /tmp as a folder on the current drive, so convert before any check.
+    td = _native(tmpdir)
     caller = os.path.realpath(caller_tmpdir or "/nonexistent")
-    if not tmpdir or os.path.realpath(tmpdir) == caller:
+    if not tmpdir or os.path.realpath(td) == caller:
         return "+scratch-shared"
-    if (os.path.realpath(os.path.dirname(tmpdir)) != caller
-            or not os.path.basename(tmpdir).startswith("goalspec-adversary-tmp.")):
+    if (os.path.realpath(os.path.dirname(td)) != caller
+            or not os.path.basename(td).startswith("goalspec-adversary-tmp.")):
         return "+scratch-elsewhere"
     native = case_name.startswith("59")
     want = "WINPATH:" + tmpdir if native else tmpdir
-    if tmp.rstrip("/") != want or temp.rstrip("/") != want:
+    if native or os.name != "nt":
+        differ = tmp.rstrip("/") != want or temp.rstrip("/") != want
+    else:
+        differ = not (_same_path(tmp, td) and _same_path(temp, td))
+    if differ:
         return "+scratch-tmp-temp-differ"
-    if os.path.exists(tmpdir):
+    if os.path.exists(td):
         return "+scratch-LEFT"
     return "+scratch-removed" + ("+native" if native else "")
 
@@ -946,7 +970,17 @@ def suite(hook, workdir):
             os.chmod(readonly[-1], 0o555)
         else:
             run_cwd = cwd or REPO
-        argv = ["bash", "-c", 'bash "$1" 2>&1 | ' + pipe, "_", hook] if pipe else ["bash", hook]
+        argv = [BASH, "-c", 'bash "$1" 2>&1 | ' + pipe, "_", hook] if pipe else [BASH, hook]
+        if name[:2] in ("37", "38") and os.name == "nt":
+            # Both make a step fail with chmod (a read-only .git, a mode-0 file); NTFS ignores it.
+            skip = "skipped (windows): chmod does not deny on NTFS"
+            rows.append((name, skip, skip, subprocess.CompletedProcess(argv, 0, "", "")))
+            continue
+        if name.startswith("60") and os.name == "nt":
+            # Windows has no process groups to signal (no os.killpg): shown as skipped, never dropped.
+            skip = "skipped (windows): no os.killpg"
+            rows.append((name, skip, skip, subprocess.CompletedProcess(argv, 0, "", "")))
+            continue
         if name.startswith("60"):
             # SIGTERM to the whole process group once the partner is running, the way a timeout or
             # a Ctrl-C reaches it. --compare runs suite() twice in one workdir: a marker left by the

@@ -6,6 +6,59 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.65.2] - 2026-10-18
+
+### Fixed
+
+- **The Stop gate speaks on Windows again.** Windows caps a command line at 32767 characters. The
+  gate hands its python program to `python -c`, and 0.65.1 grew it from 31527 to 35162 characters,
+  comments included (31635 and 35270 bytes in UTF-8). On a `windows-latest` runner the 0.65.1 gate
+  was silent where it must speak (run 39152036251: `gate-branches.py` had 12 assertion failures, cases 17, 28, 29, 34-38, 41,
+  42, 44 and 45),
+  because python never started and an empty result reads as "nothing to say". 0.65.0's 31527 is under the cap by arithmetic; it was never run
+  on Windows. `gate-goal-close.sh` now keeps the program in `GATE_PY` and passes it to python with
+  its comment lines removed (about 9100 characters). No `#` line in it sits inside a string, so the
+  program is the same: its ast matched when this was written, and `--compare` against the 0.65.1
+  gate is parity in both modes (45 branches, 0 changed). `gate-branches.py` measures what python
+  actually receives, with a `python3` put first on `PATH` that records the length in bytes of every
+  argument it gets. The ceiling is 30000 bytes. The longest is 9097 on the new gate and 35270 on the
+  0.65.1 one, which fails. This section runs right after the branch table.
+- **The adversary read-only rail reads Windows paths in the review prompt.** Since 0.64.0 the
+  SubagentStart hook takes, from the review prompt, the trees it names, so a review of a linked
+  worktree is measured there and not in the session's cwd. Only a path that starts with `/` counted:
+  a Windows prompt naming `C:\...` named no tree, and the rail measured the cwd's checkout instead.
+  On Windows `watch-adversary-writes.sh` now also accepts a path that starts with a drive (`C:\x`,
+  `C:/x`; a lookbehind keeps the `s:` of `https://` from reading as one) and converts the Git Bash
+  form `/c/...`. On Linux and macOS the pattern is the 0.65.1 one. The walk up to an existing parent
+  now stops at any root, `/` or a drive, which `dirname` returns unchanged; so on POSIX the only
+  difference from 0.65.1, over 25 prompts compared side by side, is that `//` and `///` (the root,
+  which no repository is) are no longer named as trees. Measured on `windows-latest` with full
+  history (run 39169767055): with the 0.65.1 watcher in place, `adversary-writes-branches.py` fails
+  cases 46 and 47 and only those, and with the new one it passes (the restore checked with `cmp`).
+  On macOS `--compare` against the 0.65.1 watcher is parity (58 branches).
+- On Windows the one delete that is not terminal (an own `mktemp -d` directory, 0.55.0) never
+  applies, because there are no mode bits to check. That delete is always denied there, which is
+  the safe side. SKILL.md, the precheck's deny text and `references/mid-session-retrigger.md` now
+  say so.
+
+### Changed
+
+- **CI runs every suite on Windows** (`.github/workflows/tests.yml`, job `windows`: Git Bash,
+  `python.exe`, no `python3`). It also checks the `LOCALAPPDATA` branch of `hooks/lib/run_dir.py`
+  on a real host: `ensure` must create `...\AppData\Local\goalspec\run-<id>` and `path` must return
+  it. All 19 suites pass there. Cases about POSIX mode bits, uids, process groups (`os.killpg`) or
+  chmod denials print `skipped (windows): <reason>`; none is dropped.
+- New `test/suite_bash.py`: on Windows a bare `bash` started from Python is
+  `C:\Windows\System32\bash.exe`, the WSL launcher, and 18 of 19 suites failed there before one hook
+  ran (run 39149542165). Every suite now starts the hooks with its `BASH`, which is "bash" on Linux
+  and macOS and Git Bash's `bash.exe` on Windows. `claim-surface-carriers.py --selftest` copies it
+  with itself.
+- The suites set `LOCALAPPDATA` (what `run_dir` reads on Windows) wherever they set
+  `XDG_STATE_HOME`, and `USERPROFILE` (what python reads as `~` on Windows) wherever they redirect
+  `HOME`. The `external-adversary` stub prints Windows-form paths (`pwd -W`), and the suite converts
+  the partner's Git Bash `TMPDIR` with `cygpath -w` before checking it. `decompose-nudge` case 16
+  decodes the JSON before looking for the checkpoint path.
+
 ## [0.65.1] - 2026-10-18
 
 ### Fixed

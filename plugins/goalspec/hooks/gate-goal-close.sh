@@ -131,7 +131,13 @@ INPUT=$(cat)
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
 
 # Everything lives in python. Fail-open on any exception.
-RESULT=$(ENFORCE="${GOAL_GATE_ENFORCE:-}" printf '%s' "$INPUT" | LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" "$PY" -c '
+# 0.65.2: the program is kept in GATE_PY and handed to python with its comment lines removed (sed
+# below). Windows caps a command line at 32767 characters, and with its comments this program is
+# over 35000 since 0.65.1: python never started there, RESULT came back empty and the gate said
+# nothing on every Stop. Without them it is about 9100. No line starting with "#" sits inside a
+# string in it, so removing those lines leaves the same program (the same ast, checked when this
+# was written); test/gate-branches.py measures what python actually receives.
+GATE_PY='
 import json, sys, os, re
 
 # Shared terminal-action detection (hooks/lib/terminal_actions.py) — used below for the staleness
@@ -670,7 +676,9 @@ if streak >= 3:
     remind("convergence-floor-only")
 
 print("OK")
-' 2>/dev/null)
+'
+RESULT=$(ENFORCE="${GOAL_GATE_ENFORCE:-}" printf '%s' "$INPUT" | LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" \
+  "$PY" -c "$(printf '%s\n' "$GATE_PY" | sed '/^[[:space:]]*#/d')" 2>/dev/null)
 
 # Fail-open on empty / OK.
 [ -z "$RESULT" ] && exit 0

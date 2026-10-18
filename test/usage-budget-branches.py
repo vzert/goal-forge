@@ -32,6 +32,7 @@ Both limits are the point of writing them here rather than letting a green run i
 """
 import json, os, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "check-usage-budget.sh")
@@ -118,7 +119,7 @@ def run_case(name, enabled, util, lam, extra, tmp):
     # (silently falling back to the text-only check, which case 07's spec-free lam cannot satisfy).
     env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")
 
-    out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
+    out = subprocess.run([BASH, HOOK], input=json.dumps(payload),
                          capture_output=True, text=True, env=env).stdout.strip()
     return "nudge" if out else "silent"
 

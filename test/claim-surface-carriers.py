@@ -72,6 +72,7 @@ Presence only, as everywhere in this file.
 
 import json
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 import os
 import re
 import subprocess
@@ -161,7 +162,7 @@ def main():
     import tempfile
 
     def emit(hook, payload, env=None, cwd=None, args=()):
-        r = subprocess.run(["bash", os.path.join(P, "hooks", hook)] + list(args), input=json.dumps(payload),
+        r = subprocess.run([BASH, os.path.join(P, "hooks", hook)] + list(args), input=json.dumps(payload),
                            capture_output=True, text=True, cwd=cwd,
                            env=dict(os.environ, CLAUDE_PLUGIN_ROOT=P, **(env or {})))
         return r.stdout, r.stderr
@@ -179,11 +180,11 @@ def main():
     subprocess.call(["git", "-C", tmp, "-c", "user.name=t", "-c", "user.email=t@t",
                      "commit", "-q", "--allow-empty", "-m", "x"])
     sink = os.path.join(tmp, "..", os.path.basename(tmp) + "-prompt.txt")
-    subprocess.run(["bash", EXTERNAL], input=b"payload\n", cwd=tmp,
+    subprocess.run([BASH, EXTERNAL], input=b"payload\n", cwd=tmp,
                    env=external_env(GOAL_ADVERSARY_CMD="tee " + sink),
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     emitted = read(sink) if os.path.exists(sink) else ""
-    ext_err = subprocess.run(["bash", EXTERNAL], input="payload\n", capture_output=True, text=True,
+    ext_err = subprocess.run([BASH, EXTERNAL], input="payload\n", capture_output=True, text=True,
                              cwd=tmp, env=external_env(GOAL_ADVERSARY_CMD="true")).stderr
     # route-external-adversary.sh with backend=external resolved from a throwaway config.
     rcfg = os.path.join(tmp, "..", os.path.basename(tmp) + "-config.json")
@@ -225,7 +226,7 @@ def main():
     with open(os.path.join(rtmp, "state", "goalspec", "run-s", "findings"), "w") as fh:
         fh.write("ts=1\npath src/x.py\n")
     report_out = context(emit("report-adversary-writes.sh", {"session_id": "s"},
-                              env={"TMPDIR": rtmp, "XDG_STATE_HOME": os.path.join(rtmp, "state"),
+                              env={"TMPDIR": rtmp, "XDG_STATE_HOME": os.path.join(rtmp, "state"), "LOCALAPPDATA": os.path.join(rtmp, "state"),
                                    "HOME": os.path.join(rtmp, "home")})[0])
 
     vt = tempfile.mkdtemp(prefix="visible-")
@@ -301,7 +302,7 @@ def main():
     check("external:added-block-has-no-apostrophe", blk and "'" not in blk)
     check("external:added-block-has-no-backtick", blk and "`" not in blk)
     check("external:added-block-has-no-dollar", blk and "$" not in blk)
-    rc = subprocess.call(["bash", "-n", EXTERNAL])
+    rc = subprocess.call([BASH, "-n", EXTERNAL])
     check("external:bash-n-parses", rc == 0, "bash -n exit %d" % rc)
 
     # --- 6. The checkpoint declaration defers to the owner ---------------------------------
@@ -576,7 +577,7 @@ def main():
     MID_SPEC = "can be stored as a summary without the ## Goal-spec heading"
     # 0.59.1: "a tool call is stored as written" read as if a Bash call counted (VPS 6b577287 wrote the
     # hold with printf >>). Every carrier that offers the checkpoint way says a Bash write is not read.
-    BASH = "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count"
+    BASH_WRITE_RULE = "A Bash command that writes the file (printf, echo, tee, a >> redirect) does not count"
     check("bashwrite:skill", "a Bash command that writes the line" in " ".join(skill.split()))
     check("bashwrite:adversary-skill", "a Bash command that writes the line" in adv_skill)
     check("visible:skill-names-mid-turn-cause", MID in " ".join(skill.split())
@@ -597,12 +598,12 @@ def main():
                       "[ADVERSARY-MODEL: X / x]\n- probe: evidence\n" + hold}]}})
     check("visible:nudge-verdict-branch-emits", "just came back" in out and VIS in out)
     check("visible:nudge-verdict-branch-names-mid-turn-cause", MID in out)
-    check("bashwrite:nudge-verdict-branch", BASH in out)
+    check("bashwrite:nudge-verdict-branch", BASH_WRITE_RULE in out)
     out, _ = emit("remind-quote-verdict.sh", {"tool_name": "Task",
                   "tool_input": {"subagent_type": "goal-adversary"}, "tool_response": {}})
     check("visible:nudge-launched-branch-emits", "no adversary output" in out and VIS in out)
     check("visible:nudge-launched-branch-names-mid-turn-cause", MID in out)
-    check("bashwrite:nudge-launched-branch", BASH in out)
+    check("bashwrite:nudge-launched-branch", BASH_WRITE_RULE in out)
 
     # external-adversary.sh stderr reminder, driven through a stub partner with a real verdict.
     xrepo = os.path.join(vt, "xrepo"); os.makedirs(xrepo)
@@ -613,7 +614,7 @@ def main():
     with open(fixture, "w") as fh:
         fh.write("[ADVERSARY-MODEL: GPT-5 / gpt-5]\n- checked a thing: fine\n- checked another: fine\n"
                  + hold + "\n")
-    r = subprocess.run(["bash", EXTERNAL], input="payload\n", capture_output=True, text=True,
+    r = subprocess.run([BASH, EXTERNAL], input="payload\n", capture_output=True, text=True,
                        cwd=xrepo, env=external_env(GOAL_ADVERSARY_CMD="cat " + fixture))
     check("visible:external-stderr-emits", "verdict-shaped block was just produced" in r.stderr
           and VIS in r.stderr)
@@ -627,7 +628,7 @@ def main():
           and "reaches the transcript only after its tool call runs" in out)
     check("visible:precheck-deny-names-mid-turn-cause",
           "(3) The quote is visible text written in the middle of a turn: " + MID in out)
-    check("bashwrite:precheck-deny-emits", BASH in out)
+    check("bashwrite:precheck-deny-emits", BASH_WRITE_RULE in out)
     # The 0.46.7 branch: a hold that arrived as a subagent result. Its text lives in the shared lib,
     # split across string literals, which a grep of the phrase never saw (0.46.9).
     import importlib.util
@@ -642,7 +643,7 @@ def main():
     check("visible:spec-entry-nudge-names-mid-turn-cause",
           MID_SPEC in getattr(ta_mod, "SPEC_ON_ENTRY_NUDGE", ""))
     for const in ("RELAYED_HOLD_NOTE", "WAIVER_DENY_NOTE", "SPEC_BRAKE_REASON", "SPEC_ON_ENTRY_NUDGE"):
-        check("bashwrite:" + const.lower().replace("_", "-"), BASH in getattr(ta_mod, const, ""))
+        check("bashwrite:" + const.lower().replace("_", "-"), BASH_WRITE_RULE in getattr(ta_mod, const, ""))
 
     # remind-handback-verdict.sh (0.46.8), driven: record on SubagentStop, then remind on
     # UserPromptSubmit. It carries the visible-text rule AND the role-fixity audience line, since an
@@ -655,17 +656,17 @@ def main():
     hb_tmp = os.path.join(vt, "hb-tmp"); os.makedirs(hb_tmp)
     emit("remind-handback-verdict.sh", {"session_id": "s", "hook_event_name": "SubagentStop",
          "agent_type": "goalspec:goal-adversary", "agent_id": "a", "agent_transcript_path": hb_sub},
-         env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state"),
+         env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state"), "LOCALAPPDATA": os.path.join(hb_tmp, "state"),
               "HOME": os.path.join(hb_tmp, "home")}, args=["record"])
     out, _ = emit("remind-handback-verdict.sh", {"session_id": "s", "hook_event_name": "UserPromptSubmit",
                   "transcript_path": jsonl("hb-parent", [spec])},
-                  env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state"),
+                  env={"TMPDIR": hb_tmp, "XDG_STATE_HOME": os.path.join(hb_tmp, "state"), "LOCALAPPDATA": os.path.join(hb_tmp, "state"),
                        "HOME": os.path.join(hb_tmp, "home")},
                   args=["remind"])
     check("visible:handback-remind-emits", hold in out and VIS in out
           and "reaches the transcript only after its tool call runs" in out)
     check("visible:handback-remind-names-mid-turn-cause", MID in out)
-    check("bashwrite:handback-remind", BASH in out)
+    check("bashwrite:handback-remind", BASH_WRITE_RULE in out)
     check("role:handback-remind-audience-line", "ADDRESSED TO THE EXECUTOR OF THIS SESSION" in out
           and "you verify, you do not repair" in out)
 
@@ -936,7 +937,7 @@ def selftest():
         shutil.rmtree(root, ignore_errors=True)
         shutil.copytree(os.path.join(REPO, "plugins"), os.path.join(root, "plugins"))
         os.makedirs(os.path.join(root, "test"))
-        for name in ("claim-surface-carriers.py", "tmp_cleanup.py"):  # the copy imports tmp_cleanup
+        for name in ("claim-surface-carriers.py", "tmp_cleanup.py", "suite_bash.py"):  # the copy imports both
             shutil.copy(os.path.join(REPO, "test", name), os.path.join(root, "test"))
         shutil.copy(os.path.join(REPO, "README.md"), root)
         return root

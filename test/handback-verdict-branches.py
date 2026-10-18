@@ -20,6 +20,7 @@ time, and requires at least one case to notice.
 """
 import json, os, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PLUGIN = os.path.join(REPO, "plugins", "goalspec")
@@ -70,11 +71,12 @@ def said(text, ts):
 
 
 def call(plugin, mode, payload, tmpdir):
-    r = subprocess.run(["bash", os.path.join(plugin, HOOK_REL), mode],
+    r = subprocess.run([BASH, os.path.join(plugin, HOOK_REL), mode],
                        input=payload if isinstance(payload, str) else json.dumps(payload),
                        capture_output=True, text=True,
                        env=dict(os.environ, TMPDIR=tmpdir, CLAUDE_PLUGIN_ROOT=plugin,
                                 XDG_STATE_HOME=os.path.join(tmpdir, "state"),
+                                LOCALAPPDATA=os.path.join(tmpdir, "state"),
                                 HOME=os.path.join(tmpdir, "home")))
     return r.stdout.strip()
 
@@ -360,7 +362,12 @@ def hooks_json_ok(plugin):
 
 
 def suite(plugin):
-    rows = [(name, want, fn(plugin)) for name, fn, want in CASES]
+    # Windows has no mode bits (run_dir checks only "a real directory, not a link" there). Shown as
+    # skipped, never dropped.
+    nt_skip = {"34": "mode bits"} if os.name == "nt" else {}
+    rows = [(name, want, fn(plugin)) if name[:2] not in nt_skip else
+            (name, "skipped (windows): " + nt_skip[name[:2]], "skipped (windows): " + nt_skip[name[:2]])
+            for name, fn, want in CASES]
     rows.append(("30-hooks-json-registers-both-halves", True, hooks_json_ok(plugin)))
     return rows
 

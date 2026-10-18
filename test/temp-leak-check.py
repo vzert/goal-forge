@@ -34,7 +34,7 @@ import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
-SKIP = {"temp-leak-check.py", "expected_check.py", "tmp_cleanup.py", "suite_tmp.py"}
+SKIP = {"temp-leak-check.py", "expected_check.py", "tmp_cleanup.py", "suite_tmp.py", "suite_bash.py"}
 sys.path.insert(0, HERE)
 import suite_tmp  # noqa: E402 — not tmp_cleanup: importing that would redirect TMPDIR
 # This run's own prefix, handed to every suite it starts (suite_tmp.ENV): a second run at the same

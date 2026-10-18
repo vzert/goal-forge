@@ -4,7 +4,9 @@
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
-`.github/workflows/tests.yml` runs everything here on every push and PR, on Ubuntu **and** macOS.
+`.github/workflows/tests.yml` runs everything here on every push and PR, on Ubuntu **and** macOS,
+and the suites on Windows too (Git Bash with `python.exe`, since 0.65.2; cases about POSIX mode bits,
+uids, process groups or chmod denials print `skipped (windows): <reason>` there).
 The macOS leg is not redundancy: `/bin/bash` there is 3.2, and an unbalanced apostrophe inside an
 unquoted heredoc — the one recorded way this repo shipped a hook that died at parse time — is
 accepted by bash 5 on Ubuntu. A green run covers the mechanical branches and nothing else: it does
@@ -12,6 +14,17 @@ not watch an agent obey a written rule or a hook fire in a real session. That is
 was scoped to, not a law: `claude --help` documents headless `-p` and `--max-budget-usd`, so such a
 job is feasible and boundable — at the cost of a credential in CI, money per run, and
 non-determinism. Whether that trade is worth it is open.
+
+## Which bash: `suite_bash.py`
+
+Every suite starts the hooks as `subprocess.run([BASH, hook], ...)`, with `BASH` from
+`suite_bash.py`, never the bare name. On Linux and macOS `BASH` is "bash". On Windows Python hands
+the name to CreateProcess, which looks in the system directory before `PATH` and finds
+`System32\bash.exe`, the WSL launcher: on the `windows-latest` runner it only printed "Windows
+Subsystem for Linux has no installed distributions" and every suite but one failed before a hook ran.
+There `BASH` is the first `bash.exe` on `PATH` outside the Windows directory (Git Bash), or
+`GOALSPEC_TEST_BASH`. A suite whose `--selftest` runs a copy of itself outside `test/` copies
+`suite_bash.py` with it, as it copies `tmp_cleanup.py`.
 
 ## Temp dirs: `tmp_cleanup.py` and `temp-leak-check.py`
 
@@ -168,8 +181,8 @@ the matcher normalizes backslashes before testing, because a POSIX-separator pat
 the gate blind to a disk-written spec on that platform — the same break as **01**, platform-shaped.
 That defect was inherited from the `endswith` this replaced (`memory/_pendientes.md` flagged it
 2026-08-01), surfaced by this change's decision-log sweep, and fixed on the user's explicit call.
-**No real Windows host has run it**: the assertion is synthetic, and that is the whole of the
-evidence. These six need no git repo (the precondition fires before any git command runs), unlike
+The Windows CI job runs it since 0.65.2, but the path is still a synthetic transcript entry, not one
+a Windows session of Claude Code wrote. These six need no git repo (the precondition fires before any git command runs), unlike
 every other live-git case in this file.
 
 **What `--compare` cannot see here, stated because a green parity run reads like more than it is**:
@@ -382,7 +395,7 @@ can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 case requires a new `goalspec-adversary-tmp.*` directory under the caller's `TMPDIR`, `TMP` and `TEMP`
 naming it, and the directory gone after the hook exits: on a hold (55), a break with a nonzero exit
 (56), no verdict (57), a mutated repo (58), with a fake `cygpath` on `PATH` standing in for Git Bash
-(59: `TMP`/`TEMP` must carry its Windows form; simulated, not run on Windows), and with SIGTERM sent
+(59: `TMP`/`TEMP` must carry its Windows form; a fake `cygpath`, on every platform), and with SIGTERM sent
 to the process group while the partner runs (60). Against 0.64.0 all six end in `+scratch-shared`.
 Removing the cleanup from the EXIT trap, or the `chmod` before `rm -rf`, turns all six to
 `+scratch-LEFT`.
@@ -635,7 +648,8 @@ SessionEnd cleanup.
 cannot be another user), directories on the path that another account can write (shared, symlinked,
 group-writable with a shared group, sticky of another owner), a group-writable path with a private
 group (accepted: the Debian/Ubuntu `~/.local`), an unusable `XDG_STATE_HOME`, the Windows branch
-(simulated: CI runs Ubuntu and macOS only, with no `windows-latest` job), a planted failure note, and the 30-day prune. `classify` reads both
+(simulated on Ubuntu and macOS; on the `windows-latest` job 27, 28 and 32 run natively and the
+POSIX-only cases 20-26 and 31 print as skipped), a planted failure note, and the 30-day prune. `classify` reads both
 layouts, so `--compare` against the 0.60.4 watcher changes only 11-14, 30 and 34. These pieces have
 no older version to compare against, so `--selftest` applies 19 mutations of `run_dir.py` in a copy
 of the plugin and requires the case written for each to change; it fails first when the unmutated
@@ -1034,7 +1048,8 @@ regardless of content, case 13); deploy/destructive commands (never content-exem
 agnostic, cases 14-16), except — new in 0.55.0 — the one canonical delete of an own mktemp
 directory: a command that is exactly `rm -rf <absolute path>...`, no shell syntax, every path's
 entry and, if it is a symlink, its target inside a first-level `name.XXXXXX` directory that the
-user owns with mode 0700, under a sticky temp root or macOS's per-user T, whose name a Bash OUTPUT
+user owns with mode 0700 (so never on Windows: 116, 117 and 137b print as skipped there), under a
+sticky temp root or macOS's per-user T, whose name a Bash OUTPUT
 of the session printed as part of a path (cases 116-117 allow;
 118-128 each deny one way out of that form: a symlink with a trailing slash, `$VAR`, a chained
 command, `..`, the temp root itself, a non-mktemp child such as `claude-501`, a relative path also

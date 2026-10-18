@@ -36,6 +36,7 @@ it to fail. A check that has never been seen to fail is not yet a check.
 """
 import argparse, json, os, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -279,6 +280,10 @@ def classify(res, name, findings_path):
 def suite(hook, workdir):
     rows = []
     for name, body, stem, kw, expect in CASES:
+        if os.name == "nt" and name.startswith("16"):
+            # Windows has no mode bits: run_dir checks only "a real directory, not a link".
+            rows.append((name, "skipped (windows): mode bits", "skipped (windows): mode bits"))
+            continue
         kw = dict(kw)  # popped below; the table is reused by --compare and --selftest
         tmp = tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
         # Both layouts (pre-0.62.0 shared directory, 0.62.0 per-session run directory), so --compare
@@ -297,6 +302,7 @@ def suite(hook, workdir):
         env = dict(os.environ)
         env["TMPDIR"] = tmp
         env["XDG_STATE_HOME"] = os.path.join(tmp, "state")
+        env["LOCALAPPDATA"] = env["XDG_STATE_HOME"]  # what run_dir reads on Windows
         env["HOME"] = os.path.join(tmp, "home")  # the fallback state directory, never the real one
         env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")  # where a copied hook finds hooks/lib
         if kw.pop("note", False):
@@ -309,10 +315,10 @@ def suite(hook, workdir):
         # counts as consumed when the hook deleted the copy in the layout it reads.
         own = [os.path.join(snap, SESSION + ".findings"),
                os.path.join(tmp, "state", "goalspec", "run-" + SESSION, "findings")]
-        res = subprocess.run(["bash", hook], input=payload(**kw), capture_output=True,
+        res = subprocess.run([BASH, hook], input=payload(**kw), capture_output=True,
                              text=True, env=env, cwd=tmp, timeout=30)
         if name.startswith("09") or name.startswith("14"):
-            res = subprocess.run(["bash", hook], input=payload(**kw), capture_output=True,
+            res = subprocess.run([BASH, hook], input=payload(**kw), capture_output=True,
                                  text=True, env=env, cwd=tmp, timeout=30)
             rows.append((name, "silent-on-second" if not res.stdout.strip() else "RE-REPORTED",
                          expect))

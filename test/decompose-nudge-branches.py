@@ -56,6 +56,7 @@ observation alongside the decomposition-skip case above.
 """
 import json, os, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "nudge-decompose.sh")
@@ -280,7 +281,7 @@ def run_case(name, checkpoint_text, tool_calls, extra, tmp, opts=None):
         payload = {"transcript_path": transcript_path}
     payload.update(extra)
 
-    out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
+    out = subprocess.run([BASH, HOOK], input=json.dumps(payload),
                          capture_output=True, text=True, cwd=case_dir).stdout.strip()
     return "nudge" if out else "silent"
 
@@ -295,7 +296,7 @@ def run_case_raw(name, checkpoint_text, tool_calls, tmp):
     with open(transcript_path, "w", encoding="utf-8") as fh:
         fh.write(transcript_with(tool_calls, _ownership_writes(cp_path, {})))
     payload = {"transcript_path": transcript_path}
-    return subprocess.run(["bash", HOOK], input=json.dumps(payload),
+    return subprocess.run([BASH, HOOK], input=json.dumps(payload),
                           capture_output=True, text=True, cwd=case_dir).stdout.strip()
 
 
@@ -322,9 +323,15 @@ def main():
     # and still points at the declaration that owns the lifecycle rule. ---
     name16 = "16-message-names-file-and-lifecycle"
     out16 = run_case_raw(name16, CHECKPOINT_2ROW, [], tmp)
-    ok16 = (".goalspec/checkpoint.md" in out16
-            and "wrote that file itself" in out16
-            and "durable-artifact.md" in out16)
+    # Decoded, separators normalized: on Windows relpath gives ".goalspec\checkpoint.md", which the
+    # raw JSON text carries escaped as a double backslash.
+    try:
+        msg16 = json.loads(out16)["systemMessage"].replace("\\", "/")
+    except Exception:
+        msg16 = ""
+    ok16 = (".goalspec/checkpoint.md" in msg16
+            and "wrote that file itself" in msg16
+            and "durable-artifact.md" in msg16)
     if not ok16:
         failures.append((name16, "content present", "content missing"))
     print("{:<32} {:<8} {}".format(name16, "content-ok" if ok16 else "content-MISSING",

@@ -41,6 +41,7 @@ suite with --expected; it is judged per prefix, so `stale-` passes when any stal
 """
 import argparse, json, os, re, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -337,7 +338,7 @@ def run(gate, name, lam, turns, extra=None):
     if turns is not None:
         payload["transcript_path"] = transcript(turns, name)
     payload.update(extra or {})
-    out = subprocess.run(["bash", gate], input=json.dumps(payload),
+    out = subprocess.run([BASH, gate], input=json.dumps(payload),
                          capture_output=True, text=True).stdout.strip()
     if not out:
         return "SILENT", "-", "silent"
@@ -652,7 +653,8 @@ CHECKPOINT_GOALSPEC_CASES = [
     # which a POSIX-separator matcher never sees — the gate blind to a disk-written spec, exactly
     # the break checkpoint-01 exists for, just platform-shaped. Inherited from the `endswith` this
     # replaced (memory/_pendientes.md flagged it 2026-08-01) and fixed on the user's explicit call
-    # during this change. Synthetic assertion only: no real Windows host has run this.
+    # during this change. The path is a fixture: the windows-latest job runs this case, but no
+    # transcript written by Claude Code on Windows has been seen here.
     ("checkpoint-06-windows-separator-path-SPEAKS",
      [{"write": ("C:\\proj\\.goalspec\\checkpoint-a1b2c3.md", SPEC)}, {"text": "still working."}],
      "completion-review:absent"),
@@ -696,7 +698,7 @@ def run_checkpoint_goalspec(gate, name, events):
     tx = stale_transcript(events, name)
     payload = {"last_assistant_message": events[-1].get("text", ""), "transcript_path": tx}
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"))
-    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=env).stdout.strip()
     if not out:
         return "silent", None
@@ -813,7 +815,7 @@ def run_entry_nospec(gate, name, events, extra, use_lib, enforce):
         env["CLAUDE_PLUGIN_ROOT"] = os.path.join(REPO, "plugins", "goalspec")
     else:
         env["CLAUDE_PLUGIN_ROOT"] = os.path.join(TMP, "no-plugin-root")
-    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=env).stdout.strip()
     if not out:
         return ("silent", None, False)
@@ -838,7 +840,7 @@ def entry_nospec_failures(gate):
                 and (w_detail is None or got[1] == w_detail) and (w_ctx is None or got[2] == w_ctx)
             # The agent-facing line must say thinking does not count — that is the observed failure.
             if ok and got[1] == "goalspec:entered-no-spec":
-                d = json.loads(subprocess.run(["bash", gate], input=json.dumps(dict(
+                d = json.loads(subprocess.run([BASH, gate], input=json.dumps(dict(
                     {"last_assistant_message": events[-1].get("text", ""),
                      "transcript_path": stale_transcript(events, "entry-" + name)}, **extra)),
                     capture_output=True, text=True, env=dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(
@@ -925,7 +927,7 @@ def run_payload_shape(gate, name, lam, turns, enforce, reentrant=False):
         payload["stop_hook_active"] = True
     env = dict(os.environ)
     env["GOAL_GATE_ENFORCE"] = "1" if enforce else ""
-    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=env).stdout.strip()
     if not out:
         return (False, False, False), 0, ""
@@ -944,7 +946,7 @@ def run_stale(gate, name, make_repo_fn, events, lam):
     # by design: an unimportable shared module must never break the checks that came before it)
     # and every staleness case degrades to "silent", indistinguishable from "correctly not stale".
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"))
-    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=env).stdout.strip()
     if not out:
         return "silent"
@@ -1002,7 +1004,7 @@ def run_audience_split(gate, name, lam, turns, enforce):
         payload["transcript_path"] = transcript(turns, "aud-" + name)
     env = dict(os.environ)
     env["GOAL_GATE_ENFORCE"] = "1" if enforce else ""
-    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=env).stdout.strip()
     if not out:
         return "", ""
@@ -1044,7 +1046,7 @@ SILENCE_CASES = [
 
 def run_silence(gate, name, lam, turns):
     payload = {"last_assistant_message": lam, "transcript_path": transcript(turns, "sil-" + name)}
-    out = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                          env=os.environ).stdout.strip()
     return "silent" if not out else "spoke"
 
@@ -1132,11 +1134,40 @@ def turn_group_transcript(events, name):
     return p
 
 
+# --- what python receives fits a Windows command line (0.65.2) ------------------------------------
+# Windows caps a command line at 32767 characters. 0.65.1 grew the program the gate hands to
+# `python -c` past 35000 (comments included), so on Windows python never started and the gate was
+# silent on every Stop. A python3 put first on PATH records the length in bytes of every argument it
+# gets and then runs the real interpreter; the largest counts (the gate starts python more than
+# once). Bytes, not characters: they only overcount, and the ceiling leaves room for the rest.
+ARGV_CEILING = 30000
+
+
+def argv_length(gate):
+    d = tempfile.mkdtemp(prefix="argv-", dir=TMP)
+    log = os.path.join(d, "len.txt")
+    shim = os.path.join(d, "python3")
+    with open(shim, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write('#!/bin/sh\nfor a in "$@"; do printf %%s "$a" | wc -c >> "%s"; done\nexec "%s" "$@"\n'
+                 % (log.replace("\\", "/"), sys.executable.replace("\\", "/")))
+    os.chmod(shim, 0o755)
+    env = dict(os.environ, PATH=d + os.pathsep + os.environ.get("PATH", ""))
+    payload = {"last_assistant_message": "turn A, doing unrelated work.",
+               "transcript_path": transcript([SPEC], "argv-len")}
+    out = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
+                         env=env).stdout.strip()
+    try:
+        n = max(int(x) for x in open(log).read().split())
+    except Exception:
+        n = -1
+    return n, bool(out)
+
+
 def turn_group_suite(gate):
     out = []
     for name, events, lam, _ in TURN_GROUP_CASES:
         payload = {"last_assistant_message": lam, "transcript_path": turn_group_transcript(events, name)}
-        res = subprocess.run(["bash", gate], input=json.dumps(payload), capture_output=True, text=True,
+        res = subprocess.run([BASH, gate], input=json.dumps(payload), capture_output=True, text=True,
                              env=os.environ).stdout.strip()
         out.append((name, "silent" if not res else "spoke"))
     return out
@@ -1186,6 +1217,17 @@ def main():
 
     if failures:
         print("\nASSERTION FAILURES: %d\n  %s" % (len(failures), "\n  ".join(failures)))
+        return 1
+
+    # Right after the branch table: it guards the bug that silenced the gate on Windows (0.65.1),
+    # so no later section may return before it.
+    print("\n--- what python receives fits a Windows command line (0.65.2) ---")
+    n, spoke = argv_length(a.gate)
+    ok = 0 < n <= ARGV_CEILING and spoke
+    print("longest python argument: %d bytes (ceiling %d), gate spoke: %s%s"
+          % (n, ARGV_CEILING, spoke, "" if ok else "   <-- FAILS"))
+    if not ok:
+        print("\nARGV-LENGTH FAILURE: the program handed to python is %d bytes (or was not measured)" % n)
         return 1
 
     # Primary goal-spec precondition via checkpoint-file Write — no git repo needed, runs first.
@@ -1245,6 +1287,10 @@ def main():
     print("\n--- staleness backstop (live git, hooks/lib/terminal_actions.py) ---")
     stale_failures = []
     for name, decision in stale_suite(a.gate):
+        if os.name == "nt" and name.startswith("stale-10"):
+            # The own-mktemp delete is exempt only for a mode-0700 dir; Windows has no mode bits.
+            print("%-52s skipped (windows): the own-mktemp exemption needs mode 0700" % name)
+            continue
         want = "silent" if "NOT-STALE" in name else "STALE"
         ok = decision == want
         if not ok:
@@ -1282,7 +1328,7 @@ def main():
     # comment above; without it step 5b silently no-ops and this always reads "silent".
     env = dict(os.environ, CLAUDE_PLUGIN_ROOT=os.path.join(REPO, "plugins", "goalspec"),
               GOAL_GATE_ENFORCE="")
-    out = subprocess.run(["bash", a.gate], input=json.dumps(payload), capture_output=True,
+    out = subprocess.run([BASH, a.gate], input=json.dumps(payload), capture_output=True,
                          text=True, env=env).stdout.strip()
     d = json.loads(out) if out else {}
     sys_msg = d.get("systemMessage") or ""

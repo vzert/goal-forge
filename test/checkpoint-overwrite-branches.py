@@ -37,6 +37,7 @@ exercise two genuinely concurrent sessions; that gap is open and named as such.
 """
 import json, os, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "precheck-checkpoint-overwrite.sh")
@@ -91,7 +92,7 @@ def build(case, *, target_rel, exists=True, wrote_paths=(), tool="Write",
 
 
 def run(payload):
-    out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
+    out = subprocess.run([BASH, HOOK], input=json.dumps(payload),
                          capture_output=True, text=True).stdout.strip()
     if not out:
         return "allow", ""
@@ -185,7 +186,7 @@ def main():
 
     for name, payload, expected in RAW_CASES:
         if isinstance(payload, str):
-            out = subprocess.run(["bash", HOOK], input=payload[4:],
+            out = subprocess.run([BASH, HOOK], input=payload[4:],
                                  capture_output=True, text=True).stdout.strip()
             got = "deny" if "deny" in out else "allow"
         else:

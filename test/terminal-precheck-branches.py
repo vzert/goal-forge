@@ -22,6 +22,7 @@ import base64, json, os, subprocess, sys, tempfile
 # clause, which a sticky box would short-circuit (see tmp_cleanup's header).
 os.environ["TMP_CLEANUP_KEEP_TMPDIR"] = "1"
 import tmp_cleanup  # removes this run's temp dirs at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
@@ -126,7 +127,7 @@ def run_hook(cwd, command, transcript_path=None, tool_use_id=None, session_id=No
         payload["tool_use_id"] = tool_use_id
     if transcript_path:
         payload["transcript_path"] = transcript_path
-    out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
+    out = subprocess.run([BASH, HOOK], input=json.dumps(payload),
                          capture_output=True, text=True, cwd=proc_cwd,
                          env={**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT, **(env_extra or {})})
     raw = out.stdout.strip()
@@ -1216,7 +1217,7 @@ case("189-no-spec-deny-says-bash-write-does-not-count-DENY", lambda: _deny_reaso
 
 
 def run_hook_raw(payload):
-    out = subprocess.run(["bash", HOOK], input=json.dumps(payload),
+    out = subprocess.run([BASH, HOOK], input=json.dumps(payload),
                          capture_output=True, text=True,
                          env={**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT})
     raw = out.stdout.strip()
@@ -1233,7 +1234,7 @@ def run_hook_raw(payload):
 
 
 def run_hook_raw_text(text):
-    out = subprocess.run(["bash", HOOK], input=text, capture_output=True, text=True,
+    out = subprocess.run([BASH, HOOK], input=text, capture_output=True, text=True,
                          env={**os.environ, "CLAUDE_PLUGIN_ROOT": PLUGIN_ROOT})
     raw = out.stdout.strip()
     return ("allow", "") if not raw else ("unparseable", raw[:80])
@@ -1283,7 +1284,13 @@ def main():
         declared = [s.strip() for s in argv[argv.index("--expected") + 1].split(",") if s.strip()]
     failures = []
     rows = []
+    # The own-mktemp delete is let through only for a directory with mode 0700, which Windows does
+    # not have: there that delete is always denied, the safe side. Shown as skipped, never dropped.
+    nt_skip = ("116-", "117-", "137b-") if os.name == "nt" else ()
     for name, fn in CASES:
+        if name.startswith(nt_skip):
+            rows.append((name, "skipped (windows)", "the own-mktemp exemption needs mode 0700"))
+            continue
         try:
             decision, detail = fn()
         except AssertionError as e:

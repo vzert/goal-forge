@@ -834,7 +834,7 @@ def _collect_event(ev, items, state=None):
             # that platform — the same blindness this whole signal exists to fix,
             # just platform-shaped. Inherited from the `endswith` this replaced, found
             # by the decision-log sweep on this change, fixed here on the user-s call.
-            # Not observed on a real Windows host; the suites assert it synthetically.
+            # Synthetic: the Windows CI job runs the suites since 0.65.2, but the path is a fixture.
             if isinstance(fp, str) and CHECKPOINT_PATH_RE.search(fp.replace("\\", "/")):
                 for key in ("content", "new_string"):
                     v = ti.get(key)

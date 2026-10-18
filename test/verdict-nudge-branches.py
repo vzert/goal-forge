@@ -18,6 +18,7 @@ Columns: case | branch the hook took (verdict / malformed / launched / silent).
 """
 import argparse, json, os, re, subprocess, sys
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
 
@@ -62,7 +63,7 @@ CASES = [
 
 
 def run(hook, payload):
-    out = subprocess.run(["bash", hook], input=json.dumps(payload),
+    out = subprocess.run([BASH, hook], input=json.dumps(payload),
                          capture_output=True, text=True).stdout.strip()
     if not out:
         return "silent"

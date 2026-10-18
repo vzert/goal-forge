@@ -30,6 +30,7 @@ out — see the hook's own header), so an agent that ignores the announcement is
 """
 import json, os, subprocess, sys
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
+from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOK = os.path.join(REPO, "plugins", "goalspec", "hooks", "announce-checkpoint-name.sh")
@@ -69,7 +70,7 @@ def run_case(payload):
         stdin = payload[4:]
     else:
         stdin = json.dumps(payload)
-    out = subprocess.run(["bash", HOOK], input=stdin, capture_output=True, text=True).stdout.strip()
+    out = subprocess.run([BASH, HOOK], input=stdin, capture_output=True, text=True).stdout.strip()
     return out
 
 
