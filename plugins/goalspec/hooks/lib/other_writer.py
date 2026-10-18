@@ -24,7 +24,10 @@ Edit-after-Edit links chained; the 5 that did not each had a real change by anot
 the two edits (a script adding a session_id line, another editor).
 
 Declared limits: a change with no recorded Write/Edit (a Bash `sed -i`, a git command) is never
-attributed; a forged transcript is out of scope; hashes are git blob hashes of the recorded text
+attributed; an Edit whose result carries no originalFile breaks the chain, and the harness often
+leaves it out (281 of 464 Edit results in this project's transcripts, measured by the 0.65.0
+adversary round — mostly `contentNotInModelContext`, i.e. larger files), so the attribution mostly
+fires for Writes and Edits of smaller files; a forged transcript is out of scope; hashes are git blob hashes of the recorded text
 (no clean filters), so a file under autocrlf or a filter attribute does not match and stays
 unattributed — the safe side. This session's own writes are not attributed here (the "you" reading
 stays in the notice).

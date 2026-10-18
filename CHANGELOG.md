@@ -30,7 +30,10 @@ version bump are never delivered to already-installed users.
   of this project: 54 Edit-after-Edit links chained, and the 5 that did not each had a real change by
   another writer in between.
   Declared limits: a change with no recorded Write/Edit (a Bash `sed -i`, a git command) is never
-  attributed; this session's own writes are not attributed (the "you" reading stays); a moved HEAD
+  attributed; an Edit whose result has no `originalFile` breaks the chain, and the harness often
+  leaves it out (281 of 464 Edit results in this project's transcripts, mostly larger files marked
+  `contentNotInModelContext`), so attribution mostly fires for Writes and Edits of smaller files;
+  this session's own writes are not attributed (the "you" reading stays); a moved HEAD
   or a changed index attributes nothing in that round; hashes are of the recorded text, so a file
   under a git clean filter stays unattributed; a forged transcript is out of scope.
   `external-adversary.sh` is unchanged: it reviews a private copy of the tree since 0.44.9, and its
