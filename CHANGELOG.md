@@ -23,16 +23,18 @@ version bump are never delivered to already-installed users.
     starts one. A tool result and a skill body injected with `isMeta` do not. The text that ends
     the turn joins its turn when the file does not hold it yet, and a verdict quoted anywhere in
     the turn counts as news for that turn.
-  - A transcript with no boundary at all keeps the per-record reading (the suite fixtures, and the
-    `sdk-ts` transcripts, which hold no `stop_hook_summary`).
+  - A transcript with no boundary at all keeps the per-record reading (most suite fixtures). A
+    transcript with prompts but no `stop_hook_summary`, as the `sdk-ts` ones are, is cut at its
+    prompts alone.
   - The convergence floor still counts per record, as before. Grouping it too would change when a
     turn that quotes a break and then a hold resets the streak, which is a separate decision.
   - A transcript line that is valid JSON but not an object is now skipped. Before, it ended the
     transcript read.
-- `test/gate-branches.py`: 8 new cases (`turns-01`..`08`) with real turn boundaries. Six fail on
-  the 0.65.0 gate. Five mutations of the new code (a skill body as a boundary, a tool result as a
-  boundary, no silence with boundaries, no mid-turn signal, no joining of the turn-ending text) each
-  turn at least one case red. `--compare` against the 0.65.0 gate: parity OK, 45 branches, 0
+- `test/gate-branches.py`: 10 new cases (`turns-01`..`10`) with real turn boundaries; `turns-09`
+  has prompts only and `turns-10` Stop records only. Eight fail on the 0.65.0 gate. Seven mutations
+  of the new code (a skill body as a boundary, a tool result as a boundary, no silence with
+  boundaries, no mid-turn signal, no joining of the turn-ending text, no Stop record as a boundary,
+  no user record as a boundary) each turn at least one case red. `--compare` against the 0.65.0 gate: parity OK, 45 branches, 0
   changed, in both modes.
 
 ## [0.65.0] - 2026-10-17

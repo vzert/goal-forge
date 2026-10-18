@@ -1089,6 +1089,15 @@ TURN_GROUP_CASES = [
      [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "next"), ("text", "a1"), ("tool",),
       ("text", "a2")],
      "a2", "spoke"),
+    # The sdk-ts shape: prompts and no Stop record, so the prompts alone cut the turns.
+    ("turns-09-prompts-only-boundaries-SPEAKS",
+     [("prompt", "go"), ("text", SPEC), ("text", "a0"), ("prompt", "next"), ("text", "a1"),
+      ("text", "a2")],
+     "a2", "spoke"),
+    # Stop records only: a Stop-hook continuation starts with no user record.
+    ("turns-10-stop-only-boundaries-SPEAKS",
+     [("text", SPEC), ("text", "a0"), ("stop",), ("text", "a1"), ("text", "a2")],
+     "a2", "spoke"),
     # Control, also true on 0.65.0: one record per turn, a parked turn right after the spec turn.
     ("turns-08-control-single-record-turn-SPEAKS",
      [("prompt", "go"), ("text", SPEC), ("stop",), ("prompt", "next"), ("text", "a1")],

@@ -205,18 +205,20 @@ lam_text = lam if isinstance(lam, str) else ""
 #    as a record of its own, so one turn of the human is often several entries. 0.65.1 leaves the
 #    floor on those entries and builds, beside them, tx_groups: one entry per real turn, cut at a
 #    turn boundary the harness wrote (see _is_turn_boundary). Only the parked-turn silence below
-#    reads it. Measured in session 1adc5585 (2026-10-18): a turn of four text records after the spec
-#    counted as four parked turns, so the first missing-close reminder of the run was never said.
-#    A transcript with no boundary at all (the suite fixtures, a harness that writes none) keeps the
-#    per-record reading, unchanged.
+#    reads it. Measured in session 1adc5585 (2026-10-18): the two records that followed the spec in
+#    its own turn and the two records of the next turn counted as four parked turns, so the first
+#    missing-close reminder of the run was never said. A transcript with no boundary at all (most
+#    suite fixtures) keeps the per-record reading, unchanged; one with prompts and no Stop record
+#    (the sdk-ts transcripts) is cut at its prompts alone.
 tx_turns = []
 tx_groups = []
 tx_group_open = False
 tx_boundary_seen = False
 
 def _is_turn_boundary(ev):
-    # A Stop record ends a turn: Claude Code writes one after every Stop (measured: present in all
-    # 137 cli and both vscode transcripts among the 300 newest local ones). A human prompt or a
+    # A Stop record ends a turn: Claude Code writes one after every Stop (measured 2026-10-18: present
+    # in every cli and vscode transcript with an assistant record among the 300 newest local ones,
+    # and in none of the sdk-ts ones). A human prompt or a
     # subagent hand-back starts one. A tool result does not, and neither does text the harness
     # injects mid-turn with isMeta and no origin (a skill body loading).
     if ev.get("type") == "system":
