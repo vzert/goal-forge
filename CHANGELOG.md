@@ -6,6 +6,16 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [Unreleased]
+
+Tests only; nothing installed changes, so no version bump.
+
+- **A failed run under temp-leak-check shows its own output.** Its last 40 lines go under the `FAIL`
+  line, and under a `LEAK` line when that run also exited non-zero. Why: in GitHub Actions run
+  39082027219, attempt 1, `claim-surface-carriers.py --selftest` failed on macos-latest and the log
+  kept only `FAIL ... rc=1 (clean dir, but the run failed)` (`gh run view 39082027219 --attempt 1
+  --log-failed`); attempt 2 passed. The cause is unknown.
+
 ## [0.63.1] - 2026-10-17
 
 ### Fixed

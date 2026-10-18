@@ -38,7 +38,8 @@ checker runs at once on one machine do not see each other's fixtures as leaks.
 `python3 test/temp-leak-check.py` runs every suite again (default mode and `--selftest`), each under
 a fresh `TMPDIR`, and fails if anything is left in it, a new path appeared in `/tmp` under the
 `goalspec-test-fixture-` prefix (or inside such a dir, at any depth), or the run
-exited non-zero (CI runs each `--selftest` only through here).
+exited non-zero (CI runs each `--selftest` only through here). Under a `FAIL` or a `LEAK` with a
+non-zero exit it prints the last 40 lines of that run's own output, so a red in CI shows why.
 `--selftest` plants suites that leak (in `TMPDIR`, a prefixed `/tmp` dir, a file inside a
 prefixed dir that already existed) and requires a red for each, and one that leaves an unprefixed
 file in `/tmp`, as another program would, or a fixture of another checker run (the base prefix

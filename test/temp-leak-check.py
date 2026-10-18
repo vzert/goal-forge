@@ -75,8 +75,11 @@ def tmp_entries():
     return out
 
 
+TAIL = 40  # lines of a failed run's own output shown under its FAIL/LEAK line
+
+
 def run_one(path, args):
-    """(rc, leftover entries under the suite's TMPDIR, new /tmp entries)."""
+    """(rc, leftover entries under the suite's TMPDIR, new /tmp entries, the run's output)."""
     # No "." in the prefix: a dir named like mktemp's (name.XXXXXX) nested inside another temp root
     # (on Linux every TMPDIR is under /tmp) makes terminal_actions._in_own_mktemp judge the outer
     # root first, in set order, and deny case 117 or a gate case at random (CI 38700885747, ubuntu).
@@ -85,15 +88,25 @@ def run_one(path, args):
     env = dict(os.environ, TMPDIR=box, **{suite_tmp.ENV: PREFIX})
     env.setdefault("CLAUDE_PLUGIN_ROOT", os.path.join(REPO, "plugins", "goalspec"))
     before = tmp_entries()
+    out = ""
     try:
         p = subprocess.run([sys.executable, path] + args, env=env, cwd=REPO,
                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=1800)
         rc = p.returncode
+        out = p.stdout.decode("utf-8", "replace")
     finally:
         left = sorted(os.listdir(box))
         new_tmp = sorted(tmp_entries() - before)
         shutil.rmtree(box, ignore_errors=True)
-    return rc, left, new_tmp
+    return rc, left, new_tmp, out
+
+
+def show_tail(out):
+    # Without it a red in CI names the suite and nothing else: claim-surface --selftest failed once
+    # on macos-latest (run 39082027219, attempt 1), passed on the re-run, and its output was gone.
+    lines = out.rstrip("\n").split("\n")
+    for line in lines[-TAIL:]:
+        print("      | " + line)
 
 
 def check(paths):
@@ -107,18 +120,21 @@ def check(paths):
         modes = [[]] + ([["--selftest"]] if has_selftest(path) else [])
         for args in modes:
             label = " ".join([os.path.basename(path)] + args)
-            rc, left, new_tmp = run_one(path, args)
+            rc, left, new_tmp, out = run_one(path, args)
             if left or new_tmp:
                 bad += 1
                 shown = ["$TMPDIR/" + e for e in left[:5]] + new_tmp[:5]
                 print("LEAK  %-48s rc=%d  %d left: %s" % (label, rc, len(left) + len(new_tmp),
                                                           ", ".join(shown)))
+                if rc != 0:
+                    show_tail(out)
             elif rc != 0:
                 # A run that crashed may have cleaned up nothing because it built nothing, so a
                 # clean dir after rc!=0 proves nothing. It also catches a suite (or its --selftest
                 # copy) that cannot import tmp_cleanup: CI runs --selftest only through here.
                 bad += 1
                 print("FAIL  %-48s rc=%d  (clean dir, but the run failed)" % (label, rc))
+                show_tail(out)
             else:
                 print("ok    %-48s rc=%d" % (label, rc))
     return bad
@@ -159,7 +175,19 @@ def selftest():
         foreign = os.path.join(work, "foreign.py")
         with open(foreign, "w") as f:
             f.write("open(%r, 'w').close()\n" % foreign_path)
+        failing = os.path.join(work, "failing.py")
+        with open(failing, "w") as f:
+            f.write("print('the-last-words-of-the-run')\nraise SystemExit(3)\n")
         ok = True
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            n = check([failing])
+        sys.stdout.write(buf.getvalue())
+        if n != 1 or "| the-last-words-of-the-run" not in buf.getvalue():
+            print("SELFTEST FAIL: a run that exited non-zero did not show its own output")
+            ok = False
         if check([nested]) != 1:
             print("SELFTEST FAIL: a file left inside a pre-existing prefixed /tmp dir did not turn it red")
             ok = False
