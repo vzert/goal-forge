@@ -378,11 +378,11 @@ CASES = [
      + BULLETS + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=0 "
      "autonomy-violations=0 unsafe=0]\ntokens used\n148,832\n", {"_PIPE": FILTER}, None,
      "tail20+unverified+noparse"),
-    # --- a private scratch directory per run, removed at exit (p-6ee8526d22). Until 0.63.1 the
+    # --- a private scratch directory per run, removed at exit (p-6ee8526d22). Until 0.64.0 the
     # partner inherited the caller TMPDIR and rounds left 18 folders in /tmp. The stub writes a file
     # and a directory it then makes read-only into $TMPDIR. On every exit path the partner must have
     # seen a NEW directory (not the caller's), made under the caller's TMPDIR, with TMP and TEMP
-    # naming the same one, and the directory must be gone after the hook exits. Against 0.63.1 all
+    # naming the same one, and the directory must be gone after the hook exits. Against 0.64.0 all
     # of these come back +scratch-shared. 55 hold, 56 break with a nonzero exit, 57 no verdict
     # (UNVERIFIED), 58 a partner that mutated the repo (the synthetic-hold exit).
     ("55-scratch-private-removed-hold", "STUB_SCRATCH", {}, None, "pass+scratch-removed"),

@@ -57,7 +57,7 @@ version bump are never delivered to already-installed users.
   (`goalspec-adversary-verify.*`, `terminal-precheck-branches-*`), which also turned temp-leak-check
   red when it ran at the same time. Now every run makes its own directory
   (`goalspec-adversary-tmp.*`, under the caller's `TMPDIR` when writable), points `TMPDIR`, `TMP` and
-  `TEMP` at it (Windows form via `cygpath` under Git Bash, for Node and native Windows programs that
+  `TEMP` at it (Windows form via `cygpath` under Git Bash, simulated in case 59 and not run on Windows, for Node and native Windows programs that
   read `TEMP`/`TMP`), and removes it in an EXIT trap armed before the `mktemp`, after a `chmod` so a
   read-only directory inside cannot block it. bash runs that trap on SIGTERM too (case 60); a signal
   that lands before the trap line runs leaves nothing to clean, and no case times one into that window. A probe showed codex follows `TMPDIR`, but its sandbox also allows `/tmp` by name,

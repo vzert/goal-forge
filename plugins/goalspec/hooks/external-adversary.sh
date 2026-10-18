@@ -377,7 +377,7 @@ EOF
 # cannot know where the CLI keeps its auth and config (codex: ~/.codex), and a redirected HOME
 # changes the world the repo suite measures, and hides the real ~/.claude/projects from the
 # dead-handoff check. The prompt instead makes the partner classify every red it runs.
-# A PRIVATE scratch directory per run, removed when this script exits (p-6ee8526d22). Until 0.63.1
+# A PRIVATE scratch directory per run, removed when this script exits (p-6ee8526d22). Until 0.64.0
 # the partner inherited the caller TMPDIR as is, and rounds left their verification folders and
 # suite workdirs behind: 18 of them in /tmp on 2026-10-17 (goalspec-adversary-verify.*,
 # terminal-precheck-branches-*), which also turned temp-leak-check red when it ran at the same time.
@@ -410,8 +410,9 @@ _adv_cleanup_tmp() {
   fi
   return 0
 }
-# Armed BEFORE mktemp, so a signal between here and the full trap further down cannot orphan the
-# directory (a codex round found that window). bash runs an EXIT trap on SIGTERM/SIGINT once it is
+# Armed BEFORE mktemp, so a signal between here and the full trap further down does not orphan the
+# directory (a codex round found that window) -- except one that lands while mktemp itself runs,
+# before ADV_TMP is assigned (an adversary probe hit that about 1 time in 25 at 5 ms). bash runs an EXIT trap on SIGTERM/SIGINT once it is
 # set: measured on macOS /bin/bash 3.2, and case 60 runs it on whatever bash the suite finds (bash 5
 # on the Ubuntu CI runner). A signal that lands before this line is set leaves nothing to clean.
 trap _adv_cleanup_tmp EXIT
