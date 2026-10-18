@@ -135,7 +135,12 @@ and `--add-dir`; a `claude -p` partner has permission modes and allowed/disallow
 or an OS-level sandbox is another surface again. What is actually load-bearing here is narrower and
 does hold: **`external_cmd` belongs to the operator**, so this hook cannot impose a sandbox mode
 portably across CLIs it does not own — it can only hand the partner a writable `TMPDIR` so scratch
-has somewhere legitimate to go, and then measure. If you want a tighter sandbox, that is yours to
+has somewhere legitimate to go, and then measure. Since 0.64.1 that `TMPDIR` is a private directory
+made for each run (`goalspec-adversary-tmp.*` under your own `TMPDIR`; `TMP` and `TEMP` name it too,
+in Windows form under Git Bash), removed when the hook exits, a SIGTERM included. Before, rounds left
+their scratch behind: 18 folders in `/tmp` on 2026-10-17. Codex follows `TMPDIR` (measured), but its
+`workspace-write` sandbox also allows `/tmp` by name, and a write there is outside this directory: the
+prompt tells the partner not to, and nothing measures it. If you want a tighter sandbox, that is yours to
 configure, and worth trying: the measurement below stays honest either way.
 (2) But an adversary that **repairs** what it was sent to measure then verifies a state it created —
 principle 1 turned on the verifier — and the clean `hold` that follows is indistinguishable from an

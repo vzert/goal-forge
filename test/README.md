@@ -377,6 +377,16 @@ host-side only: from outside any git repo there is no root to resolve, so that b
 stderr instead of relocating (11), and a partner whose own sandbox denies writes the hook's process
 can make (the v0.19.1 contra-dato) is out of the hook's reach entirely.
 
+**A private scratch directory per run (0.64.1, p-6ee8526d22)**, cases **55-60**: the stub prints the
+`TMPDIR`, `TMP` and `TEMP` it was handed, then writes a file and a read-only directory there. Each
+case requires a new `goalspec-adversary-tmp.*` directory under the caller's `TMPDIR`, `TMP` and `TEMP`
+naming it, and the directory gone after the hook exits: on a hold (55), a break with a nonzero exit
+(56), no verdict (57), a mutated repo (58), with a fake `cygpath` on `PATH` standing in for Git Bash
+(59: `TMP`/`TEMP` must carry its Windows form; simulated, not run on Windows), and with SIGTERM sent
+to the process group while the partner runs (60). Against 0.64.0 all six end in `+scratch-shared`.
+Removing the cleanup from the EXIT trap, or the `chmod` before `rm -rf`, turns all six to
+`+scratch-LEFT`.
+
 **The fallback names its cause (0.49.2)**, cases **36/37/38**: when isolation fails the hook still
 reviews the live repo (fail-open), and now the notice carries one line of the failing step's error:
 its first `fatal:`/`error:` line, else its first non-empty line. 36 blocks `git worktree add` (`.git/worktrees` is a file); 37 blocks `mktemp` (`.git`

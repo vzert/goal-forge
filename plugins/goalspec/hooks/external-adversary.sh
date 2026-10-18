@@ -166,7 +166,12 @@ command whose purpose is to change the work. Something you believe is broken is 
 never a task you take on — repairing it destroys the very thing you were sent to measure, because the
 state you would then verify is one you created, and principle 1 turns on you. Scratch space is the one
 exception and it lives OUTSIDE the repository: write temporary files under TMPDIR, which this host has
-already pointed at a directory you can write. This is MEASURED, not trusted: the hook that invoked you
+already pointed at a directory you can write (TMP and TEMP name the same one). That directory is
+yours alone for this run and is deleted when you finish. So never write to /tmp or any other shared
+temporary directory by its literal path, and never point TMPDIR, TMP or TEMP somewhere else (not
+even at /tmp) for a command you run: what you leave there stays on this machine after you exit
+(observed: verification folders and suite workdirs left in /tmp by earlier rounds, days old).
+This is MEASURED, not trusted: the hook that invoked you
 fingerprints the repository content before and after your run, names every path whose bytes changed,
 and degrades a clean verdict to UNVERIFIED when it finds one — a repair does not quietly become a
 pass, it voids your own verdict.
@@ -372,15 +377,62 @@ EOF
 # cannot know where the CLI keeps its auth and config (codex: ~/.codex), and a redirected HOME
 # changes the world the repo suite measures, and hides the real ~/.claude/projects from the
 # dead-handoff check. The prompt instead makes the partner classify every red it runs.
-# Deliberately NOT paired with any /tmp cleanup: this script writes nothing to /tmp, and deleting
-# files it does not own is a remove-verb on artifacts that are not its own.
+# A PRIVATE scratch directory per run, removed when this script exits (p-6ee8526d22). Until 0.63.1
+# the partner inherited the caller TMPDIR as is, and rounds left their verification folders and
+# suite workdirs behind: 18 of them in /tmp on 2026-10-17 (goalspec-adversary-verify.*,
+# terminal-precheck-branches-*), which also turned temp-leak-check red when it ran at the same time.
+# Measured the same day: codex inherits TMPDIR and writes there (probe: TMPDIR=<dir> codex exec, its
+# shell printed <dir> and its touch landed in it), so those folders came from writes to /tmp by its
+# literal path, which its sandbox allows ("workspace-write [workdir, /tmp, $TMPDIR]"). Hence two
+# halves: this directory, which catches everything written through TMPDIR (a suite run by the
+# partner included), and a prompt line telling the partner not to write to /tmp by name, which
+# nothing here measures. The base is the caller TMPDIR when writable, else mktemp own default.
+# TMP and TEMP are set too: Python reads all three, but Node and native Windows programs (codex on
+# Windows among them) read TEMP/TMP, not TMPDIR; under Git Bash they get the Windows form of the
+# path from cygpath, when it exists. Removal touches ONLY the directory mktemp returned here, never
+# anything this script did not create, so the old no-remove-verb rule still holds for /tmp.
+# KNOWN GAP: a SIGKILL skips the EXIT trap (same as the review worktree below), and a process the
+# partner left running after it exited can write into the directory after it is removed.
 REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -n "$REPO_ROOT" ]; then
   cd "$REPO_ROOT"
 else
   echo "external-adversary: invocation cwd is not inside any git repo — no repo root to relocate to; partner CLIs (e.g. codex) may refuse this directory as untrusted. Invoke from the repo under review." >&2
 fi
-if [ ! -w "${TMPDIR:-/nonexistent}" ]; then TMPDIR=$(mktemp -d 2>/dev/null || echo /tmp); export TMPDIR; fi
+ADV_TMP=""
+# chmod first: a partner or a suite may leave a directory without write permission inside it, and
+# rm -rf alone cannot empty that one.
+_adv_cleanup_tmp() {
+  if [ -n "$ADV_TMP" ] && [ -d "$ADV_TMP" ]; then
+    chmod -R u+rwx "$ADV_TMP" 2>/dev/null || true
+    rm -rf "$ADV_TMP" 2>/dev/null || true
+    [ -d "$ADV_TMP" ] && echo "external-adversary: could not remove the partner scratch directory $ADV_TMP — remove it by hand." >&2
+  fi
+  return 0
+}
+# Armed BEFORE mktemp, so a signal between here and the full trap further down cannot orphan the
+# directory (a codex round found that window). bash runs an EXIT trap on SIGTERM/SIGINT once it is
+# set: measured on macOS /bin/bash 3.2, and case 60 runs it on whatever bash the suite finds (bash 5
+# on the Ubuntu CI runner). A signal that lands before this line is set leaves nothing to clean.
+trap _adv_cleanup_tmp EXIT
+if [ -w "${TMPDIR:-/nonexistent}" ]; then
+  ADV_TMP=$(mktemp -d "${TMPDIR%/}/goalspec-adversary-tmp.XXXXXX" 2>/dev/null || true)
+fi
+# An unwritable TMPDIR also breaks mktemp own default (it reads TMPDIR), hence the explicit /tmp.
+[ -z "$ADV_TMP" ] && ADV_TMP=$(mktemp -d 2>/dev/null || mktemp -d /tmp/goalspec-adversary-tmp.XXXXXX 2>/dev/null || true)
+if [ -n "$ADV_TMP" ] && [ -d "$ADV_TMP" ]; then
+  TMPDIR="$ADV_TMP"
+  _ADV_TMP_NATIVE="$ADV_TMP"
+  if command -v cygpath >/dev/null 2>&1; then
+    _ADV_TMP_NATIVE=$(cygpath -w "$ADV_TMP" 2>/dev/null || printf '%s' "$ADV_TMP")
+  fi
+  TMP="$_ADV_TMP_NATIVE"; TEMP="$_ADV_TMP_NATIVE"
+  export TMPDIR TMP TEMP
+else
+  ADV_TMP=""
+  [ -w "${TMPDIR:-/nonexistent}" ] || { TMPDIR=/tmp; export TMPDIR; }
+  echo "external-adversary: could not create a private scratch directory (mktemp failed) — the partner gets TMPDIR=$TMPDIR as is, and what it writes there is NOT removed after the run." >&2
+fi
 
 # READ-ONLY RAIL (measuring half; the rule itself is a paragraph in the prompt above).
 # A partner that REPAIRS what it was sent to measure then verifies a state it created — principle 1
@@ -532,7 +584,8 @@ _adv_cleanup_worktree() {
       || rm -rf "$WORKTREE_DIR" 2>/dev/null || true
   fi
 }
-trap _adv_cleanup_worktree EXIT
+# Replaces the scratch-only EXIT trap set above; same signal behavior (see there).
+trap '_adv_cleanup_worktree; _adv_cleanup_tmp' EXIT
 
 set +e
 if [ -n "$REPO_ROOT" ] && git -C "$REPO_ROOT" rev-parse HEAD >/dev/null 2>&1; then
@@ -785,7 +838,7 @@ fi
 #   * verdict 'break' -> print it UNCHANGED. The findings stand; suppressing them would turn a
 #     detected side effect into a lost violation. The warning goes to stderr instead.
 # Deliberately NOT paired with an automatic revert: this script refuses remove-verbs on artifacts it
-# does not own (same rule that keeps it out of /tmp cleanup), and undoing a change the human may have
+# does not own (it removes only the scratch directory and review worktree it created), and undoing a change the human may have
 # made themselves is exactly the no-harm violation it would be checking for. Naming the paths is the
 # whole job; what to do about them is the operator decision.
 _adv_print_landed_commits() {

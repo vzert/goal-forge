@@ -51,7 +51,7 @@ The two 0.21.1 fixes are the point of this file:
     python3 test/external-adversary-branches.py
     python3 test/external-adversary-branches.py --compare <pre-edit.sh> --expected 02,05,08,09,11,28,29,30,31
 """
-import argparse, os, re, subprocess, sys, tempfile
+import argparse, os, re, signal, subprocess, sys, tempfile, time
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import expected_check  # noqa: E402 — the --expected check every --compare suite shares
@@ -378,6 +378,28 @@ CASES = [
      + BULLETS + "[ADVERSARY-VERDICT: break|hold ungrounded=0 unfalsified=0 incomplete=0 "
      "autonomy-violations=0 unsafe=0]\ntokens used\n148,832\n", {"_PIPE": FILTER}, None,
      "tail20+unverified+noparse"),
+    # --- a private scratch directory per run, removed at exit (p-6ee8526d22). Until 0.63.1 the
+    # partner inherited the caller TMPDIR and rounds left 18 folders in /tmp. The stub writes a file
+    # and a directory it then makes read-only into $TMPDIR. On every exit path the partner must have
+    # seen a NEW directory (not the caller's), made under the caller's TMPDIR, with TMP and TEMP
+    # naming the same one, and the directory must be gone after the hook exits. Against 0.63.1 all
+    # of these come back +scratch-shared. 55 hold, 56 break with a nonzero exit, 57 no verdict
+    # (UNVERIFIED), 58 a partner that mutated the repo (the synthetic-hold exit).
+    ("55-scratch-private-removed-hold", "STUB_SCRATCH", {}, None, "pass+scratch-removed"),
+    ("56-scratch-removed-break-rc", "STUB_SCRATCH_BREAK_RC", {}, None,
+     "pass+rcwarned+scratch-removed"),
+    ("57-scratch-removed-no-verdict", "STUB_SCRATCH_NOVERDICT", {}, None,
+     "unfilled+scratch-removed"),
+    ("58-scratch-removed-mutated", "STUB_SCRATCH_MUTATE", {}, "MUTREPO",
+     "mutation-unverified+scratch-removed"),
+    # 59: Git Bash on Windows. A fake `cygpath` on PATH stands in for the real one; TMP and TEMP must
+    # carry its Windows form of the path while TMPDIR keeps the POSIX one. Simulated, not run on
+    # Windows (p-86ce4d5857 adds that runner).
+    ("59-scratch-native-path-via-cygpath", "STUB_SCRATCH", {}, None,
+     "pass+scratch-removed+native"),
+    # 60: the hook killed by SIGTERM (a timeout, Ctrl-C) to its process group while the partner
+    # runs. bash runs the EXIT trap on that signal, so the directory must still go.
+    ("60-scratch-removed-on-sigterm", "STUB_SCRATCH_SLEEP", {}, None, "killed+scratch-removed"),
 ]
 
 
@@ -477,6 +499,26 @@ echo "%s"
 
 # A fake binary literally named `codex`, placed on PATH — the advisory keys on the resolved bin
 # name, not on how it got invoked, so this must be a real file named `codex`, not a wrapper.
+# Cases 55-60. The partner reports what it was handed, then writes a file and a read-only directory
+# into $TMPDIR (rm -rf alone cannot empty a directory without write permission).
+_SCRATCH_HEAD = """#!/bin/bash
+cat >/dev/null
+echo "STUB-SCRATCH=$TMPDIR|$TMP|$TEMP"
+echo left > "$TMPDIR/left-behind.txt"
+mkdir -p "$TMPDIR/ro/inner" && echo y > "$TMPDIR/ro/inner/f" && chmod 500 "$TMPDIR/ro/inner" "$TMPDIR/ro"
+"""
+STUB_SCRATCH = _SCRATCH_HEAD + 'echo "%s"\necho "- probe: one real evidence line"\necho "%s"\n' % (MODEL, HOLD)
+STUB_SCRATCH_BREAK_RC = (_SCRATCH_HEAD + 'echo "%s"\necho "- the coverage-floor row claims done'
+                         ' for an entity that is not done"\necho "%s"\nexit 3\n' % (MODEL, BREAK))
+STUB_SCRATCH_NOVERDICT = _SCRATCH_HEAD + 'echo "partner crashed"\nexit 2\n'
+STUB_SCRATCH_MUTATE = (_SCRATCH_HEAD + 'echo "fixed a typo" >> tracked.txt\necho "%s"\n'
+                       'echo "- probe: one real evidence line"\necho "%s"\n' % (MODEL, HOLD))
+# 60: the path goes to a file the suite watches (the hook never prints $OUT when killed), then sleep.
+STUB_SCRATCH_SLEEP = _SCRATCH_HEAD.replace(
+    'echo "STUB-SCRATCH=', 'echo "STUB-SCRATCH=$TMPDIR|$TMP|$TEMP" > "$SCRATCH_MARKER"\necho "STUB-SCRATCH=') \
+    + "sleep 30\n"
+FAKE_CYGPATH = '#!/bin/bash\n[ "$1" = "-w" ] && printf "WINPATH:%s\\n" "$2"\n'
+
 CODEX_STUB = """#!/bin/bash
 cat >/dev/null
 echo "%s"
@@ -557,7 +599,35 @@ TAIL_MARKERS = {
 }
 
 
+def scratch_suffix(text, case_name, caller_tmpdir):
+    """Cases 55-60: the private scratch directory the partner saw, and whether it is gone."""
+    m = re.search(r"STUB-SCRATCH=([^|\n]*)\|([^|\n]*)\|([^\n]*)", text)
+    if not m:
+        return "+scratch-unseen"
+    tmpdir, tmp, temp = m.group(1).rstrip("/"), m.group(2), m.group(3)
+    caller = os.path.realpath(caller_tmpdir or "/nonexistent")
+    if not tmpdir or os.path.realpath(tmpdir) == caller:
+        return "+scratch-shared"
+    if (os.path.realpath(os.path.dirname(tmpdir)) != caller
+            or not os.path.basename(tmpdir).startswith("goalspec-adversary-tmp.")):
+        return "+scratch-elsewhere"
+    native = case_name.startswith("59")
+    want = "WINPATH:" + tmpdir if native else tmpdir
+    if tmp.rstrip("/") != want or temp.rstrip("/") != want:
+        return "+scratch-tmp-temp-differ"
+    if os.path.exists(tmpdir):
+        return "+scratch-LEFT"
+    return "+scratch-removed" + ("+native" if native else "")
+
+
 def classify(res, case_name, repo=REPO):
+    branch = _classify(res, case_name, repo)
+    if case_name[:2] in ("55", "56", "57", "58", "59"):
+        branch += scratch_suffix(res.stdout + res.stderr, case_name, os.environ.get("TMPDIR"))
+    return branch
+
+
+def _classify(res, case_name, repo=REPO):
     err, out = res.stderr, res.stdout
     if case_name[:2] in TAIL_MARKERS:
         # Merged 2>&1 through the tail: everything is in `out`, stderr is empty. Short-circuit, or
@@ -701,20 +771,20 @@ def classify(res, case_name, repo=REPO):
         branch += "+wrapperbin" if re.search(r"bin='[^']*/bash'", err) else "+notwrapper"
     if case_name.startswith("11"):
         branch += "+warned" if "not inside any git repo" in err else "+silent"
-    if case_name.startswith("20"):
+    if case_name[:2] in ("20", "56"):
         # Both halves: the break must reach stdout intact, AND the nonzero exit must be called out
         # as a COVERAGE limit rather than swallowed.
         kept = "break ungrounded=2" in out
         warned = "returned a filled 'break'" in err
         branch = ("pass+rcwarned" if kept and warned
                   else ("break-suppressed" if not kept else "pass+rcsilent"))
-    if case_name[:2] in ("16", "17", "19", "32", "52", "53", "54"):
+    if case_name[:2] in ("16", "17", "19", "32", "52", "53", "54", "58"):
         # Two halves, both required: the hook must SAY the partner modified the tree, and it must
         # NAME the path. A warning that cannot name what changed sends the operator to a blank
         # `git status` on an already-dirty tree — the same blindness the content fingerprint exists
         # to remove.
         said = "MODIFIED the repository" in err
-        named = ("tracked.txt" in err if case_name[:2] in ("16", "17", "32")
+        named = ("tracked.txt" in err if case_name[:2] in ("16", "17", "32", "58")
                  else "checkpoint-%s.md" % OWN_SID in err if case_name.startswith("52")
                  else "checkpoint-%s.md" % OTHER_SID in err if case_name[:2] in ("53", "54")
                  else "checkpoint-suite.md" in err)
@@ -806,7 +876,20 @@ def suite(hook, workdir):
                  "STUB_BREAK_RC_PAD": STUB_BREAK_RC_PAD,
                  "STUB_MUTATE_BREAK_PAD": STUB_MUTATE_BREAK_PAD,
                  "STUB_CONCURRENT_COMMIT": STUB_CONCURRENT_COMMIT,
-                 "STUB_RUNSTATE_OTHER": STUB_RUNSTATE_OTHER, "STUB_RUNSTATE_OWN": STUB_RUNSTATE_OWN}
+                 "STUB_RUNSTATE_OTHER": STUB_RUNSTATE_OTHER, "STUB_RUNSTATE_OWN": STUB_RUNSTATE_OWN,
+                 "STUB_SCRATCH": STUB_SCRATCH, "STUB_SCRATCH_BREAK_RC": STUB_SCRATCH_BREAK_RC,
+                 "STUB_SCRATCH_NOVERDICT": STUB_SCRATCH_NOVERDICT,
+                 "STUB_SCRATCH_MUTATE": STUB_SCRATCH_MUTATE,
+                 "STUB_SCRATCH_SLEEP": STUB_SCRATCH_SLEEP}
+        if name.startswith("59"):
+            winbin = os.path.join(workdir, "winbin")
+            os.makedirs(winbin, exist_ok=True)
+            with open(os.path.join(winbin, "cygpath"), "w") as f:
+                f.write(FAKE_CYGPATH)
+            os.chmod(os.path.join(winbin, "cygpath"), 0o755)
+            env["PATH"] = winbin + os.pathsep + env["PATH"]
+        scratch_marker = os.path.join(workdir, "scratch-marker-" + name[:2])
+        env["SCRATCH_MARKER"] = scratch_marker
         if transcript in stubs:
             stub = os.path.join(workdir, "stub-" + name + ".sh")
             with open(stub, "w") as f:
@@ -864,6 +947,33 @@ def suite(hook, workdir):
         else:
             run_cwd = cwd or REPO
         argv = ["bash", "-c", 'bash "$1" 2>&1 | ' + pipe, "_", hook] if pipe else ["bash", hook]
+        if name.startswith("60"):
+            # SIGTERM to the whole process group once the partner is running, the way a timeout or
+            # a Ctrl-C reaches it. --compare runs suite() twice in one workdir: a marker left by the
+            # first run would end the wait at once and be read as the second run's.
+            if os.path.exists(scratch_marker):
+                os.remove(scratch_marker)
+            proc = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, text=True, env=env, cwd=run_cwd,
+                                    start_new_session=True)
+            proc.stdin.write(PAYLOAD)
+            proc.stdin.close()
+            proc.stdin = None  # Python 3.9's communicate() flushes a closed stdin and raises
+            deadline = time.time() + 20
+            while not os.path.exists(scratch_marker) and time.time() < deadline:
+                time.sleep(0.1)
+            time.sleep(0.3)
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            out, err = proc.communicate(timeout=30)
+            res = subprocess.CompletedProcess(argv, proc.returncode, out, err)
+            marker = open(scratch_marker).read() if os.path.exists(scratch_marker) else ""
+            branch = ("killed" if proc.returncode not in (0, None) else "not-killed") \
+                + scratch_suffix(marker, name, os.environ.get("TMPDIR"))
+            rows.append((name, branch, expect, res))
+            continue
         try:
             res = subprocess.run(argv, input=PAYLOAD, capture_output=True,
                                  text=True, env=env, cwd=run_cwd, timeout=30)

@@ -16,6 +16,23 @@ Tests only; nothing installed changes, so no version bump.
   kept only `FAIL ... rc=1 (clean dir, but the run failed)` (`gh run view 39082027219 --attempt 1
   --log-failed`); attempt 2 passed. The cause is unknown.
 
+## [0.64.1] - 2026-10-17
+
+### Fixed
+
+- **The external adversary no longer leaves its scratch in `/tmp`** (p-6ee8526d22).
+  `external-adversary.sh` handed the partner the caller's `TMPDIR` as is, and rounds left their
+  verification folders and suite workdirs behind: 18 in `/tmp` on 2026-10-17
+  (`goalspec-adversary-verify.*`, `terminal-precheck-branches-*`), which also turned temp-leak-check
+  red when it ran at the same time. Now every run makes its own directory
+  (`goalspec-adversary-tmp.*`, under the caller's `TMPDIR` when writable), points `TMPDIR`, `TMP` and
+  `TEMP` at it (Windows form via `cygpath` under Git Bash, for Node and native Windows programs that
+  read `TEMP`/`TMP`), and removes it in an EXIT trap armed before the `mktemp`, after a `chmod` so a
+  read-only directory inside cannot block it. bash runs that trap on SIGTERM too (case 60); a signal
+  that lands before the trap line runs leaves nothing to clean, and no case times one into that window. A probe showed codex follows `TMPDIR`, but its sandbox also allows `/tmp` by name,
+  so the prompt now tells the partner never to write to `/tmp` or to repoint `TMPDIR` there; that
+  half is not measured. Cases 55-60 of `test/external-adversary-branches.py`.
+
 ## [0.64.0] - 2026-10-17
 
 ### Fixed
