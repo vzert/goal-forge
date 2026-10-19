@@ -34,7 +34,7 @@ the commands codex runs in sessions of their own included; one that already left
 fork) survives. A break it had already printed stands; with
 none, the round is an UNVERIFIED hold, so re-run it with a narrower payload or route it to the
 subagent. Set it in the `env` block of `settings.json` to change it for every session. Measured over
-490 rounds of `codex exec -m gpt-5.6-luna` (effort `high`; `max` in the first days of the window) in four projects,
+some 490 rounds (the Bash calls that ran the hook; recounts gave 490 and 491) of `codex exec -m gpt-5.6-luna` (effort `high`; `max` in the first days of the window) in four projects,
 2026-10-05..19: the median round took 3.4 to 6.2 minutes per project, and 12 rounds ran 30 minutes or
 more, up to 53 — all of them in one project. With no Python interpreter, or a value that is not a
 whole number of seconds, the partner runs uncapped and the hook says so.

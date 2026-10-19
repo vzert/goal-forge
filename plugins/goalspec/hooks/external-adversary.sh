@@ -714,7 +714,7 @@ VERDICT_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break|hold)[[:space:]]+ungrounded=[
 # script on exactly the path that exists to handle a bad partner — so both the run and the match stay
 # inside `set +e` and the match is guarded with `|| true`.
 set +e
-# WALL-CLOCK CAP (0.65.7). There was none: over 2026-10-05..19, 12 of 490 rounds in four projects ran
+# WALL-CLOCK CAP (0.65.7). There was none: over 2026-10-05..19, 12 of some 490 rounds in four projects (Bash calls that ran this hook) ran
 # 30 minutes or more, up to 53. GOAL_ADVERSARY_TIMEOUT is seconds, default 1800; 0 turns the cap off.
 # Past it lib/run_capped.py kills the partner and every descendant it can see then, and exits 124, which takes the nonzero-
 # exit paths below unchanged: a filled break already printed stands, anything else is UNVERIFIED.
