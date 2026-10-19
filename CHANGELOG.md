@@ -18,13 +18,15 @@ version bump are never delivered to already-installed users.
   which kind (empty report, no verdict line, the placeholder of the template, or a line outside
   the grammar), that the round is UNVERIFIED and not a pass, and to resume the adversary, re-run
   the round or route it to the other backend. `record` (SubagentStop) stores such a report; the
-  scan of a just-written report takes it only from a SubagentHandback call, so the progress note
-  of an adversary still running stays silent. `handback-verdict-branches.py`: case 06 changes from
-  silent, cases 36-43 are new; against the 0.65.3 hook only the seven cases that expect the new
-  reminder differ; `--selftest` has six new mutations, each caught. Replayed over the 1031
-  goal-adversary transcripts on the maintainer's disk since 2026-09-14: 10 reminded (6 no verdict
-  line, 2 empty, 1 template, 1 without counts), the same 10 an independent re-count finds, and none
-  of the 1021 with a well-formed verdict. The external backend already reported this case
+  scan of a just-written report takes it only from a SubagentHandback call that is the last thing
+  the adversary wrote, so the progress note of an adversary still running, or resumed after its
+  hand-back, stays silent. `handback-verdict-branches.py`: case 06 changes from silent, cases 36-44
+  are new; against the 0.65.3 hook only the seven cases that expect the new reminder differ;
+  `--selftest` has seven new mutations, each caught. Replayed over the 1032 goal-adversary
+  transcripts on the maintainer's disk since 2026-09-14 (2026-10-19 15:22 UTC): 10 reminded (6 no
+  verdict line, 2 empty, 1 template, 1 without counts), the same 10 a re-count from the
+  transcripts finds (it uses the hook's own rule for which message is the report), and none of the
+  1022 with a well-formed verdict. The external backend already reported this case
   (`external-adversary.sh`) and is unchanged.
 
 ## [0.65.3] - 2026-10-18

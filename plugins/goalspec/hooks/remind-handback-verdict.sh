@@ -101,8 +101,10 @@ def iso_mtime(p):
 def report_text(transcript, strict=False):
     """-> (report, when, source): the adversary report -- its last SubagentHandback message, else its
     last text block -- the timestamp of the transcript line that carries it (file mtime if absent),
-    and which of the two it was ("handback" or "text"; None with no report)."""
+    and which of the two it was: "handback" when that call is the last thing it wrote, "resumed" when
+    text follows it (a resumed adversary at work again), "text" with no call; None with no report."""
     handback = text = None
+    after = False
     with open(transcript, encoding="utf-8") as fh:
         for raw in fh:
             try:
@@ -119,13 +121,15 @@ def report_text(transcript, strict=False):
                     msg = (blk.get("input") or {}).get("message")
                     if isinstance(msg, str):
                         handback = (msg, ts)
+                        after = False
                 elif blk.get("type") == "text" and isinstance(blk.get("text"), str):
                     text = (blk["text"], ts)
+                    after = handback is not None
     rep = handback if handback is not None else text
     if rep is None:
         return None, None, None
     return (rep[0], rep[1] or (None if strict else iso_mtime(transcript)),
-            "handback" if handback is not None else "text")
+            ("resumed" if after else "handback") if handback is not None else "text")
 
 
 # A finished report with no well-formed verdict (p-bbfaf13b6a, 0.65.4). Until then this hook exited
@@ -256,8 +260,10 @@ if isinstance(tp, str) and tp.endswith(".jsonl"):
             continue
         rec = verdict_record(report, when, agent, when)
         # Here nothing says the adversary is done: its last text block may be a progress note of a
-        # round still running. Only a SubagentHandback call is a finished delivery, so a malformed
-        # report found by the scan counts only when it came that way; the rest waits for the record.
+        # round still running. Only a SubagentHandback call that is the last thing it wrote is a
+        # finished delivery -- text after it means it was resumed and is working again (external
+        # round on 0.65.4) -- so a malformed report found by the scan counts only then; the rest
+        # waits for the record.
         if rec["verdict"] == "malformed" and source != "handback":
             continue
         # A resumed adversary: its newer report wins over an older record of the same agent.

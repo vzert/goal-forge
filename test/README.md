@@ -994,8 +994,9 @@ UserPromptSubmit consumes them and names the exact lines, unless a text block wr
 record already quotes them. It never reads `prompt`, which the human can type. Since 0.65.4
 (p-bbfaf13b6a) a finished report with no well-formed verdict is reminded too, as UNVERIFIED, named
 by its kind: empty, no verdict line, the placeholder of the template, or a line outside the grammar
-(cases 06 and 36-43; the scan of a just-written report takes it only from a SubagentHandback call,
-so a running adversary's progress note stays silent, case 40). 42 cases, hermetic
+(cases 06 and 36-44; the scan of a just-written report takes it only from a SubagentHandback call
+that is the last thing the adversary wrote, so a running or resumed adversary's progress note stays
+silent, cases 40 and 44). 43 cases, hermetic
 (synthetic transcripts, a per-case `TMPDIR`, `XDG_STATE_HOME` and `HOME`): the reminding ones (hand-back call, last-text fallback,
 bare type, break with its note, a resumed adversary's latest report, two adversaries, a missing
 model line, an identical line quoted only BEFORE the record), the silent ones (other or look-alike
