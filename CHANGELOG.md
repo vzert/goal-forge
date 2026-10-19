@@ -6,6 +6,27 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.65.4] - 2026-10-19
+
+### Fixed
+
+- **A goal-adversary that finishes without a usable verdict is reported to the executor.** Until
+  now `remind-handback-verdict.sh` stayed silent when a background adversary's report had no
+  well-formed `[ADVERSARY-VERDICT: …]` line, so the executor got prose and no hook said the round
+  had no verdict (session 020c75af, a bounded round with no verdict line; session 9d0d6ebd, a
+  report ending `[ADVERSARY-VERDICT: BREAK]` with no counts). The next turn now says which agent,
+  which kind (empty report, no verdict line, the placeholder of the template, or a line outside
+  the grammar), that the round is UNVERIFIED and not a pass, and to resume the adversary, re-run
+  the round or route it to the other backend. `record` (SubagentStop) stores such a report; the
+  scan of a just-written report takes it only from a SubagentHandback call, so the progress note
+  of an adversary still running stays silent. `handback-verdict-branches.py`: case 06 changes from
+  silent, cases 36-43 are new; against the 0.65.3 hook only the seven cases that expect the new
+  reminder differ; `--selftest` has six new mutations, each caught. Replayed over the 1031
+  goal-adversary transcripts on the maintainer's disk since 2026-09-14: 10 reminded (6 no verdict
+  line, 2 empty, 1 template, 1 without counts), the same 10 an independent re-count finds, and none
+  of the 1021 with a well-formed verdict. The external backend already reported this case
+  (`external-adversary.sh`) and is unchanged.
+
 ## [0.65.3] - 2026-10-18
 
 ### Fixed

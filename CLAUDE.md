@@ -71,7 +71,8 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    `/goalspec:interview` — hermetic, synthetic transcripts; new in 0.46.0 with no predecessor, so
    run `--selftest` too, which mutates the component and requires a case to notice), and
    `python3 test/handback-verdict-branches.py` (SubagentStop + UserPromptSubmit reminder to quote a
-   goal-adversary verdict that came back as a background hand-back — hermetic, per-case `TMPDIR`; new
+   goal-adversary verdict that came back as a background hand-back, or to treat one that came back
+   with no usable verdict as UNVERIFIED (0.65.4) — hermetic, per-case `TMPDIR`; new
    in 0.46.8, so run `--selftest` too), and `python3 test/spec-on-entry-branches.py` (PostToolUse(Skill)
    reminder to write the `## Goal-spec` to the checkpoint or post it as visible text right after the
    goalspec loop loads with no spec yet — hermetic, synthetic transcripts; new in 0.48.0, so run `--selftest` too), and

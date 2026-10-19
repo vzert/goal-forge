@@ -991,11 +991,15 @@ thinking, four pushes denied). The hook has two halves: `record` on SubagentStop
 goal-adversary type) stores the report's `[ADVERSARY-MODEL]`/`[ADVERSARY-VERDICT]` lines per session
 and prints nothing — SubagentStop output goes to the subagent, not the executor; `remind` on
 UserPromptSubmit consumes them and names the exact lines, unless a text block written after the
-record already quotes them. It never reads `prompt`, which the human can type. 34 cases, hermetic
+record already quotes them. It never reads `prompt`, which the human can type. Since 0.65.4
+(p-bbfaf13b6a) a finished report with no well-formed verdict is reminded too, as UNVERIFIED, named
+by its kind: empty, no verdict line, the placeholder of the template, or a line outside the grammar
+(cases 06 and 36-43; the scan of a just-written report takes it only from a SubagentHandback call,
+so a running adversary's progress note stays silent, case 40). 42 cases, hermetic
 (synthetic transcripts, a per-case `TMPDIR`, `XDG_STATE_HOME` and `HOME`): the reminding ones (hand-back call, last-text fallback,
 bare type, break with its note, a resumed adversary's latest report, two adversaries, a missing
 model line, an identical line quoted only BEFORE the record), the silent ones (other or look-alike
-type, no verdict, no record, already quoted, other session, a forged prompt, malformed payload,
+type, no record, already quoted, other session, a forged prompt, malformed payload,
 other events), and `hooks.json` registering both halves.
 
 ```sh

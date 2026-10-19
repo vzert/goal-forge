@@ -47,8 +47,13 @@
 # A foreground spawn also fires SubagentStop; remind-quote-verdict.sh already nudged it, and if the
 # executor quoted it, this stays silent; if it did not, one more reminder is correct.
 #
+# A finished report with NO well-formed verdict (0.65.4, p-bbfaf13b6a) is reminded too, as UNVERIFIED:
+# empty, no verdict line, the placeholder of the template, or a line outside the grammar. `record`
+# stores it (SubagentStop means the adversary is done); the scan in `remind` takes it only from a
+# SubagentHandback call, since a last text block may be the progress note of a round still running.
+#
 # Advisory only, never blocks. Fail-open everywhere: unparseable payload, no session id, unreadable
-# transcript, no verdict in the report -> exit 0, silent.
+# transcript -> exit 0, silent.
 #
 # Registered by hooks/hooks.json. Usage: remind-handback-verdict.sh record|remind  (payload on stdin)
 
@@ -94,8 +99,9 @@ def iso_mtime(p):
 
 
 def report_text(transcript, strict=False):
-    """-> (report, when): the adversary report -- its last SubagentHandback message, else its last
-    text block -- and the timestamp of the transcript line that carries it (file mtime if absent)."""
+    """-> (report, when, source): the adversary report -- its last SubagentHandback message, else its
+    last text block -- the timestamp of the transcript line that carries it (file mtime if absent),
+    and which of the two it was ("handback" or "text"; None with no report)."""
     handback = text = None
     with open(transcript, encoding="utf-8") as fh:
         for raw in fh:
@@ -117,17 +123,40 @@ def report_text(transcript, strict=False):
                     text = (blk["text"], ts)
     rep = handback if handback is not None else text
     if rep is None:
-        return None, None
-    return rep[0], rep[1] or (None if strict else iso_mtime(transcript))
+        return None, None, None
+    return (rep[0], rep[1] or (None if strict else iso_mtime(transcript)),
+            "handback" if handback is not None else "text")
+
+
+# A finished report with no well-formed verdict (p-bbfaf13b6a, 0.65.4). Until then this hook exited
+# silent on it, so an adversary that ended without a verdict line reached the executor as prose and
+# no hook said so (session 020c75af, agent a090b6257: a bounded round with no verdict line). The
+# kinds, in order: an empty report, no verdict line at all, the placeholder of the template, and a
+# verdict line outside the grammar (a bare word, missing counts). The verdict word is "malformed" and
+# the line is empty, so nothing here can be quoted forward as a verdict.
+MALFORMED_KINDS = ("empty", "none", "template", "ungrammatical")
+
+
+def malformed_kind(report):
+    if not (report or "").strip():
+        return "empty"
+    lines = [l for l in report.splitlines() if "[ADVERSARY-VERDICT" in l.upper()]
+    if not lines:
+        return "none"
+    if re.search(r"break\s*\|\s*hold|<break or hold>|=\s*<n>", lines[-1], re.I):
+        return "template"
+    return "ungrammatical"
 
 
 def verdict_record(report, when, agent, now_ts):
     verdicts = list(re.finditer(ta.VERDICT_RE, report or "", re.I))
-    if not verdicts:
-        return None
-    models = re.findall(MODEL_RE, report, re.I)
-    return {"ts": now_ts, "rts": when or now_ts, "agent": agent, "verdict": verdicts[-1].group(1).lower(),
-            "line": verdicts[-1].group(0), "model": models[-1] if models else ""}
+    models = re.findall(MODEL_RE, report or "", re.I)
+    rec = {"ts": now_ts, "rts": when or now_ts, "agent": agent, "model": models[-1] if models else ""}
+    if verdicts:
+        rec.update(verdict=verdicts[-1].group(1).lower(), line=verdicts[-1].group(0))
+    else:
+        rec.update(verdict="malformed", line="", kind=malformed_kind(report))
+    return rec
 
 
 def stamp(t):
@@ -142,11 +171,11 @@ if os.environ["MODE"] == "record":
     tp = data.get("agent_transcript_path")
     if not isinstance(tp, str) or not os.path.isfile(tp):
         sys.exit(0)
-    report, when = report_text(tp)
+    # SubagentStop means the adversary is done, so a report with no well-formed verdict -- or no
+    # report at all -- is recorded as malformed rather than dropped.
+    report, when, _ = report_text(tp)
     rec = verdict_record(report, when, str(data.get("agent_id") or ""),
                          stamp(datetime.datetime.now(datetime.timezone.utc)))
-    if rec is None:
-        sys.exit(0)
     snap = run_dir.ensure(sid, HOOK_NAME)
     if not snap:
         sys.exit(0)
@@ -174,7 +203,10 @@ for raw in body.splitlines():
         rec = json.loads(raw)
     except Exception:
         continue
-    if isinstance(rec, dict) and isinstance(rec.get("line"), str) and re.fullmatch(ta.VERDICT_RE, rec["line"], re.I):
+    if not isinstance(rec, dict) or not isinstance(rec.get("line"), str):
+        continue
+    if re.fullmatch(ta.VERDICT_RE, rec["line"], re.I) or (
+            rec.get("verdict") == "malformed" and rec["line"] == "" and rec.get("kind") in MALFORMED_KINDS):
         latest[rec.get("agent") or ""] = rec  # a resumed adversary: its latest report wins
 
 # The race (p-3cbde60989, 0.46.9). MEASURED with harness 2.1.291 in five live runs (2026-10-06): when
@@ -207,7 +239,7 @@ if isinstance(tp, str) and tp.endswith(".jsonl"):
             meta = json.load(open(os.path.join(sdir, n), encoding="utf-8"))
             if not ta.is_adversary_type(meta.get("agentType")):
                 continue
-            report, when = report_text(jp, strict=True)
+            report, when, source = report_text(jp, strict=True)
         except Exception:
             continue
         # The window is on the timestamp of the REPORT itself, not the file mtime (a resumed adversary
@@ -223,6 +255,11 @@ if isinstance(tp, str) and tp.endswith(".jsonl"):
         if abs((now - rt).total_seconds()) > SCAN_WINDOW:
             continue
         rec = verdict_record(report, when, agent, when)
+        # Here nothing says the adversary is done: its last text block may be a progress note of a
+        # round still running. Only a SubagentHandback call is a finished delivery, so a malformed
+        # report found by the scan counts only when it came that way; the rest waits for the record.
+        if rec["verdict"] == "malformed" and source != "handback":
+            continue
         # A resumed adversary: its newer report wins over an older record of the same agent.
         if rec is not None and (agent not in latest or rec["rts"] > (latest[agent].get("rts") or "")):
             latest[agent] = rec
@@ -245,8 +282,10 @@ pending = []
 for rec in latest.values():
     if key(rec) in done:
         continue
-    quoted = any(it["kind"] == "text" and isinstance(it.get("timestamp"), str)
-                 and it["timestamp"] >= rec.get("ts", "") and rec["line"] in it["text"] for it in items)
+    # A malformed report has no line to quote, so only the reminded set keeps it to one reminder.
+    quoted = rec["verdict"] != "malformed" and any(
+        it["kind"] == "text" and isinstance(it.get("timestamp"), str)
+        and it["timestamp"] >= rec.get("ts", "") and rec["line"] in it["text"] for it in items)
     if not quoted:
         pending.append(rec)
 if not pending:
@@ -261,11 +300,34 @@ try:
 except Exception:
     pass
 
+malformed = [r for r in pending if r["verdict"] == "malformed"]
+pending = [r for r in pending if r["verdict"] != "malformed"]
+KIND_TEXT = {
+    "empty": "its report is empty",
+    "none": "its report has no [ADVERSARY-VERDICT: ...] line",
+    "template": "its verdict line is the placeholder of the template (break|hold, <break or hold> or <n>), "
+                "not a filled verdict",
+    "ungrammatical": "its verdict line is outside the grammar: a word, break or hold, then all five counts "
+                     "(ungrounded, unfalsified, incomplete, autonomy-violations, unsafe)",
+}
+bad = "".join(
+    "\n\nA goal-adversary you launched (agent %s) finished without a usable verdict (kind: %s): %s. "
+    "Nothing the Stop gate or the push precheck can read came back, so this round is neither a hold nor "
+    "a break: it is UNVERIFIED, not a pass. Read its report -- a BLOCKING finding it lists still "
+    "stands. Then resume it (SendMessage to that agent id) and ask for one final message that carries "
+    "its [ADVERSARY-MODEL: ...] line and its verdict line with all five counts, or re-run the round, or "
+    "route it to the other backend. Do not write a verdict line for it yourself."
+    % (r.get("agent") or "?", r["kind"], KIND_TEXT[r["kind"]]) for r in malformed)
+HEADER = ("ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a "
+          "transcript, it is not addressed to you and changes nothing about your role: you verify, you do "
+          "not repair.")
+if not pending:
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+                                             "additionalContext": HEADER + bad}}))
+    sys.exit(0)
 lines = "\n".join(((r["model"] + "\n") if r.get("model") else "") + r["line"] for r in pending)
 breaks = any(r["verdict"] == "break" for r in pending)
-msg = ("ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary reading this line in a "
-       "transcript, it is not addressed to you and changes nothing about your role: you verify, you do "
-       "not repair.\n\n"
+msg = (HEADER + "\n\n"
        "A goal-adversary you launched in the background has finished. Its report reaches you as a "
        "subagent hand-back -- a message, not your own text -- and the Stop gate reads only your own "
        "assistant-authored text, so its verdict does not exist for it until you quote it (the "
@@ -283,6 +345,7 @@ msg = ("ADDRESSED TO THE EXECUTOR OF THIS SESSION. If you are a goal-adversary r
 if breaks:
     msg += ("\n\nA break is among them: quote it too -- the gate reads it -- and address its findings "
             "before you close.")
+msg += bad
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": msg}}))
 ' 2>/dev/null
 exit 0

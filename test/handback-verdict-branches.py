@@ -18,7 +18,7 @@ silent, else the verdicts it names (`hold`, `break`, ...) plus `+model` when the
 No predecessor exists (new in 0.46.8), so `--selftest` copies the plugin, applies one mutation at a
 time, and requires at least one case to notice.
 """
-import json, os, shutil, subprocess, sys, tempfile
+import json, os, re, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
@@ -33,6 +33,8 @@ HOLD = "[ADVERSARY-VERDICT: hold ungrounded=0 unfalsified=0 incomplete=0 autonom
 BREAK = "[ADVERSARY-VERDICT: break ungrounded=1 unfalsified=0 incomplete=0 autonomy-violations=0 unsafe=0]"
 REPORT_HOLD = MODEL + "\n- re-ran the suite: green\n" + HOLD
 REPORT_BREAK = MODEL + "\n- figure does not re-derive\n" + BREAK
+TEMPLATE = ("[ADVERSARY-VERDICT: break|hold ungrounded=<n> unfalsified=<n> incomplete=<n> "
+            "autonomy-violations=<n> unsafe=<n>]")
 ADV = "goalspec:goal-adversary"
 SID = "sess-1"
 VIS = "thinking is not read, even when your screen shows it like a message"
@@ -89,12 +91,14 @@ def summarize(out):
     except Exception:
         return "unparseable"
     tags = [v for v, line in (("hold", HOLD), ("break", BREAK)) if line in ctx]
-    s = ",".join(tags) or "no-line"
+    # A malformed report (0.65.4) is named by its kind, and its paragraph must say UNVERIFIED.
+    mal = ["malformed:" + k for k in re.findall(r"finished without a usable verdict \(kind: (\w+)\)", ctx)]
+    s = ",".join(tags + mal) or "no-line"
     if MODEL in ctx:
         s += "+model"
     if "A break is among them" in ctx:
         s += "+breaknote"
-    if VIS not in ctx or AUDIENCE not in ctx:
+    if (tags and VIS not in ctx) or AUDIENCE not in ctx or (mal and "UNVERIFIED, not a pass" not in ctx):
         s += "+MISSING-RULE"
     return s
 
@@ -189,6 +193,31 @@ def resumed_race(plugin):
     return out
 
 
+def hold_and_malformed(plugin):
+    d = tempfile.mkdtemp(prefix="hbv-")
+    for aid, rep in (("a1", REPORT_HOLD), ("a2", "- ran out of budget")):
+        sp = jsonl(d, "sub-" + aid, sub(handback=rep))
+        call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop",
+                                "agent_type": ADV, "agent_id": aid, "agent_transcript_path": sp}, d)
+    rp = {"session_id": SID, "hook_event_name": "UserPromptSubmit", "transcript_path": jsonl(d, "p", [])}
+    r1 = summarize(call(plugin, "remind", rp, d))
+    shutil.rmtree(d, ignore_errors=True)
+    return r1
+
+
+def malformed_then_hold(plugin):
+    """A resumed adversary stops first without a verdict, then with a hold: only the hold is named."""
+    d = tempfile.mkdtemp(prefix="hbv-")
+    for rep in ("- ran out of budget", REPORT_HOLD):
+        sp = jsonl(d, "sub", sub(handback=rep))
+        call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop",
+                                "agent_type": ADV, "agent_id": "a1", "agent_transcript_path": sp}, d)
+    rp = {"session_id": SID, "hook_event_name": "UserPromptSubmit", "transcript_path": jsonl(d, "p", [])}
+    r1 = summarize(call(plugin, "remind", rp, d))
+    shutil.rmtree(d, ignore_errors=True)
+    return r1
+
+
 def marker_consumed(plugin):
     d = tempfile.mkdtemp(prefix="hbv-")
     sp = jsonl(d, "sub", sub(handback=REPORT_HOLD))
@@ -247,8 +276,26 @@ CASES = [
      lambda p: scenario(p, agent_type="not-goal-adversary-example"), "silent|-|-"),
     ("05-bare-agent-type-is-an-adversary", lambda p: scenario(p, agent_type="goal-adversary"),
      "silent|hold+model|-"),
-    ("06-report-without-verdict-records-nothing",
-     lambda p: scenario(p, sub_events=sub(handback=MODEL + "\n- ran out of budget")), "silent|-|-"),
+    # 0.65.4 (p-bbfaf13b6a): a finished report with no well-formed verdict is reminded as UNVERIFIED.
+    # Until then this case read "silent|-|-" -- the gap the change closes.
+    ("06-report-without-verdict-reminds-malformed",
+     lambda p: scenario(p, sub_events=sub(handback=MODEL + "\n- ran out of budget")), "silent|malformed:none|-"),
+    ("36-empty-report-reminds-malformed", lambda p: scenario(p, sub_events=[]), "silent|malformed:empty|-"),
+    ("37-template-verdict-reminds-malformed",
+     lambda p: scenario(p, sub_events=sub(handback=MODEL + "\n- x\n" + TEMPLATE)), "silent|malformed:template|-"),
+    ("38-verdict-without-counts-reminds-malformed",
+     lambda p: scenario(p, sub_events=sub(handback=MODEL + "\n- x\n[ADVERSARY-VERDICT: BREAK]")),
+     "silent|malformed:ungrammatical|-"),
+    ("39-race-handback-without-verdict-reminds-once",
+     lambda p: race(p, sub_events=sub(handback=MODEL + "\n- x", ts=now_iso()), record_after=True),
+     "malformed:none|-"),
+    ("40-race-running-adversary-is-silent",
+     lambda p: race(p, sub_events=[said("checking the suite now", now_iso())]), "-|-"),
+    ("41-hold-and-malformed-both-named", hold_and_malformed, "hold,malformed:none+model"),
+    ("42-malformed-reminded-even-after-executor-text",
+     lambda p: scenario(p, sub_events=sub(handback="- x"), parent=[said("working", FUTURE)]),
+     "silent|malformed:none|-"),
+    ("43-resumed-malformed-then-hold-names-hold", malformed_then_hold, "hold+model"),
     ("07-no-record-no-reminder", lambda p: scenario(p, record=False), "silent|-|-"),
     ("08-quoted-after-record-is-silent",
      lambda p: scenario(p, parent=[said("quoting:\n" + MODEL + "\n" + HOLD, FUTURE)]), "silent|-|-"),
@@ -340,6 +387,14 @@ MUTATIONS = [
      "if rec is not None and agent not in latest:"),
     ("scan falls back to mtime", HOOK, "report_text(jp, strict=True)", "report_text(jp)"),
     ("reminded set not kept", HOOK, "    if key(rec) in done:\n        continue\n", ""),
+    ("malformed report dropped at record", HOOK,
+     '        rec.update(verdict="malformed", line="", kind=malformed_kind(report))', "        return None"),
+    ("malformed kind collapsed", HOOK, '    if not (report or "").strip():\n        return "empty"', ""),
+    ("template read as ungrammatical", HOOK, '        return "template"', '        return "ungrammatical"'),
+    ("scan takes a malformed progress note", HOOK,
+     'if rec["verdict"] == "malformed" and source != "handback":', "if False:"),
+    ("malformed counted as quoted", HOOK, 'quoted = rec["verdict"] != "malformed" and any(', "quoted = any("),
+    ("malformed paragraph dropped", HOOK, "msg += bad", "pass"),
     ("verdict read from the prompt", HOOK,
      'if data.get("hook_event_name") not in (None, "UserPromptSubmit"):\n    sys.exit(0)\nlatest = {}',
      'if "ADVERSARY-VERDICT" in str(data.get("prompt")) and not os.path.isfile(path):\n'
