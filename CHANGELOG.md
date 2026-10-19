@@ -21,6 +21,13 @@ version bump are never delivered to already-installed users.
   and pass now; `--compare` against 0.65.2 changes only those two; `--selftest` has a mutation for
   each.
 
+- **The adversary repeats its model line and full verdict in its last message.** As a subagent,
+  the executor receives only the adversary's final message. In a real run (lookout's bench,
+  2026-10-18) an adversary wrote `[ADVERSARY-MODEL: …]` in its first message and ended with
+  `[ADVERSARY-VERDICT: BREAK]`: the executor got no model line and no counts, a form no hook reads
+  as a verdict. `agents/goal-adversary.md` now says the final message carries both lines, the
+  verdict with its five counts. Prose: nothing measures that an adversary follows it.
+
 ### Tests
 
 - **`gate-branches.py` checks that the program python runs is the program in the gate.** 0.65.2
