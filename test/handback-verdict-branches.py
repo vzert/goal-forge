@@ -218,6 +218,21 @@ def malformed_then_hold(plugin):
     return r1
 
 
+def resumed_after_malformed_record(plugin, later_ts):
+    """A malformed report is recorded at SubagentStop; the adversary is then resumed and writes an
+    event stamped `later_ts` before the next prompt. -> remind outcome."""
+    d = tempfile.mkdtemp(prefix="hbv-")
+    sp = jsonl(d, "sub", sub(handback="- ran out of budget"))
+    call(plugin, "record", {"session_id": SID, "hook_event_name": "SubagentStop", "agent_type": ADV,
+                            "agent_id": "a1", "agent_transcript_path": sp}, d)
+    with open(sp, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(said("continuing the round", later_ts)) + "\n")
+    out = summarize(call(plugin, "remind", {"session_id": SID, "hook_event_name": "UserPromptSubmit",
+                                            "transcript_path": jsonl(d, "p", [])}, d))
+    shutil.rmtree(d, ignore_errors=True)
+    return out
+
+
 def marker_consumed(plugin):
     d = tempfile.mkdtemp(prefix="hbv-")
     sp = jsonl(d, "sub", sub(handback=REPORT_HOLD))
@@ -293,6 +308,15 @@ CASES = [
      lambda p: race(p, sub_events=[said("checking the suite now", now_iso())]), "-|-"),
     ("44-race-resumed-after-malformed-handback-is-silent",
      lambda p: race(p, sub_events=sub(handback="- x", ts=now_iso(-5)) + [said("continuing", now_iso())]),
+     "-|-"),
+    ("45-record-then-resumed-adversary-is-silent",
+     lambda p: resumed_after_malformed_record(p, FUTURE), "-"),
+    ("46-record-with-older-event-still-reminds",
+     lambda p: resumed_after_malformed_record(p, PAST), "malformed:none"),
+    ("47-race-tool-call-after-malformed-handback-is-silent",
+     lambda p: race(p, sub_events=sub(handback="- x", ts=now_iso(-5)) + [
+         {"type": "assistant", "timestamp": now_iso(), "message": {"content": [
+             {"type": "tool_use", "name": "Bash", "id": "tb1", "input": {"command": "ls"}}]}}]),
      "-|-"),
     ("41-hold-and-malformed-both-named", hold_and_malformed, "hold,malformed:none+model"),
     ("42-malformed-reminded-even-after-executor-text",
@@ -396,8 +420,14 @@ MUTATIONS = [
     ("template read as ungrammatical", HOOK, '        return "template"', '        return "ungrammatical"'),
     ("scan takes a malformed progress note", HOOK,
      'if rec["verdict"] == "malformed" and source != "handback":', "if False:"),
-    ("text after the handback ignored", HOOK, "                    after = handback is not None",
-     "                    after = False"),
+    ("text after the handback ignored", HOOK, "                after = after or handback is not None",
+     "                pass"),
+    ("tool call after the handback ignored", HOOK,
+     "                        after = False\n                        continue",
+     "                        after = False\n                        continue\n"
+     "                if blk.get(\"type\") != \"text\":\n                    continue"),
+    ("resumed record reminded", HOOK, "and worked_after(r[\"tp\"], r.get(\"ts\", \"\"))", "and False"),
+    ("resume check ignores time", HOOK, "and t > since:", ":"),
     ("malformed counted as quoted", HOOK, 'quoted = rec["verdict"] != "malformed" and any(', "quoted = any("),
     ("malformed paragraph dropped", HOOK, "msg += bad", "pass"),
     ("verdict read from the prompt", HOOK,

@@ -49,8 +49,10 @@
 #
 # A finished report with NO well-formed verdict (0.65.4, p-bbfaf13b6a) is reminded too, as UNVERIFIED:
 # empty, no verdict line, the placeholder of the template, or a line outside the grammar. `record`
-# stores it (SubagentStop means the adversary is done); the scan in `remind` takes it only from a
-# SubagentHandback call, since a last text block may be the progress note of a round still running.
+# stores it (SubagentStop means the adversary is done), and `remind` drops it if the adversary wrote
+# anything after that stop (resumed). The scan in `remind` takes it only from a SubagentHandback call
+# that is the last thing the adversary wrote, since a last text block, or any block after the call,
+# may be the work of a round still running.
 #
 # Advisory only, never blocks. Fail-open everywhere: unparseable payload, no session id, unreadable
 # transcript -> exit 0, silent.
@@ -122,9 +124,11 @@ def report_text(transcript, strict=False):
                     if isinstance(msg, str):
                         handback = (msg, ts)
                         after = False
-                elif blk.get("type") == "text" and isinstance(blk.get("text"), str):
+                        continue
+                if blk.get("type") == "text" and isinstance(blk.get("text"), str):
                     text = (blk["text"], ts)
-                    after = handback is not None
+                # Any block after the last hand-back -- text or another tool call -- is work again.
+                after = after or handback is not None
     rep = handback if handback is not None else text
     if rep is None:
         return None, None, None
@@ -180,6 +184,8 @@ if os.environ["MODE"] == "record":
     report, when, _ = report_text(tp)
     rec = verdict_record(report, when, str(data.get("agent_id") or ""),
                          stamp(datetime.datetime.now(datetime.timezone.utc)))
+    if rec["verdict"] == "malformed":
+        rec["tp"] = tp  # remind checks it for work written after this stop (a resumed adversary)
     snap = run_dir.ensure(sid, HOOK_NAME)
     if not snap:
         sys.exit(0)
@@ -282,6 +288,30 @@ except Exception:
 def key(r):
     return "%s|%s|%s" % (r.get("agent") or "", r.get("rts") or r.get("ts") or "", r["line"])
 
+
+def worked_after(transcript, since):
+    """True when the adversary transcript holds an assistant event stamped after `since` -- it was
+    resumed after the stop that recorded its malformed report (external round on 0.65.4)."""
+    try:
+        with open(transcript, encoding="utf-8") as fh:
+            for raw in fh:
+                try:
+                    ev = json.loads(raw)
+                except Exception:
+                    continue
+                t = ev.get("timestamp")
+                if ev.get("type") == "assistant" and isinstance(t, str) and t > since:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+# A record of a malformed report whose adversary was resumed since is not reminded: it is at work
+# again, and its next stop records the new report.
+latest = {a: r for a, r in latest.items()
+          if not (r["verdict"] == "malformed" and isinstance(r.get("tp"), str)
+                  and worked_after(r["tp"], r.get("ts", "")))}
 
 items = ta.read_transcript_items(tp)
 pending = []
