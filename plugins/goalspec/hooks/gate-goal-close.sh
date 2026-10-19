@@ -135,8 +135,9 @@ PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo pyt
 # below). Windows caps a command line at 32767 characters, and with its comments this program is
 # over 35000 since 0.65.1: python never started there, RESULT came back empty and the gate said
 # nothing on every Stop. Without them it is about 9100. No line starting with "#" sits inside a
-# string in it, so removing those lines leaves the same program (the same ast, checked when this
-# was written); test/gate-branches.py measures what python actually receives.
+# string in it, so removing those lines leaves the same program. test/gate-branches.py measures
+# what python actually receives, and since 0.65.3 (p-d7aad2d70f) it also checks that its ast is
+# the ast of GATE_PY as written here: a "#" line put inside a string turns that check red.
 GATE_PY='
 import json, sys, os, re
 

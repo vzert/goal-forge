@@ -1147,9 +1147,12 @@ def argv_length(gate):
     d = tempfile.mkdtemp(prefix="argv-", dir=TMP)
     log = os.path.join(d, "len.txt")
     shim = os.path.join(d, "python3")
+    # Each argument is also kept in its own file, so the program python got can be read back
+    # (gate_program_same_ast below).
     with open(shim, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write('#!/bin/sh\nfor a in "$@"; do printf %%s "$a" | wc -c >> "%s"; done\nexec "%s" "$@"\n'
-                 % (log.replace("\\", "/"), sys.executable.replace("\\", "/")))
+        fh.write('#!/bin/sh\nfor a in "$@"; do printf %%s "$a" | wc -c >> "%s"; '
+                 'printf %%s "$a" > "$(mktemp "%s/arg.XXXXXX")"; done\nexec "%s" "$@"\n'
+                 % (log.replace("\\", "/"), d.replace("\\", "/"), sys.executable.replace("\\", "/")))
     os.chmod(shim, 0o755)
     env = dict(os.environ, PATH=d + os.pathsep + os.environ.get("PATH", ""))
     payload = {"last_assistant_message": "turn A, doing unrelated work.",
@@ -1160,7 +1163,43 @@ def argv_length(gate):
         n = max(int(x) for x in open(log).read().split())
     except Exception:
         n = -1
-    return n, bool(out)
+    args = []
+    for f in os.listdir(d):
+        if f.startswith("arg."):
+            with open(os.path.join(d, f), encoding="utf-8", newline="") as fh:
+                args.append(fh.read())
+    return n, bool(out), max(args, key=len) if args else ""
+
+
+# --- the program python runs is the program in the file (p-d7aad2d70f) ------------------------------
+# 0.65.2 removes every line that starts with "#" before handing GATE_PY to python. That leaves the
+# same program only while no such line sits inside a string. This compares the ast of GATE_PY as
+# written in the hook with the ast of what python actually received (the largest argument the shim
+# above kept), and checks itself on a copy of the gate with a "#" line planted inside a string.
+def gate_program(gate):
+    # bash reads the assignment itself, so the quoting is the hook's, not a re-implementation of it.
+    script = ('eval "$(sed -n "/^GATE_PY=\'/,/^\'\\$/p" "$1")"; printf "%s" "$GATE_PY"')
+    return subprocess.run([BASH, "-c", script, "x", gate], capture_output=True,
+                          text=True, encoding="utf-8").stdout
+
+
+def same_ast(gate):
+    import ast
+    written = gate_program(gate)
+    received = argv_length(gate)[2]
+    try:
+        return bool(written.strip()) and ast.dump(ast.parse(written)) == ast.dump(ast.parse(received))
+    except SyntaxError:
+        return False
+
+
+def gate_program_same_ast(gate):
+    planted = os.path.join(tempfile.mkdtemp(prefix="ast-", dir=TMP), "gate-planted.sh")
+    with open(gate, encoding="utf-8") as fh:
+        src = fh.read()
+    with open(planted, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(src.replace("GATE_PY='\n", "GATE_PY='\n_PLANTED = \"\"\"\n# inside a string\n\"\"\"\n", 1))
+    return same_ast(gate), same_ast(planted)
 
 
 def turn_group_suite(gate):
@@ -1222,12 +1261,21 @@ def main():
     # Right after the branch table: it guards the bug that silenced the gate on Windows (0.65.1),
     # so no later section may return before it.
     print("\n--- what python receives fits a Windows command line (0.65.2) ---")
-    n, spoke = argv_length(a.gate)
+    n, spoke, _ = argv_length(a.gate)
     ok = 0 < n <= ARGV_CEILING and spoke
     print("longest python argument: %d bytes (ceiling %d), gate spoke: %s%s"
           % (n, ARGV_CEILING, spoke, "" if ok else "   <-- FAILS"))
     if not ok:
         print("\nARGV-LENGTH FAILURE: the program handed to python is %d bytes (or was not measured)" % n)
+        return 1
+
+    print("\n--- the program python runs is the program in the file (p-d7aad2d70f) ---")
+    same, planted_same = gate_program_same_ast(a.gate)
+    ok = same and not planted_same
+    print("same ast without comment lines: %s; a \"#\" line planted in a string noticed: %s%s"
+          % (same, not planted_same, "" if ok else "   <-- FAILS"))
+    if not ok:
+        print("\nAST FAILURE: removing the comment lines changes the program, or this check cannot see it")
         return 1
 
     # Primary goal-spec precondition via checkpoint-file Write — no git repo needed, runs first.

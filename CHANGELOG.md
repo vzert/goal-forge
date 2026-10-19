@@ -6,6 +6,30 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.65.3] - 2026-10-18
+
+### Fixed
+
+- **The Stop notice about adversary writes names the path even when it is long.** The notice is
+  capped at 300 characters (0.63.0), and a path longer than the room left after its line was only
+  counted: a real session got "Rutas: 1" and nothing else, and the findings file is deleted once
+  read, so nobody could learn which file changed (session 1adc5585, jsonl line 500).
+  `report-adversary-writes.sh` now shows the first item of a list cut from the left ("…" and its
+  end, where a path keeps its file name) when it does not fit whole; it is only counted when not
+  even that fits. `adversary-report-branches.py` cases 21 and 22 (a 132-character absolute path,
+  alone and with the unmeasured-rounds list): both fail on the 0.65.2 hook ("path-only-counted")
+  and pass now; `--compare` against 0.65.2 changes only those two; `--selftest` has a mutation for
+  each.
+
+### Tests
+
+- **`gate-branches.py` checks that the program python runs is the program in the gate.** 0.65.2
+  removes every line that starts with `#` before passing `GATE_PY` to python, which is safe only
+  while no such line sits inside a string, and nothing watched that. The suite now keeps what
+  python receives and compares its ast with the ast of `GATE_PY` as the hook defines it (bash reads
+  the assignment). Each run also plants a `#` line inside a string in a copy of the gate and
+  requires the check to notice; run against a gate with such a line, the suite exits 1.
+
 ## [0.65.2] - 2026-10-18
 
 ### Fixed

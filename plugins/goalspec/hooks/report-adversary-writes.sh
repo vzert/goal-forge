@@ -49,7 +49,8 @@ PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo pyt
 # 0.63.0 (p-c6f0719a23): print a Stop notice whose WHOLE shown text (the line and its lists) is at
 # most 300 characters: on a Stop hook additionalContext is shown to the human too (learning 67).
 # HEAD is the line; each list is "TITLE<TAB>items, one per line" in LIST1/LIST2. Items are added
-# while they fit; the rest are counted ("y N más"). A list with no room left keeps its title and count.
+# while they fit; the rest are counted ("y N más"). A first item that does not fit is cut from the
+# left (0.65.3); a list with no room even for that keeps its title and count.
 emit_notice() {
   "$PY" -c '
 import json, os
@@ -77,6 +78,17 @@ for n, (title, items) in enumerate(lists):
             break
         out += line
         shown += 1
+    # 0.65.3 (p-ab84769f53): a list never shows only its count. When even the first item does not
+    # fit, it is cut from the left ("…" + its end, where a path keeps its file name), because the
+    # findings file is deleted once read and "Rutas: 1" left no way to learn which path it was.
+    if not shown and items:
+        rest = len(items) - 1
+        reserve = len("\n  - y %d más" % rest) if rest else 0
+        room = LIMIT - len(out) - len("\n  - ") - reserve - later
+        if room >= 2:
+            it = items[0] if len(items[0]) <= room else "…" + items[0][-(room - 1):]
+            out += "\n  - " + it
+            shown = 1
     if shown < len(items):
         out += "\n  - y %d más" % (len(items) - shown) if shown else " %d" % len(items)
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": out}}))

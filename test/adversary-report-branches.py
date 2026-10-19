@@ -83,6 +83,14 @@ other 831306ab tracked.txt
 end
 """
 
+# 0.65.3 (p-ab84769f53): one path longer than the room the line leaves. Measured in session
+# 1adc5585 (jsonl line 500): the notice said "Rutas: 1" and named nothing, and the findings file was
+# already deleted. An absolute path (a path outside the cwd's repository is reported absolute).
+LONG_PATH_NAME = ("/private/tmp/claude-501/-Users-will-Projects-goal-spec-skill/"
+                  "1adc5585-3155-4f8c-bd86-3119d2b28424/scratchpad/ronda-externa/report.md")
+LONG_PATH = ("ts=2026-10-18T14:20:00Z agent=subagent_xyz repo=/tmp/repo\npath %s\nend\n"
+             % LONG_PATH_NAME)
+
 NO_PATHS = """ts=2026-09-12T16:58:22Z agent=subagent_xyz repo=/tmp/repo
 end
 """
@@ -159,6 +167,11 @@ CASES = [
     # A path nobody's record explains AND one another session's record does: the question stays for
     # the first, and the second is listed apart with its session.
     ("20-other-session-and-unexplained", OTHER_AND_PATH, SESSION, {}, "mixed-ok"),
+    # 0.65.3 (p-ab84769f53): a path too long for the room left is cut from the left, never only
+    # counted: the notice names its end (the file name) within the 300 characters.
+    ("21-long-path-named", LONG_PATH, SESSION, {}, "first-path-named"),
+    # The same with the unmeasured-rounds list under it: that list keeps its room too.
+    ("22-long-path-and-failure-note", LONG_PATH, SESSION, {"note": True}, "first-path-named+both"),
 ]
 
 
@@ -189,7 +202,8 @@ def classify(res, name, findings_path):
 
     if name.startswith("17"):
         listed = [ln for ln in agent_msg.splitlines() if ln.startswith("  - ") and "más" not in ln]
-        # The rest are counted: "  - y N más" under the listed ones, or "Rutas: N" when none fits.
+        # The rest are counted: "  - y N más" under the listed ones, or "Rutas: N" when not even a
+        # first path cut from the left fits (0.65.3).
         counted = [int(ln.split()[2]) for ln in agent_msg.splitlines() if ln.startswith("  - y ") and "más" in ln]
         counted += [int(ln.split()[1]) for ln in agent_msg.splitlines()
                     if ln.startswith("Rutas: ") and ln.split()[1].isdigit()]
@@ -227,6 +241,23 @@ def classify(res, name, findings_path):
         if "tracked.txt (831306ab)" not in agent_msg:
             return "session-not-named"
         return "mixed-ok"
+
+    if name.startswith("21") or name.startswith("22"):
+        if len(agent_msg) > 300:
+            return "too-long:%d" % len(agent_msg)
+        named = [ln[4:] for ln in agent_msg.splitlines() if ln.startswith("  - ")]
+        if not named:
+            return "path-only-counted"
+        first = named[0]
+        whole = first == LONG_PATH_NAME
+        cut = first.startswith("…") and len(first) > 1 and LONG_PATH_NAME.endswith(first[1:])
+        if not (whole or cut) or not first.endswith("/report.md"):
+            return "path-garbled:%s" % first
+        if name.startswith("22"):
+            if "Rondas sin medir" not in agent_msg:
+                return "a-list-dropped"
+            return "first-path-named+both"
+        return "first-path-named"
 
     if name.startswith("13"):
         if (not agent_msg.startswith("Para quien ejecuta") or "no midió" not in agent_msg
@@ -369,6 +400,11 @@ MUTATIONS = [
      'HEAD="Para quien ejecuta; un revisor que lo lea verifica, no repara.\ngoalspec: la vigilancia', 'HEAD="goalspec: la vigilancia', "13"),
     ("the second list not reserved",
      "    later = sum(floor(t, i) for t, i in lists[n + 1:])", "    later = 0", "18"),
+    ("a first path that does not fit only counted again",
+     "        if room >= 2:", "        if False:", "21"),
+    ("the cut first path given the room of the later lists",
+     "        room = LIMIT - len(out) - len(\"\\n  - \") - reserve - later",
+     "        room = LIMIT - len(out) - len(\"\\n  - \") - reserve", "22"),
     ("the 300-character budget lifted for the lists",
      "LIMIT = 300", "LIMIT = 3000", "17"),
     ("another session's lines ignored",
