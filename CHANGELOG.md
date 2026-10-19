@@ -6,6 +6,49 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.65.7] - 2026-10-19
+
+From an audit of the external adversary (`codex exec -m gpt-5.6-luna`, effort `high`) over some 490
+rounds in four projects of one user, 2026-10-05..19, counted as the Bash calls that ran the hook
+(another recount gave 491). The median round took 3.4 to 6.2 minutes per project; the cost the user
+felt as slowness was mostly the number of rounds, and the three changes below go at its causes.
+
+### Added
+
+- **A wall-clock cap on the external partner: `GOAL_ADVERSARY_TIMEOUT`** (seconds, default 1800, `0`
+  turns it off). There was none: 12 rounds ran 30 minutes or more, up to 53, all in one project.
+  Past the cap `hooks/lib/run_capped.py` kills the partner and every process below it at that moment
+  — the commands codex runs in sessions of their own included, which a process-group kill missed (a
+  `sleep` that codex started survived it, measured with codex-cli 0.155.1). A break the partner had
+  already printed stands; with none the round is an UNVERIFIED hold. With no Python interpreter, or a
+  value that is not a whole number of seconds, it runs uncapped and says so.
+  `test/external-adversary-branches.py`: cases 61-64 and 66; 66 fails against the first cut of the cap
+  (process group only) and passes now.
+
+### Changed
+
+- **A codex command with no sandbox mode of its own now gets `-s workspace-write`.** Before, codex's
+  trust level for the cwd decided it, and a project codex did not trust ran read-only: in the two
+  untrusted projects every hook output read back that showed the partner's sandbox said `read-only`
+  (87 and 85 outputs), and the scratch writes its probes and suites need failed there. The only sign
+  was a stderr warning that the operator never saw. A mode the operator chose (`-s`, `--sandbox`, a
+  `sandbox_` override, `--full-auto`, the bypass flag, a profile with `-p`, `-p=NAME`, `-pNAME` or
+  `--profile`) passes through untouched; network stays off. A `sandbox_mode` set only in
+  `~/.codex/config.toml` is overridden: put the mode in `external_cmd` to keep it. Cases 22 (changed),
+  23, 65, 67-70.
+- **A hole found only by an input the adversary built counts as BLOCKING only when that input can
+  really occur**: it is found in the real data, logs or transcripts, an ordinary producer is named, a
+  success criterion or the declared threat model names its class (or the threat model covers
+  deliberate evasion), or it breaks on an input the work documents. Otherwise it is MINOR, and so is a
+  further crafted variant of a root that already has a BLOCKING finding. The probe step now runs the
+  real inputs first. Same text in both reviewers (`agents/goal-adversary.md` and the hook's emitted
+  prompt), summarized in `skills/goalspec/SKILL.md` step 6, `skills/adversary/SKILL.md` and the
+  README. Why: in a sample of 55 break rounds picked by one reader because their blocking findings
+  looked mostly like edge cases (a selected sample, not a rate), 52 rested on an input only the
+  adversary had built, and in 28 the same root came back next round as a new variant. This is prose:
+  `test/claim-surface-carriers.py` (12 new checks, 254) proves the carriers say it and agree, not that
+  a reviewer obeys it.
+
 ## [0.65.6] - 2026-10-19
 
 ### Fixed
