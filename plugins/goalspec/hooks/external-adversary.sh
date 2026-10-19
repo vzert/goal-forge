@@ -77,16 +77,26 @@ if ! command -v "$BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-# Advisory only — never add a sandbox flag here. -s read-only was tried against a real codex partner
-# and broke it: legitimate scratch writes failed and came back disguised as `ungrounded` findings (see
-# references/external-adversary-setup.md, "Your partner keeps its write sandbox"). external_cmd belongs
-# to the operator; this hook cannot impose a mode portably. What actually catches an overreaching
-# partner is the before/after content fingerprint below, not a mode picked here.
+# DEFAULT SANDBOX FOR CODEX (0.65.6). Until 0.65.5 this hook only warned on stderr when a codex
+# command set no sandbox mode, and codex's own trust level for the cwd decided it: a project codex
+# does not trust ran read-only. Measured 2026-10-05..19 in one user's four projects: in the two codex
+# did not trust, every hook output read back that showed the partner's sandbox said read-only (87
+# and 85 outputs), and the writes its probes and suites need (mkdtemp, a suite's scratch) failed
+# there; in the two it trusted they said workspace-write (112 and 111), and none of the outputs
+# read back in any of the four reported a repository change. Nobody read the
+# warning: the operator could not tell which mode a round had. So a codex command with no mode of
+# its own now gets `-s workspace-write` (writes to the review copy, /tmp and TMPDIR; no network).
+# An explicit mode always wins: -s/--sandbox, a sandbox_ override, --full-auto, or the bypass flag.
+# Network stays off on purpose: with it, a partner that can read ~/.ssh could push. What catches an
+# overreaching partner is still the content fingerprint below, not the mode. Other CLIs: untouched,
+# external_cmd stays the operator's (references/external-adversary-setup.md, "Your partner keeps its
+# write sandbox").
 case "$BIN" in
   codex)
     case "$EXT_CMD" in
-      *-s\ *|*--sandbox*|*sandbox_*) ;;
-      *) echo "external-adversary: '$EXT_CMD' sets no sandbox mode — codex's own ~/.codex/config.toml trust level for this cwd decides, and a trusted repo gets workspace-write here. Repo writes are DETECTED after the run (content fingerprint), not prevented. See references/external-adversary-setup.md." >&2 ;;
+      *-s\ *|*--sandbox*|*sandbox_*|*--full-auto*|*--dangerously-bypass*|*--yolo*) ;;
+      *) EXT_CMD="$EXT_CMD -s workspace-write"
+         echo "external-adversary: the codex command set no sandbox mode, so this hook added '-s workspace-write' (the review copy, /tmp and TMPDIR writable; no network). Put -s or --sandbox in external_cmd to choose another. See references/external-adversary-setup.md." >&2 ;;
     esac
     ;;
 esac
@@ -271,6 +281,8 @@ boundary on where you may look.
 PROBE, DO NOT ONLY READ. For every rule, check, gate, parser or validator the outcome adds or
 changes, build at least three inputs aimed at breaking it within the threat model the goal-spec
 declares, and RUN them, read-only, in a temporary directory. Report each input and what happened.
+First look in the real data, logs and transcripts for the inputs the rule will actually see, and run
+those; an input only you built counts by the rule on built inputs under SEVERITY below.
 Measured 2026-10-07: where a reading verifier and a probing one reviewed the same tree and
 disagreed, the reading one held 9 times out of 10, mostly over holes the probing one found by
 running crafted inputs.
@@ -287,7 +299,21 @@ MINOR (a bullet that starts with MINOR, not counted): wording that is ambiguous 
 against ground truth; an edge case OUTSIDE the declared threat model, such as a crafted evasion of
 a rail built to catch an accidental omission; a pre-existing defect outside the delta that no
 success criterion rests on (one that makes a criterion fail is BLOCKING); style or naming.
-If the goal-spec declares no threat model, nothing is outside it and a hole counts. THE THREAT
+A HOLE FOUND ONLY BY AN INPUT YOU BUILT IS BLOCKING ONLY WHEN THAT INPUT CAN REALLY OCCUR (0.65.6).
+Measured 2026-10-05..19 by one reader over 55 break rounds whose blocking findings were mostly
+edge cases, in four projects: 52 rested on an input only the adversary had built, and in 28 the same
+root came back in the next round as a new variant. So a hole whose triggering input you constructed
+counts as BLOCKING only when at least one of these holds: (a) you find that input, or one of its
+class, in the real data, logs, transcripts or repository; (b) you name the ordinary producer that
+would send it in normal use (a user, an agent, the code itself), not "someone could"; (c) a success
+criterion or the declared threat model names that input class, or the threat model covers deliberate
+evasion; (d) it breaks on an input the work documents as supported. Otherwise it is MINOR: quote the
+input and say which of (a) to (d) you checked. Once a root claim has one BLOCKING finding, a further
+crafted variant of the same root is MINOR unless (a) or (b) holds for that variant: the executor
+fixes the root, not each spelling. This narrows what you COUNT, never what you probe or read; a false
+claim, a failed criterion and a real instance count exactly as before.
+If the goal-spec declares no threat model, nothing is outside it and a hole counts (the rule on built
+inputs above still applies). THE THREAT
 MODEL IS FIXED WHEN THE SPEC IS WRITTEN AND ONLY GROWS: test the declared line against what the user
 actually asked, and a line narrower than that ask, or one written or narrowed after a finding, is
 itself a BLOCKING finding. When you cannot
@@ -685,8 +711,29 @@ VERDICT_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break|hold)[[:space:]]+ungrounded=[
 # script on exactly the path that exists to handle a bad partner — so both the run and the match stay
 # inside `set +e` and the match is guarded with `|| true`.
 set +e
-OUT=$(printf '%s' "$PROMPT" | $EXT_CMD 2>&1)
+# WALL-CLOCK CAP (0.65.6). There was none: over 2026-10-05..19, 12 of 490 rounds in four projects ran
+# 30 minutes or more, up to 53. GOAL_ADVERSARY_TIMEOUT is seconds, default 1800; 0 turns the cap off.
+# Past it lib/run_capped.py kills the partner's process tree and exits 124, which takes the nonzero-
+# exit paths below unchanged: a filled break already printed stands, anything else is UNVERIFIED.
+# With no runnable interpreter, or a value that is not a whole number, it runs uncapped, as before.
+ADV_CAP="${GOAL_ADVERSARY_TIMEOUT:-1800}"
+ADV_CAPPED=0
+RUN_CAPPED_PY="$(dirname "$0")/lib/run_capped.py"
+if ! printf '%s' "$ADV_CAP" | grep -qE '^[0-9]+$'; then
+  echo "external-adversary: GOAL_ADVERSARY_TIMEOUT='$ADV_CAP' is not a whole number of seconds — the partner runs with no time cap." >&2
+  ADV_CAP=0
+fi
+if [ "$ADV_CAP" -gt 0 ] && [ -f "$RUN_CAPPED_PY" ] && command -v "$PY" >/dev/null 2>&1; then
+  ADV_CAPPED=1
+  OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" $EXT_CMD 2>&1)
+else
+  [ "$ADV_CAP" -gt 0 ] && echo "external-adversary: no python interpreter to enforce GOAL_ADVERSARY_TIMEOUT — the partner runs with no time cap." >&2
+  OUT=$(printf '%s' "$PROMPT" | $EXT_CMD 2>&1)
+fi
 RC=$?
+if [ "$ADV_CAPPED" = 1 ] && [ "$RC" -eq 124 ]; then
+  echo "external-adversary: stopped the partner after ${ADV_CAP}s (GOAL_ADVERSARY_TIMEOUT). A break it had already printed stands; with none, this round is UNVERIFIED. Re-run it with a narrower payload, or route it to the subagent." >&2
+fi
 VERDICT=""
 VLINE=""
 TEMPLATE_LAST=0

@@ -194,15 +194,18 @@ CASES = [
     # The other half of the same rule, unchanged: a HOLD that exits nonzero still degrades. Without
     # this control, "preserve the break" could be widened into "preserve anything".
     ("21-hold-with-nonzero-exit", "STUB_HOLD_RC", {}, None, "unfilled"),
-    # --- codex sandbox advisory (0.44.6). -s read-only was tried against a real codex partner and
-    # broke it (references/external-adversary-setup.md); this hook does not impose a sandbox mode.
-    # It only warns when the resolved binary is literally `codex` and no sandbox flag is present —
-    # a bare fallback inherits whatever trust level codex's OWN config gives this cwd.
-    ("22-codex-fallback-no-flag", None, {"GOAL_ADVERSARY_CMD": "codex"}, None, "pass+codexwarned"),
-    # Control: any sandbox flag present (however configured) silences the advisory — it is not this
-    # hook's job to judge whether the chosen mode is the right one, only to flag total silence on it.
+    # --- codex sandbox default (0.65.6; an advisory only since 0.44.6). A codex command with no mode
+    # of its own gets `-s workspace-write` and a notice saying so; an untrusted cwd used to run it
+    # read-only, which failed the partner's scratch writes in every such round measured. Against
+    # 0.65.5, 22 is `pass+codexwarned+noflag` (warned, nothing added).
+    ("22-codex-fallback-no-flag", None, {"GOAL_ADVERSARY_CMD": "codex exec"}, None,
+     "pass+codexdefaulted+ww"),
+    # Controls: a mode the operator chose is passed through untouched and silences the notice —
+    # it is not this hook's job to judge whether that mode is right. 65: --full-auto is a mode.
     ("23-codex-with-sandbox-flag", None, {"GOAL_ADVERSARY_CMD": "codex -s read-only"}, None,
-     "pass+codexsilent"),
+     "pass+codexsilent+kept"),
+    ("65-codex-full-auto-kept", None, {"GOAL_ADVERSARY_CMD": "codex exec --full-auto"}, None,
+     "pass+codexsilent+kept"),
     # --- reviewed-state isolation (worktree-isolation change). THE case: a "sibling session"
     # commits to the ORIGINAL repo (found via git-common-dir, exactly like a concurrent
     # /checkpoint-3t would) while the "partner" is running against the isolated copy. Must come
@@ -401,6 +404,17 @@ CASES = [
     # 60: the hook killed by SIGTERM (a timeout, Ctrl-C) to its process group while the partner
     # runs. bash runs the EXIT trap on that signal, so the directory must still go.
     ("60-scratch-removed-on-sigterm", "STUB_SCRATCH_SLEEP", {}, None, "killed+scratch-removed"),
+    # 61-64 (0.65.6): GOAL_ADVERSARY_TIMEOUT. 61: a partner still silent at the cap is stopped, its
+    # background child with it, and the round is UNVERIFIED. 62: a break it printed before the cap
+    # stands. 63: 0 turns the cap off. 64: a value that is not a whole number warns and runs uncapped.
+    # Against 0.65.5 61/62 run the full 20 s (`uncapped`) and 64 prints no warning.
+    ("61-cap-stops-silent-partner", "STUB_SLOW_SILENT", {"GOAL_ADVERSARY_TIMEOUT": "2"}, None,
+     "unfilled+capped+capnotice" + ("" if os.name == "nt" else "+child-gone")),
+    ("62-cap-keeps-printed-break", "STUB_SLOW_BREAK", {"GOAL_ADVERSARY_TIMEOUT": "2"}, None,
+     "pass+capped+capnotice+break-kept"),
+    ("63-cap-off", "STUB_SLOW_OK", {"GOAL_ADVERSARY_TIMEOUT": "0"}, None, "pass+uncapped"),
+    ("64-cap-bad-value", NOISE + MODEL + "\n" + BULLETS + HOLD + "\n",
+     {"GOAL_ADVERSARY_TIMEOUT": "30m"}, None, "pass+capwarn"),
 ]
 
 
@@ -518,10 +532,23 @@ STUB_SCRATCH_MUTATE = (_SCRATCH_HEAD + 'echo "fixed a typo" >> tracked.txt\necho
 STUB_SCRATCH_SLEEP = _SCRATCH_HEAD.replace(
     'echo "STUB-SCRATCH=', 'echo "STUB-SCRATCH=$TMPDIR|$TMP|$TEMP" > "$SCRATCH_MARKER"\necho "STUB-SCRATCH=') \
     + "sleep 30\n"
+# 61-64 (0.65.6): the wall-clock cap. Each slow stub starts a background `sleep` and records its pid,
+# so 61 can show the cap killed the partner's whole tree, not only its first process.
+_SLOW_HEAD = """#!/bin/bash
+cat >/dev/null
+sleep 20 &
+echo $! > "$SCRATCH_MARKER.child"
+"""
+STUB_SLOW_SILENT = _SLOW_HEAD + 'echo "- still probing, no verdict yet"\nwait\n'
+STUB_SLOW_BREAK = (_SLOW_HEAD + 'echo "%s"\necho "- the coverage-floor row claims done for an entity'
+                   ' that is not done"\necho "%s"\nwait\n' % (MODEL, BREAK))
+STUB_SLOW_OK = ('#!/bin/bash\ncat >/dev/null\nsleep 3\necho "%s"\necho "- probe: one real evidence'
+                ' line"\necho "%s"\n' % (MODEL, HOLD))
 FAKE_CYGPATH = '#!/bin/bash\n[ "$1" = "-w" ] && printf "WINPATH:%s\\n" "$2"\n'
 
 CODEX_STUB = """#!/bin/bash
 cat >/dev/null
+echo "STUB-ARGS=$*"
 echo "%s"
 echo "- probe: one real evidence line"
 echo "%s"
@@ -642,6 +669,30 @@ def scratch_suffix(text, case_name, caller_tmpdir):
     if os.path.exists(td):
         return "+scratch-LEFT"
     return "+scratch-removed" + ("+native" if native else "")
+
+
+def cap_suffix(res, case_name, elapsed, scratch_marker):
+    """Cases 61-64: did the cap fire, did it say so, and did the partner's tree die with it."""
+    err = res.stderr
+    if case_name[:2] in ("61", "62"):
+        b = "+capped" if elapsed < 12 else "+uncapped"
+        b += "+capnotice" if "stopped the partner after 2s" in err else "+nocapnotice"
+        if case_name.startswith("62"):
+            fills = re.findall(r"^\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+", res.stdout, re.M)
+            b += "+break-kept" if fills and fills[-1] == "break" else "+break-lost"
+        if case_name.startswith("61") and os.name != "nt":
+            try:
+                pid = int(open(scratch_marker + ".child").read().strip())
+                time.sleep(0.5)
+                os.kill(pid, 0)
+                b += "+child-alive"
+                os.kill(pid, signal.SIGKILL)
+            except (OSError, ValueError):
+                b += "+child-gone"
+        return b
+    if case_name.startswith("63"):
+        return "+uncapped" if elapsed >= 3 else "+cut-early"
+    return "+capwarn" if "is not a whole number of seconds" in err else "+nocapwarn"
 
 
 def classify(res, case_name, repo=REPO):
@@ -836,8 +887,20 @@ def _classify(res, case_name, repo=REPO):
     if case_name.startswith("51") and "MODIFIED the repository" in err:
         # Another session's file is not this partner's write: naming it is the false warning.
         branch += "+other-session-file-reported"
-    if case_name.startswith("22") or case_name.startswith("23"):
-        branch += "+codexwarned" if "sets no sandbox mode" in err else "+codexsilent"
+    if case_name[:2] in ("22", "23", "65"):
+        if "added '-s workspace-write'" in err:
+            branch += "+codexdefaulted"
+        elif "sets no sandbox mode" in err:
+            branch += "+codexwarned"
+        else:
+            branch += "+codexsilent"
+        m = re.search(r"STUB-ARGS=(.*)", out)
+        args = m.group(1).split() if m else []
+        if case_name.startswith("22"):
+            branch += "+ww" if args[-2:] == ["-s", "workspace-write"] else "+noflag"
+        else:
+            want = {"23": ["-s", "read-only"], "65": ["exec", "--full-auto"]}[case_name[:2]]
+            branch += "+kept" if args == want else "+changed:" + " ".join(args)
     if case_name[:2] in ("36", "37", "38"):
         # Fail-open, not just a notice: the partner must have run in the LIVE repo (the dir that
         # holds the common .git), never in a half-built review copy.
@@ -904,7 +967,9 @@ def suite(hook, workdir):
                  "STUB_SCRATCH": STUB_SCRATCH, "STUB_SCRATCH_BREAK_RC": STUB_SCRATCH_BREAK_RC,
                  "STUB_SCRATCH_NOVERDICT": STUB_SCRATCH_NOVERDICT,
                  "STUB_SCRATCH_MUTATE": STUB_SCRATCH_MUTATE,
-                 "STUB_SCRATCH_SLEEP": STUB_SCRATCH_SLEEP}
+                 "STUB_SCRATCH_SLEEP": STUB_SCRATCH_SLEEP,
+                 "STUB_SLOW_SILENT": STUB_SLOW_SILENT, "STUB_SLOW_BREAK": STUB_SLOW_BREAK,
+                 "STUB_SLOW_OK": STUB_SLOW_OK}
         if name.startswith("59"):
             winbin = os.path.join(workdir, "winbin")
             os.makedirs(winbin, exist_ok=True)
@@ -1008,6 +1073,7 @@ def suite(hook, workdir):
                 + scratch_suffix(marker, name, os.environ.get("TMPDIR"))
             rows.append((name, branch, expect, res))
             continue
+        started = time.time()
         try:
             res = subprocess.run(argv, input=PAYLOAD, capture_output=True,
                                  text=True, env=env, cwd=run_cwd, timeout=30)
@@ -1016,6 +1082,8 @@ def suite(hook, workdir):
             while readonly:
                 os.chmod(readonly.pop(), 0o755)
         branch = classify(res, name, case_repo)
+        if name[:2] in ("61", "62", "63", "64"):
+            branch += cap_suffix(res, name, time.time() - started, scratch_marker)
         if hook_marker and not os.path.exists(hook_marker):
             branch += "+hook-did-not-run"
         rows.append((name, branch, expect, res))
