@@ -21,6 +21,10 @@
 INPUT=$(cat)
 
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+# Claude Code writes the payload as UTF-8, but on Windows python reads stdin, prints and open()s
+# with the system code page (cp1252): an accent in a path or prompt arrived garbled, or made
+# json.load fail and the hook go silent (p-ee6150b00b). Force UTF-8 for every python started here.
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 
 RESULT=$(printf '%s' "$INPUT" | LIBDIR="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib" "$PY" -c '
 import json, os, sys

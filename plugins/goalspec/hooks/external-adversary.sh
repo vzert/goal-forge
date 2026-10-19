@@ -58,6 +58,10 @@ GLOBAL_CONFIG="${HOME:-}/.claude/goal.config.json"
 # Portable interpreter: python3 (macOS/Linux) then python (Windows / Git Bash). The trailing `|| echo`
 # keeps this safe under `set -e` when neither is found (config read then just yields empty -> default).
 PY=$(command -v python3 2>/dev/null || command -v python 2>/dev/null || echo python3)
+# Claude Code writes the payload as UTF-8, but on Windows python reads stdin, prints and open()s
+# with the system code page (cp1252): an accent in a path or prompt arrived garbled, or made
+# json.load fail and the hook go silent (p-ee6150b00b). Force UTF-8 for every python started here.
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 _read_ext_cmd() { "$PY" -c "import json,sys; print((json.load(open(sys.argv[1])).get('adversary',{}) or {}).get('external_cmd','') or '')" "$1" 2>/dev/null || true; }
 EXT_CMD="${GOAL_ADVERSARY_CMD:-}"
 if [ -z "$EXT_CMD" ] && [ -n "${1:-}" ]; then EXT_CMD="$1"; fi
