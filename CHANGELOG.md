@@ -26,8 +26,9 @@ version bump are never delivered to already-installed users.
   `--selftest` has ten new mutations, each caught. Replayed over the 1034 goal-adversary
   transcripts on the maintainer's disk since 2026-09-14 (2026-10-19 15:58 UTC): 10 reminded (6 no
   verdict line, 2 empty, 1 template, 1 without counts) and none of the 1024 with a well-formed
-  verdict; a second method, a well-formed verdict anywhere in the adversary's own output, finds
-  the same 10 without one and the same 1024 with one. The external backend already reported this case
+  verdict. A recount that shares no code with the hook (no regex: every line of the adversary's own
+  output that starts with the marker is split into words and checked field by field) finds the
+  same 10 without a well-formed verdict and the same 1024 with one. The external backend already reported this case
   (`external-adversary.sh`) and is unchanged.
 
 ## [0.65.3] - 2026-10-18
