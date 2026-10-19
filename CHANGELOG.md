@@ -20,7 +20,9 @@ version bump are never delivered to already-installed users.
   spawn's result). A re-quote with no new source behind it still counts once; a verdict quoted
   from a hook notice before its hand-back arrived keeps that hand-back as its own (session
   1adc5585); a transcript with no source at all keeps the old rule. The current turn counts too
-  when it quotes a new identical round the file has not caught up with. `test/gate-branches.py`:
+  when, after the hand-back or output of a new identical round, it quotes that round before the
+  file has caught up; inside one turn with no boundary since the last quote it counts only when its
+  text differs from that quote. `test/gate-branches.py`:
   8 new cases (46-53); against the 0.65.5 gate only 46, 48, 50 and 52 change; `--compare` parity OK
   in both modes; nine mutations of the new code each turn a case red. Replayed over the 923 Stops
   that follow a verdict-carrying turn in 220 sessions on the maintainer's disk (2026-10-19): the
