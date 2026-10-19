@@ -14,19 +14,24 @@ version bump are never delivered to already-installed users.
   Claude Code writes the hook payload as UTF-8, but python on Windows decodes stdin, encodes stdout
   and opens files with the system code page (cp1252) unless told otherwise. Until now a transcript
   under a home folder like `C:\Users\Peña` was not found because the path arrived garbled, and the
-  hook did nothing; a character whose UTF-8 holds a byte cp1252 does not define (`Í` is C3 8D) made
-  `json.load` fail, and the hook did nothing either. `enable-autoupdate.sh` was worse: it read
-  `known_marketplaces.json` as cp1252 and wrote it back, so each accent in it (the user's home sits
-  in `installLocation`) became two wrong characters. Every hook now exports
+  hook did nothing. `enable-autoupdate.sh` was worse: it read `known_marketplaces.json` as cp1252
+  and wrote it back, so each accent in it (the user's home sits in `installLocation`) became two
+  wrong characters, and a character whose UTF-8 holds a byte cp1252 does not define (`Í` is C3 8D)
+  made the read fail, so the flag was never set. Every hook now exports
   `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` right after it picks its interpreter, which covers stdin,
   stdout and `open()` for every python it starts; on macOS and Linux nothing changes, UTF-8 was
   already the default. A `PYTHONIOENCODING` the user set is overridden inside the hooks, because the
   payload is UTF-8 whatever it says. New suite `utf8-stdin-branches.py` (7 cases, `--selftest`
   drops the line from each hook it drives): it sends the payload as UTF-8 bytes with the accents
   unescaped, as Claude Code does — the other suites send text that Python on Windows encodes as
-  cp1252, the same code page the hook decodes with, which hid the bug. Against 0.65.4, 5 of the 7
-  cases fail on macOS, where the suite gives the std streams cp1252 to stand in for Windows. The
-  Windows CI job now also prints python's locale encoding.
+  cp1252, the same code page the hook decodes with, which hid the bug. Against the 0.65.4 hooks,
+  in CI run 39303554146 (Windows job: locale encoding cp1252, no `PYTHONUTF8`), 4 of the 7 cases
+  fail on Windows (accented transcript path in the spec brake and in the session name, the ñ and
+  the `Í` in `known_marketplaces.json`); 5 fail on macOS and 3 on Ubuntu, where the suite gives the
+  std streams cp1252 to stand in for Windows (Ubuntu has no Latin-1 locale, so the two autoupdate
+  cases skip there). An `Í` in the payload itself did not break `json.load` on Windows (case 03
+  passed there against 0.65.4); it does under the POSIX stand-in. The Windows CI job now also
+  prints python's locale encoding.
 
 ## [0.65.4] - 2026-10-19
 

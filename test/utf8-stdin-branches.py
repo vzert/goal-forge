@@ -7,9 +7,10 @@
 Claude Code writes the hook payload as UTF-8 bytes, with accents written as they are (not as \\u
 escapes). On Windows python decodes stdin, encodes stdout and opens files with the system code page
 (cp1252), so up to 0.65.4 a path with an accent ("C:\\Users\\Peña") arrived garbled and the hook
-could not find the transcript, a byte cp1252 does not define (the second byte of "Í" is 0x8D) made
-json.load fail and the hook go silent, and enable-autoupdate.sh rewrote known_marketplaces.json
-with every accent turned into two wrong characters.
+could not find the transcript, and enable-autoupdate.sh rewrote known_marketplaces.json with every
+accent turned into two wrong characters, or failed to read it on a byte cp1252 does not define (the
+second byte of "Í" is 0x8D). Against 0.65.4 in CI run 39303554146: 4 of 7 fail on Windows, 5 on
+macOS, 3 on Ubuntu.
 
 So this suite sends the payload as UTF-8 bytes with ensure_ascii=False — the other suites send
 text=True, which on Windows encodes with cp1252, the same code page the hook decodes with, and the
@@ -151,7 +152,9 @@ CASES = [
     # The transcript sits under "José Peña": a garbled path and the hook cannot read it.
     ("02-brake-accent-in-path", lambda p: brake(p, NONASCII, "02"), "deny-quotes",
      "precheck-spec-before-work.sh"),
-    # "Í" is C3 8D in UTF-8 and cp1252 has no 0x8D: json.load fails and the brake lets it through.
+    # "Í" is C3 8D in UTF-8 and python's cp1252 has no 0x8D: under the POSIX stand-in json.load
+    # fails and the brake lets it through. On the Windows runner's stdin it did not fail (passed
+    # against 0.65.4 in run 39303554146), so this one is a POSIX case.
     ("03-brake-undefined-byte-in-command", lambda p: brake(p, ASCII_DIR, "03", "echo 'Índice'"),
      "deny-quotes", "precheck-spec-before-work.sh"),
     ("04-name-session-ascii-path-control", lambda p: name_session(p, ASCII_DIR, "04"),

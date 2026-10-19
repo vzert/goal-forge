@@ -986,10 +986,10 @@ skill"), which is why this is a hook. What no suite can show: that an agent writ
 
 Claude Code writes the hook payload as UTF-8 bytes, accents unescaped. On Windows python decodes
 stdin, encodes stdout and opens files with the system code page (cp1252) unless told otherwise, so
-up to 0.65.4 a transcript under `C:\Users\Peña` was not found (the path arrived garbled), a byte
-cp1252 does not define (the second byte of `Í` is 0x8D) made `json.load` fail and the hook go
-silent, and `enable-autoupdate.sh` rewrote `known_marketplaces.json` with each accent turned into
-two wrong characters. Since 0.65.5 every hook exports `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` right
+up to 0.65.4 a transcript under `C:\Users\Peña` was not found (the path arrived garbled) and the
+hook went silent, and `enable-autoupdate.sh` rewrote `known_marketplaces.json` with each accent
+turned into two wrong characters, or, with a byte cp1252 does not define (the second byte of `Í`
+is 0x8D), failed to read it and never set the flag. Since 0.65.5 every hook exports `PYTHONUTF8=1 PYTHONIOENCODING=utf-8` right
 after it picks its interpreter. 7 cases: the spec brake with an accented transcript path, with `Í`
 in the command, and an ASCII control; the session name with an accented path and a control; and
 autoupdate keeping an `ñ` and an `Í` intact.
@@ -1005,8 +1005,10 @@ This suite sends `json.dumps(..., ensure_ascii=False).encode("utf-8")`. On Windo
 `PYTHONUTF8` and `PYTHONIOENCODING` from the hook's environment, the real default. On macOS and
 Linux UTF-8 is already the default, so it sets `PYTHONIOENCODING=cp1252 PYTHONUTF8=0` to give the
 std streams the Windows code page, and for the two autoupdate cases also a Latin-1 locale for
-`open()`; where the machine has none those two print `skipped (posix)`. Against 0.65.4, 5 of 7
-fail on macOS. `--selftest` drops the UTF-8 line from each of the three hooks it drives and
+`open()`; where the machine has none (Ubuntu) those two print `skipped (posix)`. Against the
+0.65.4 hooks (CI run 39303554146) 4 of 7 fail on Windows, 5 on macOS and 3 on Ubuntu. Case 03
+(`Í` in the command) passed on Windows there: that byte did not break `json.load` on the runner's
+stdin, only under the POSIX stand-in; it stays as a POSIX case. `--selftest` drops the UTF-8 line from each of the three hooks it drives and
 requires a case to notice. It does not cover a user who sets `PYTHONIOENCODING` to something else
 on purpose: the hooks now override it.
 

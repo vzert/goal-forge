@@ -95,7 +95,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    with no predecessor, so run `--selftest` too), and `python3 test/utf8-stdin-branches.py` (the
    hooks read stdin, print and open() files as UTF-8 on Windows too — it sends the payload as UTF-8
    bytes with the accents unescaped, as Claude Code does; on POSIX it gives the std streams cp1252
-   to stand in for Windows; new in 0.65.5, fails 5 of 7 against 0.65.4, run `--selftest` too).
+   to stand in for Windows; new in 0.65.5, 4 of 7 fail against 0.65.4 on Windows CI, run `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and
