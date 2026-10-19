@@ -154,7 +154,10 @@ breaks; a non-terminal claim with no streak closes on the subagent alone.
   finding by its rubric (`agents/goal-adversary.md`, same grep term), and you never reclassify one.
   With no threat model declared every hole counts, in doubt a finding is BLOCKING, and a
   pre-existing defect is MINOR only when no success criterion rests on it. The threat model is fixed when the spec is written and only grows; the adversary
-  tests it against what the user asked, and one narrowed after a finding counts as BLOCKING. A round whose findings are all MINOR is a `hold`. Report MINOR notes to the user as notes: they
+  tests it against what the user asked, and one narrowed after a finding counts as BLOCKING. A hole found only by an
+  input the adversary built counts only when that input can really occur (found in real data, an ordinary producer
+  named, its class named by a criterion or the threat model, or a documented input) — otherwise it is MINOR, and so
+  is a further crafted variant of a root that already has a BLOCKING finding (0.65.6). A round whose findings are all MINOR is a `hold`. Report MINOR notes to the user as notes: they
   open no round and no pending item (the goalspec skill's step 6, "Severity").
 - On **`break`**: report the confirmed violations to the user with the adversary's ground-truth
   for each. This command runs **one round per invocation** — it does not loop. What happens next

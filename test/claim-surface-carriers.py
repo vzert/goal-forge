@@ -714,6 +714,16 @@ def main():
         check("sev:%s-executor-may-not-reclassify" % name, "executor may not reclassify" in t)
         check("probe:%s-three-inputs-run" % name, ("at least three inputs aimed at breaking it" in t
               or "at least three inputs aimed at breaking it" in t.replace("**", "")) and "run" in t.lower())
+        # 0.65.6: a hole found only by a built input counts only when the input can really occur.
+        check("built:%s-rule" % name, "only when that input can really occur" in t.lower().replace("**", "")
+              or "ONLY WHEN THAT INPUT CAN REALLY OCCUR" in t)
+        check("built:%s-four-conditions" % name, all(k in t for k in (
+            "in the real data", "ordinary producer", "names that input class", "documents as supported")))
+        check("built:%s-variant-of-root-is-minor" % name, "variant of the same root is MINOR" in t)
+        check("built:%s-narrows-count-not-probe" % name, "never what you probe or read" in t)
+        check("built:%s-probe-real-inputs-first" % name, "First look in the real data" in t)
+    check("built:skill-step6", "counts only when that input can really occur" in fs_)
+    check("built:adversary-skill", "counts only when that input can really occur" in fk_)
     check("sev:agent-verdict-counts-blocking", "`break` if the total confirmed BLOCKING count" in agent)
     check("sev:emitted-verdict-counts-blocking", "any confirmed BLOCKING count is >=1" in fe_)
     check("sev:skill-step6-bullet", "only BLOCKING findings count; a MINOR one is a note, and it opens no round and no pending item" in fs_)

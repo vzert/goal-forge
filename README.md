@@ -462,7 +462,11 @@ or an autonomy violation. A MINOR finding — wording that is ambiguous but not 
 outside that threat model, a pre-existing defect no success criterion rests on, style — is reported as a note and opens no round
 and no pending item. The adversary classifies; the executor cannot downgrade. With no threat model declared every hole
 counts, in doubt a finding is BLOCKING, and the threat model is fixed when the spec is written and only grows — the
-adversary tests it against what you asked, and one narrowed after a finding counts as BLOCKING. Measured before the
+adversary tests it against what you asked, and one narrowed after a finding counts as BLOCKING. Since v0.65.6 a hole
+found only by an input the adversary built counts only when that input can really occur — found in the real data, an
+ordinary producer named, its class named by a criterion or by the threat model, or an input the work documents — and
+a further crafted variant of a root that already broke is a note: over 55 break rounds of four projects, 52 rested on
+an input only the adversary had built, and 28 came back as a new variant of the same root. Measured before the
 change over 65 real break rounds: 5 had only minor findings, 13 mixed a blocking one with minor ones,
 and in 6 of them the executor had called 8 blocking findings "wording" (a CHANGELOG line
 contradicting the code, a cited path that did not exist, an overstated published figure).
