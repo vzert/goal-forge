@@ -194,7 +194,7 @@ CASES = [
     # The other half of the same rule, unchanged: a HOLD that exits nonzero still degrades. Without
     # this control, "preserve the break" could be widened into "preserve anything".
     ("21-hold-with-nonzero-exit", "STUB_HOLD_RC", {}, None, "unfilled"),
-    # --- codex sandbox default (0.65.6; an advisory only since 0.44.6). A codex command with no mode
+    # --- codex sandbox default (0.65.7; an advisory only since 0.44.6). A codex command with no mode
     # of its own gets `-s workspace-write` and a notice saying so; an untrusted cwd used to run it
     # read-only, which failed the partner's scratch writes in every such round measured. Against
     # 0.65.5, 22 is `pass+codexwarned+noflag` (warned, nothing added).
@@ -206,6 +206,12 @@ CASES = [
      "pass+codexsilent+kept"),
     ("65-codex-full-auto-kept", None, {"GOAL_ADVERSARY_CMD": "codex exec --full-auto"}, None,
      "pass+codexsilent+kept"),
+    # 67: a profile may set the mode, so it is the operator's choice too. 68: codex named by an
+    # absolute path is still codex (the match is on the basename).
+    ("67-codex-profile-kept", None, {"GOAL_ADVERSARY_CMD": "codex exec -p suiteprofile"}, None,
+     "pass+codexsilent+kept"),
+    ("68-codex-abspath-defaulted", None, {"GOAL_ADVERSARY_CMD": "FAKEBIN/codex exec"}, None,
+     "pass+codexdefaulted+ww"),
     # --- reviewed-state isolation (worktree-isolation change). THE case: a "sibling session"
     # commits to the ORIGINAL repo (found via git-common-dir, exactly like a concurrent
     # /checkpoint-3t would) while the "partner" is running against the isolated copy. Must come
@@ -404,7 +410,7 @@ CASES = [
     # 60: the hook killed by SIGTERM (a timeout, Ctrl-C) to its process group while the partner
     # runs. bash runs the EXIT trap on that signal, so the directory must still go.
     ("60-scratch-removed-on-sigterm", "STUB_SCRATCH_SLEEP", {}, None, "killed+scratch-removed"),
-    # 61-64 (0.65.6): GOAL_ADVERSARY_TIMEOUT. 61: a partner still silent at the cap is stopped, its
+    # 61-64 (0.65.7): GOAL_ADVERSARY_TIMEOUT. 61: a partner still silent at the cap is stopped, its
     # background child with it, and the round is UNVERIFIED. 62: a break it printed before the cap
     # stands. 63: 0 turns the cap off. 64: a value that is not a whole number warns and runs uncapped.
     # Against 0.65.5 61/62 run the full 20 s (`uncapped`) and 64 prints no warning.
@@ -412,6 +418,8 @@ CASES = [
      "unfilled+capped+capnotice" + ("" if os.name == "nt" else "+child-gone")),
     ("62-cap-keeps-printed-break", "STUB_SLOW_BREAK", {"GOAL_ADVERSARY_TIMEOUT": "2"}, None,
      "pass+capped+capnotice+break-kept"),
+    ("66-cap-kills-other-session-child", "STUB_SLOW_NEWSESSION", {"GOAL_ADVERSARY_TIMEOUT": "2"},
+     None, "unfilled+capped+capnotice" + ("" if os.name == "nt" else "+child-gone+session-child-gone")),
     ("63-cap-off", "STUB_SLOW_OK", {"GOAL_ADVERSARY_TIMEOUT": "0"}, None, "pass+uncapped"),
     ("64-cap-bad-value", NOISE + MODEL + "\n" + BULLETS + HOLD + "\n",
      {"GOAL_ADVERSARY_TIMEOUT": "30m"}, None, "pass+capwarn"),
@@ -532,7 +540,7 @@ STUB_SCRATCH_MUTATE = (_SCRATCH_HEAD + 'echo "fixed a typo" >> tracked.txt\necho
 STUB_SCRATCH_SLEEP = _SCRATCH_HEAD.replace(
     'echo "STUB-SCRATCH=', 'echo "STUB-SCRATCH=$TMPDIR|$TMP|$TEMP" > "$SCRATCH_MARKER"\necho "STUB-SCRATCH=') \
     + "sleep 30\n"
-# 61-64 (0.65.6): the wall-clock cap. Each slow stub starts a background `sleep` and records its pid,
+# 61-64 (0.65.7): the wall-clock cap. Each slow stub starts a background `sleep` and records its pid,
 # so 61 can show the cap killed the partner's whole tree, not only its first process.
 _SLOW_HEAD = """#!/bin/bash
 cat >/dev/null
@@ -542,6 +550,13 @@ echo $! > "$SCRATCH_MARKER.child"
 STUB_SLOW_SILENT = _SLOW_HEAD + 'echo "- still probing, no verdict yet"\nwait\n'
 STUB_SLOW_BREAK = (_SLOW_HEAD + 'echo "%s"\necho "- the coverage-floor row claims done for an entity'
                    ' that is not done"\necho "%s"\nwait\n' % (MODEL, BREAK))
+# 66: like codex, which runs each shell command in a session of its own (codex-cli 0.155.1), the
+# stub's long-lived child starts a `sleep` with start_new_session and waits on it. A process-group
+# kill misses that sleep; the cap must take it too.
+STUB_SLOW_NEWSESSION = (_SLOW_HEAD + 'echo "- still probing, no verdict yet"\n'
+                        '"${SUITE_PY:-python3}" -c \'import subprocess, sys; p = subprocess.Popen(["sleep", "20"], '
+                        'start_new_session=True); open(sys.argv[1], "w").write(str(p.pid)); p.wait()\' '
+                        '"$SCRATCH_MARKER.child2"\nwait\n')
 STUB_SLOW_OK = ('#!/bin/bash\ncat >/dev/null\nsleep 3\necho "%s"\necho "- probe: one real evidence'
                 ' line"\necho "%s"\n' % (MODEL, HOLD))
 FAKE_CYGPATH = '#!/bin/bash\n[ "$1" = "-w" ] && printf "WINPATH:%s\\n" "$2"\n'
@@ -674,21 +689,27 @@ def scratch_suffix(text, case_name, caller_tmpdir):
 def cap_suffix(res, case_name, elapsed, scratch_marker):
     """Cases 61-64: did the cap fire, did it say so, and did the partner's tree die with it."""
     err = res.stderr
-    if case_name[:2] in ("61", "62"):
+    if case_name[:2] in ("61", "62", "66"):
         b = "+capped" if elapsed < 12 else "+uncapped"
         b += "+capnotice" if "stopped the partner after 2s" in err else "+nocapnotice"
         if case_name.startswith("62"):
             fills = re.findall(r"^\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+", res.stdout, re.M)
             b += "+break-kept" if fills and fills[-1] == "break" else "+break-lost"
-        if case_name.startswith("61") and os.name != "nt":
-            try:
-                pid = int(open(scratch_marker + ".child").read().strip())
-                time.sleep(0.5)
-                os.kill(pid, 0)
-                b += "+child-alive"
-                os.kill(pid, signal.SIGKILL)
-            except (OSError, ValueError):
-                b += "+child-gone"
+        if case_name[:2] in ("61", "66") and os.name != "nt":
+            files = [(".child", "child")] + ([(".child2", "session-child")] if case_name.startswith("66") else [])
+            time.sleep(0.5)
+            for ext, label in files:
+                try:
+                    pid = int(open(scratch_marker + ext).read().strip())
+                except (OSError, ValueError):
+                    b += "+%s-unknown" % label
+                    continue
+                try:
+                    os.kill(pid, 0)
+                    b += "+%s-alive" % label
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    b += "+%s-gone" % label
         return b
     if case_name.startswith("63"):
         return "+uncapped" if elapsed >= 3 else "+cut-early"
@@ -887,7 +908,7 @@ def _classify(res, case_name, repo=REPO):
     if case_name.startswith("51") and "MODIFIED the repository" in err:
         # Another session's file is not this partner's write: naming it is the false warning.
         branch += "+other-session-file-reported"
-    if case_name[:2] in ("22", "23", "65"):
+    if case_name[:2] in ("22", "23", "65", "67", "68"):
         if "added '-s workspace-write'" in err:
             branch += "+codexdefaulted"
         elif "sets no sandbox mode" in err:
@@ -896,10 +917,11 @@ def _classify(res, case_name, repo=REPO):
             branch += "+codexsilent"
         m = re.search(r"STUB-ARGS=(.*)", out)
         args = m.group(1).split() if m else []
-        if case_name.startswith("22"):
+        if case_name[:2] in ("22", "68"):
             branch += "+ww" if args[-2:] == ["-s", "workspace-write"] else "+noflag"
         else:
-            want = {"23": ["-s", "read-only"], "65": ["exec", "--full-auto"]}[case_name[:2]]
+            want = {"23": ["-s", "read-only"], "65": ["exec", "--full-auto"],
+                    "67": ["exec", "-p", "suiteprofile"]}[case_name[:2]]
             branch += "+kept" if args == want else "+changed:" + " ".join(args)
     if case_name[:2] in ("36", "37", "38"):
         # Fail-open, not just a notice: the partner must have run in the LIVE repo (the dir that
@@ -969,7 +991,7 @@ def suite(hook, workdir):
                  "STUB_SCRATCH_MUTATE": STUB_SCRATCH_MUTATE,
                  "STUB_SCRATCH_SLEEP": STUB_SCRATCH_SLEEP,
                  "STUB_SLOW_SILENT": STUB_SLOW_SILENT, "STUB_SLOW_BREAK": STUB_SLOW_BREAK,
-                 "STUB_SLOW_OK": STUB_SLOW_OK}
+                 "STUB_SLOW_OK": STUB_SLOW_OK, "STUB_SLOW_NEWSESSION": STUB_SLOW_NEWSESSION}
         if name.startswith("59"):
             winbin = os.path.join(workdir, "winbin")
             os.makedirs(winbin, exist_ok=True)
@@ -990,6 +1012,8 @@ def suite(hook, workdir):
                 f.write(transcript)
             env["GOAL_ADVERSARY_CMD"] = "cat " + fixture
         env.update(env_extra)
+        if env.get("GOAL_ADVERSARY_CMD", "").startswith("FAKEBIN/"):
+            env["GOAL_ADVERSARY_CMD"] = fakebin + env["GOAL_ADVERSARY_CMD"][len("FAKEBIN"):]
         pipe = env.pop("_PIPE", None)
         hook_marker = None
         case_repo = REPO
@@ -1082,7 +1106,7 @@ def suite(hook, workdir):
             while readonly:
                 os.chmod(readonly.pop(), 0o755)
         branch = classify(res, name, case_repo)
-        if name[:2] in ("61", "62", "63", "64"):
+        if name[:2] in ("61", "62", "63", "64", "66"):
             branch += cap_suffix(res, name, time.time() - started, scratch_marker)
         if hook_marker and not os.path.exists(hook_marker):
             branch += "+hook-did-not-run"

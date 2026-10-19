@@ -28,8 +28,10 @@ external partner joins it where undoing is hard. A host that pins subagents to a
 reason some setups chose `external` globally) still gets that subagent round; the external partner
 is what brings the capable reader on terminal actions, and after two subagent breaks on any run.
 
-**Time cap (0.65.6).** The hook stops the partner after `GOAL_ADVERSARY_TIMEOUT` seconds (default
-1800; `0` turns it off), killing its whole process tree. A break it had already printed stands; with
+**Time cap (0.65.7).** The hook stops the partner after `GOAL_ADVERSARY_TIMEOUT` seconds (default
+1800; `0` turns it off), killing it and every process below it at that moment —
+the commands codex runs in sessions of their own included; one that already left that tree (a double
+fork) survives. A break it had already printed stands; with
 none, the round is an UNVERIFIED hold, so re-run it with a narrower payload or route it to the
 subagent. Set it in the `env` block of `settings.json` to change it for every session. Measured over
 490 rounds of `codex exec -m gpt-5.6-luna` (effort `high`; `max` in the first days of the window) in four projects,
@@ -44,14 +46,16 @@ whole number of seconds, the partner runs uncapped and the hook says so.
      — the one verified end-to-end against a real CLI (v0.4.0), and it reads stdin natively.
    - **OpenAI Codex CLI** — `external_cmd: "codex exec"` (reads stdin; verify your install actually
      runs — `printf 'say OK' | codex exec`. The npm wrapper can be on PATH while its vendored binary
-     is missing, which `command -v` cannot detect.) **Since 0.65.6 a codex command that sets no
+     is missing, which `command -v` cannot detect.) **Since 0.65.7 a codex command that sets no
      sandbox mode gets `-s workspace-write` from the hook** (the review copy, `/tmp` and `TMPDIR`
      writable; no network), and the hook says so on stderr. Before, codex's own trust level for the
      cwd decided it, and a project codex did not trust ran read-only: measured 2026-10-05..19, every
      round of that kind that showed its sandbox said `read-only` in the two untrusted projects of one
      user, and the scratch writes its probes and suites need failed there, while nobody saw the
      stderr warning that was the only sign of it. A mode you set wins: `-s`/`--sandbox`, a
-     `sandbox_` override, `--full-auto` or the bypass flag are passed through untouched. Network
+     `sandbox_` override, `--full-auto`, the bypass flag or a profile (`-p`/`--profile`) are passed
+     through untouched. A `sandbox_mode` set only in `~/.codex/config.toml` is not visible to the hook
+     and the added flag overrides it — put the mode in `external_cmd` to keep it. Network
      stays off unless you add `-c sandbox_workspace_write.network_access=true` yourself — with it, a
      partner that can read your SSH keys could push. Other CLIs are never changed (see "Your partner
      keeps its write sandbox" below for why `-s read-only` is not the fix).
@@ -143,7 +147,7 @@ external partner broke exactly that overreach in review. The option surface was 
 and `--add-dir`; a `claude -p` partner has permission modes and allowed/disallowed tools; a wrapper
 or an OS-level sandbox is another surface again. What is actually load-bearing here is narrower and
 does hold: **`external_cmd` belongs to the operator**, so this hook cannot impose a sandbox mode
-portably across CLIs it does not own (the one exception, since 0.65.6: a codex command with no
+portably across CLIs it does not own (the one exception, since 0.65.7: a codex command with no
 mode of its own gets `-s workspace-write`, the widening this section records) — it can only hand the partner a writable `TMPDIR` so scratch
 has somewhere legitimate to go, and then measure. Since 0.64.1 that `TMPDIR` is a private directory
 made for each run (`goalspec-adversary-tmp.*` under your own `TMPDIR`; `TMP` and `TEMP` name it too,

@@ -77,24 +77,26 @@ if ! command -v "$BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-# DEFAULT SANDBOX FOR CODEX (0.65.6). Until 0.65.5 this hook only warned on stderr when a codex
+# DEFAULT SANDBOX FOR CODEX (0.65.7). Until 0.65.6 this hook only warned on stderr when a codex
 # command set no sandbox mode, and codex's own trust level for the cwd decided it: a project codex
 # does not trust ran read-only. Measured 2026-10-05..19 in one user's four projects: in the two codex
 # did not trust, every hook output read back that showed the partner's sandbox said read-only (87
 # and 85 outputs), and the writes its probes and suites need (mkdtemp, a suite's scratch) failed
-# there; in the two it trusted they said workspace-write (112 and 111), and none of the outputs
+# there; in the two it trusted they said workspace-write (over 100 outputs each), and none of the outputs
 # read back in any of the four reported a repository change. Nobody read the
 # warning: the operator could not tell which mode a round had. So a codex command with no mode of
 # its own now gets `-s workspace-write` (writes to the review copy, /tmp and TMPDIR; no network).
-# An explicit mode always wins: -s/--sandbox, a sandbox_ override, --full-auto, or the bypass flag.
+# An explicit mode always wins: -s/--sandbox, a sandbox_ override, --full-auto, the bypass flag, or
+# a profile (-p/--profile), which may set one. A sandbox_mode set only in ~/.codex/config.toml is not
+# visible here and the flag overrides it: put the mode in external_cmd to keep it.
 # Network stays off on purpose: with it, a partner that can read ~/.ssh could push. What catches an
 # overreaching partner is still the content fingerprint below, not the mode. Other CLIs: untouched,
 # external_cmd stays the operator's (references/external-adversary-setup.md, "Your partner keeps its
 # write sandbox").
-case "$BIN" in
+case "${BIN##*/}" in
   codex)
     case "$EXT_CMD" in
-      *-s\ *|*--sandbox*|*sandbox_*|*--full-auto*|*--dangerously-bypass*|*--yolo*) ;;
+      *-s\ *|*--sandbox*|*sandbox_*|*--full-auto*|*--dangerously-bypass*|*--yolo*|*\ -p\ *|*--profile*) ;;
       *) EXT_CMD="$EXT_CMD -s workspace-write"
          echo "external-adversary: the codex command set no sandbox mode, so this hook added '-s workspace-write' (the review copy, /tmp and TMPDIR writable; no network). Put -s or --sandbox in external_cmd to choose another. See references/external-adversary-setup.md." >&2 ;;
     esac
@@ -299,10 +301,11 @@ MINOR (a bullet that starts with MINOR, not counted): wording that is ambiguous 
 against ground truth; an edge case OUTSIDE the declared threat model, such as a crafted evasion of
 a rail built to catch an accidental omission; a pre-existing defect outside the delta that no
 success criterion rests on (one that makes a criterion fail is BLOCKING); style or naming.
-A HOLE FOUND ONLY BY AN INPUT YOU BUILT IS BLOCKING ONLY WHEN THAT INPUT CAN REALLY OCCUR (0.65.6).
-Measured 2026-10-05..19 by one reader over 55 break rounds whose blocking findings were mostly
-edge cases, in four projects: 52 rested on an input only the adversary had built, and in 28 the same
-root came back in the next round as a new variant. So a hole whose triggering input you constructed
+A HOLE FOUND ONLY BY AN INPUT YOU BUILT IS BLOCKING ONLY WHEN THAT INPUT CAN REALLY OCCUR (0.65.7).
+Measured 2026-10-05..19 by one reader, on a sample of 55 break rounds from four projects PICKED
+because their blocking findings looked mostly like edge cases (a selected sample, not a rate over all
+breaks): 52 rested on an input only the adversary had built, and in 28 the same root came back in
+the next round as a new variant. So a hole whose triggering input you constructed
 counts as BLOCKING only when at least one of these holds: (a) you find that input, or one of its
 class, in the real data, logs, transcripts or repository; (b) you name the ordinary producer that
 would send it in normal use (a user, an agent, the code itself), not "someone could"; (c) a success
@@ -711,9 +714,9 @@ VERDICT_RE='\[ADVERSARY-VERDICT:[[:space:]]*(break|hold)[[:space:]]+ungrounded=[
 # script on exactly the path that exists to handle a bad partner — so both the run and the match stay
 # inside `set +e` and the match is guarded with `|| true`.
 set +e
-# WALL-CLOCK CAP (0.65.6). There was none: over 2026-10-05..19, 12 of 490 rounds in four projects ran
+# WALL-CLOCK CAP (0.65.7). There was none: over 2026-10-05..19, 12 of 490 rounds in four projects ran
 # 30 minutes or more, up to 53. GOAL_ADVERSARY_TIMEOUT is seconds, default 1800; 0 turns the cap off.
-# Past it lib/run_capped.py kills the partner's process tree and exits 124, which takes the nonzero-
+# Past it lib/run_capped.py kills the partner and every descendant it can see then, and exits 124, which takes the nonzero-
 # exit paths below unchanged: a filled break already printed stands, anything else is UNVERIFIED.
 # With no runnable interpreter, or a value that is not a whole number, it runs uncapped, as before.
 ADV_CAP="${GOAL_ADVERSARY_TIMEOUT:-1800}"

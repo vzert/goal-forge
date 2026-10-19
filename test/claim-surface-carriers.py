@@ -714,7 +714,7 @@ def main():
         check("sev:%s-executor-may-not-reclassify" % name, "executor may not reclassify" in t)
         check("probe:%s-three-inputs-run" % name, ("at least three inputs aimed at breaking it" in t
               or "at least three inputs aimed at breaking it" in t.replace("**", "")) and "run" in t.lower())
-        # 0.65.6: a hole found only by a built input counts only when the input can really occur.
+        # 0.65.7: a hole found only by a built input counts only when the input can really occur.
         check("built:%s-rule" % name, "only when that input can really occur" in t.lower().replace("**", "")
               or "ONLY WHEN THAT INPUT CAN REALLY OCCUR" in t)
         check("built:%s-four-conditions" % name, all(k in t for k in (
