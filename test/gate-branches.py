@@ -170,7 +170,7 @@ CASES = [
     # an explicit waiver short-circuits everything, floor included
     ("19-waiver-with-3", SPEC + WAIVER, [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C]),
     # the SAME verdict string in three separate turns, with no hand-back or adversary output in the
-    # transcript (see 46-51 for the case with one), collapses to 1 — a deliberate under-count
+    # transcript (see 46-53 for the case with one), collapses to 1 — a deliberate under-count
     # (the fail-open direction), never a false "three breaks, stop editing"
     ("20-identical-requotes", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_A, V_BREAK_A]),
 
@@ -287,7 +287,7 @@ CASES = [
     # --- a round is told from a re-quote by where its verdict arrived (0.65.6) ---
     # Case 20 is the same verdict three times with nothing behind it, and stays 1. Here each quote
     # follows its own hand-back carrying that verdict: three rounds that happened to come back with
-    # the same counts (session 23c9f476, 2026-10-19, counted 2). 46, 48 and 50 change against 0.65.5.
+    # the same counts (session 23c9f476, 2026-10-19, counted 2). 46, 48, 50 and 52 change against 0.65.5.
     ("46-identical-rounds-each-after-handback", SPEC + CR_ADV,
      [SPEC, ("peer", HANDBACK_A), V_BREAK_A, ("peer", HANDBACK_A), V_BREAK_A,
       ("peer", HANDBACK_A), V_BREAK_A], {"conv": "CONV!"}),
@@ -309,6 +309,15 @@ CASES = [
     ("51-quote-before-its-handback-then-again", SPEC + CR_ADV,
      [SPEC, ("peer", HANDBACK_A), V_BREAK_A, V_BREAK_B, ("peer", HANDBACK_B), V_BREAK_B],
      {"conv": "-"}),
+    # 52: as 50, but the current turn is the bare verdict line, identical to the record before the
+    # hand-back. The hand-back started a new turn, so this is not that record.
+    ("52-new-turn-identical-to-last-record", V_BREAK_A,
+     [SPEC, ("peer", HANDBACK_A), V_BREAK_A, ("peer", HANDBACK_A), V_BREAK_A,
+      ("peer", HANDBACK_A)], {"conv": "CONV!"}),
+    # 53: a human prompt that pastes a report is not a source; only a hand-back or a tool result is.
+    ("53-human-text-is-not-a-source", SPEC + CR_ADV,
+     [SPEC, ("human", EXTERNAL_A), V_BREAK_A, ("human", EXTERNAL_A), V_BREAK_A,
+      ("human", EXTERNAL_A), V_BREAK_A], {"conv": "-"}),
     ("50-current-turn-quotes-a-new-identical-round", V_BREAK_A + "\n" + CR_ADV,
      [SPEC, ("peer", HANDBACK_A), V_BREAK_A, ("peer", HANDBACK_A), V_BREAK_A,
       ("peer", HANDBACK_A)], {"conv": "CONV!"}),
@@ -349,13 +358,17 @@ CASES = [
 
 def transcript(turns, name):
     """Each item is an assistant text, or ("peer", text) for a subagent hand-back, or
-    ("result", text) for a tool result (0.65.6: where a verdict arrives, see ROUND cases)."""
+    ("result", text) for a tool result, or ("human", text) for a typed prompt (0.65.6: where a
+    verdict arrives, see cases 46-53)."""
     p = os.path.join(TMP, name + ".jsonl")
     with open(p, "w", encoding="utf-8") as fh:
         for i, t in enumerate(turns):
             if isinstance(t, tuple) and t[0] == "peer":
                 rec = {"type": "user", "isMeta": True, "origin": {"kind": "peer", "from": "ag%d" % i},
                        "message": {"role": "user", "content": [{"type": "text", "text": t[1]}]}}
+            elif isinstance(t, tuple) and t[0] == "human":
+                rec = {"type": "user", "origin": {"kind": "human"},
+                       "message": {"role": "user", "content": t[1]}}
             elif isinstance(t, tuple) and t[0] == "result":
                 fh.write(json.dumps({"type": "assistant", "message": {"content": [
                     {"type": "tool_use", "name": "Bash", "id": "tr-%d" % i, "input": {}}]}}) + "\n")

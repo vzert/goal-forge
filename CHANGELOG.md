@@ -14,15 +14,15 @@ version bump are never delivered to already-installed users.
   Stop gate de-duplicated the verdict lines of the trailing run by their text alone, so two different
   rounds whose verdicts had the same counts counted once, and an agent that ran three rounds in a row
   could be told nothing (session 23c9f476: three rounds in three turns, each after its own hand-back,
-  the first and the third identical, streak 2). Now a quoted verdict counts as a new round when a
+  the first and the third identical, streak 2). Now a quoted verdict counts again when a
   source carrying that same verdict arrived before it: a subagent hand-back, or a tool result with
   both the `[ADVERSARY-MODEL:` line and the verdict (the external partner's output, a foreground
-  spawn's result). A re-quote with no new source behind it is still one round; a verdict quoted
+  spawn's result). A re-quote with no new source behind it still counts once; a verdict quoted
   from a hook notice before its hand-back arrived keeps that hand-back as its own (session
   1adc5585); a transcript with no source at all keeps the old rule. The current turn counts too
   when it quotes a new identical round the file has not caught up with. `test/gate-branches.py`:
-  6 new cases (46-51); against the 0.65.5 gate only 46, 48 and 50 change; `--compare` parity OK in
-  both modes; seven mutations of the new code each turn a case red. Replayed over the 923 Stops
+  8 new cases (46-53); against the 0.65.5 gate only 46, 48, 50 and 52 change; `--compare` parity OK
+  in both modes; nine mutations of the new code each turn a case red. Replayed over the 923 Stops
   that follow a verdict-carrying turn in 220 sessions on the maintainer's disk (2026-10-19): the
   floor fires on 54 Stops instead of 46 (8 Stops, 7 sessions), and no Stop counts fewer than
   before. What it counts is quoted adversary reports, not rounds: two backends reporting on one

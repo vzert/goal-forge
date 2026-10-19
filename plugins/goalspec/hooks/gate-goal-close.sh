@@ -272,7 +272,8 @@ def _source_text(ev):
     content = (ev.get("message") or {}).get("content")
     parts = []
     if isinstance(content, str):
-        parts.append(content)
+        if peer:
+            parts.append(content)
     elif isinstance(content, list):
         for blk in content:
             if not isinstance(blk, dict):
@@ -434,8 +435,11 @@ if lam_v:
     tail = re.sub(r"\s+", " ", tx_turns[-1]).lower() if tx_turns else ""
     # 0.65.6: unless a source with that same verdict arrived AFTER the last record. Then this turn
     # quotes a new round whose text matches the previous one, and the file has not caught up yet.
+    # After a turn boundary (a hand-back starts a turn) this turn cannot be that record, even when
+    # its text is identical; with no boundary since, it is new only when its text differs.
     _late = {v for _p, _s in tx_sources if _p == len(tx_turns) for _, v in turn_verdicts(_s)}
-    _lam_new = lam_v[-1][1] in _late and re.sub(r"\s+", " ", lam_text).strip().lower() != tail.strip()
+    _lam_new = lam_v[-1][1] in _late and (
+        not tx_group_open or re.sub(r"\s+", " ", lam_text).strip().lower() != tail.strip())
     if lam_v[-1][1] not in tail or _lam_new:
         turns.append(lam_text)
 

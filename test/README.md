@@ -261,16 +261,18 @@ can go wrong quietly:
 - **20** — the same verdict string in three separate turns collapses to a floor of 1. A deliberate
   under-count: the guard fires late rather than falsely. Case 20 has no hand-back or adversary
   output in its transcript; with one before each quote it is three rounds (46).
-- **46–51** (0.65.6) — a round is told from a re-quote by where its verdict arrived: a subagent
+- **46–53** (0.65.6) — a round is told from a re-quote by where its verdict arrived: a subagent
   hand-back (a user record from a peer) or a tool result with both the model line and the verdict.
   46 and 48 are three rounds with the same text, each after its own hand-back or external output
   (3, where 0.65.5 said 1); 50 is the same with the third round quoted in the current turn before
-  the file has it; 47 is one hand-back quoted three times (1); 49 is a tool result with a verdict
-  and no model line, which is not a source (1); 51 is a verdict quoted from a hook notice before
-  its hand-back arrived and again after it (one round). Against the 0.65.5 gate only 46, 48 and
-  50 change. Seven mutations of the new code (no source, peer not a source, model line not
-  required, late source ignored, freshness ignored, source not consumed, an early quote not
-  keeping its source) each turn a case red. Replayed over the 923 Stops of 220 real sessions
+  the file has it, and 52 the same with that turn identical to the record before the hand-back;
+  47 is one hand-back quoted three times (1); 49 is a tool result with a verdict and no model
+  line, and 53 a typed prompt that pastes a report, neither a source (1); 51 is a verdict quoted
+  from a hook notice before its hand-back arrived and again after it (one round). Against the
+  0.65.5 gate only 46, 48, 50 and 52 change. Nine mutations of the new code (no source, peer not a
+  source, model line not required, late source ignored, freshness ignored, source not consumed,
+  an early quote not keeping its source, the turn boundary ignored for the current turn, typed
+  text taken as a source) each turn a case red. Replayed over the 923 Stops of 220 real sessions
   (2026-10-19): the floor now fires on 8 more Stops in 7 sessions, and no Stop counts fewer than
   before. It counts quoted adversary reports, not rounds: both backends on one round in separate
   records are two, and a report the agent never quoted is not seen.
