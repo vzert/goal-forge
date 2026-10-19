@@ -41,7 +41,9 @@
 #     naturally re-quotes earlier rounds when summarizing, and a transcript-wide tally inflates in
 #     exactly the scenario the guard exists for. So the count is damped: at most ONE round per
 #     assistant turn, identical verdict sets de-duplicated within the trailing run (which under-counts
-#     identical consecutive breaks — the fail-open direction), and the message tells the agent to
+#     identical consecutive breaks — the fail-open direction; since 0.65.6 an identical verdict counts
+#     again when a new hand-back or adversary output carrying it arrived before it, see round_flags,
+#     so only the transcripts with no such source keep that under-count), and the message tells the agent to
 #     verify its real round count rather than asserting one. Consumer: the message branches below —
 #     it adds no new marker and nothing else reads it. Like every other check here it is an
 #     internal-consistency signal over the agent's own self-reports, not a lie detector.
@@ -221,6 +223,12 @@ lam_text = lam if isinstance(lam, str) else ""
 #    missing-close reminder of the run was never said. A transcript with no boundary at all (most
 #    suite fixtures) keeps the per-record reading, unchanged; one with prompts and no Stop record
 #    (the sdk-ts transcripts) is cut at its prompts alone.
+#    0.65.6 decided, on a measurement, to KEEP the floor per record (p-044eaf7c80). Replaying every
+#    Stop that followed a verdict-carrying turn on the maintainer disk (923 Stops, 220 sessions,
+#    2026-10-19) through this program with the floor grouped by real turn changed 5 Stops in 4
+#    sessions, and in 3 of them it lost a real streak: rounds an agent ran one after another inside a
+#    single turn, the worst an unattended turn with five breaks and no Stop between them that
+#    grouping counts as one. A record is not a round either; round_flags below is what tells them apart.
 tx_turns = []
 tx_groups = []
 tx_group_open = False
@@ -249,6 +257,39 @@ def _is_turn_boundary(ev):
         return "text" in kinds and "tool_result" not in kinds
     return False
 
+# 0.65.6: where the verdict of a round ARRIVES, so the floor can tell a new round from a re-quote of
+# an old one (see round_flags at the walk). A subagent hand-back (a user record from a peer) carrying
+# a verdict, or a tool result carrying both the model line and a verdict (the output of the external
+# partner, the result of a foreground spawn). A skill body or a file the agent reads that only shows
+# example markers carries no model line next to a verdict with counts, so it is not a source.
+tx_sources = []
+
+def _source_text(ev):
+    if ev.get("type") != "user":
+        return ""
+    origin = ev.get("origin")
+    peer = isinstance(origin, dict) and origin.get("kind") == "peer"
+    content = (ev.get("message") or {}).get("content")
+    parts = []
+    if isinstance(content, str):
+        parts.append(content)
+    elif isinstance(content, list):
+        for blk in content:
+            if not isinstance(blk, dict):
+                continue
+            if blk.get("type") == "text" and peer:
+                parts.append(blk.get("text") or "")
+            elif blk.get("type") == "tool_result":
+                c = blk.get("content")
+                if isinstance(c, str):
+                    parts.append(c)
+                elif isinstance(c, list):
+                    parts.extend(x.get("text") or "" for x in c if isinstance(x, dict))
+    s = "\n".join(parts)
+    if "[ADVERSARY-VERDICT:" not in s:
+        return ""
+    return s if (peer or "[ADVERSARY-MODEL:" in s) else ""
+
 tpath = data.get("transcript_path")
 if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
     try:
@@ -263,6 +304,9 @@ if isinstance(tpath, str) and tpath and os.path.isfile(tpath):
                     continue
                 if not isinstance(ev, dict):
                     continue
+                _src = _source_text(ev)
+                if _src:
+                    tx_sources.append((len(tx_turns), _src))
                 if _is_turn_boundary(ev):
                     tx_boundary_seen = True
                     tx_group_open = False
@@ -388,7 +432,11 @@ if lam_v:
     # file can). If the last recorded turn already carries the verdict of this turn, it IS this turn —
     # appending it again would count one round twice.
     tail = re.sub(r"\s+", " ", tx_turns[-1]).lower() if tx_turns else ""
-    if lam_v[-1][1] not in tail:
+    # 0.65.6: unless a source with that same verdict arrived AFTER the last record. Then this turn
+    # quotes a new round whose text matches the previous one, and the file has not caught up yet.
+    _late = {v for _p, _s in tx_sources if _p == len(tx_turns) for _, v in turn_verdicts(_s)}
+    _lam_new = lam_v[-1][1] in _late and re.sub(r"\s+", " ", lam_text).strip().lower() != tail.strip()
+    if lam_v[-1][1] not in tail or _lam_new:
         turns.append(lam_text)
 
 # 0.43.0 — the window. Until now the walk below could reach the FIRST turn of the session, so a
@@ -402,7 +450,42 @@ _cycle_start = 0
 for _i, _t in enumerate(turns):
     if _gs_re.search(_t):
         _cycle_start = _i
+# 0.65.6: which verdict-carrying records are ROUNDS. Until now the walk below de-duplicated by
+# verdict text alone, so two different rounds that came back with the same counts counted once
+# (measured 2026-10-19: session 23c9f476, three rounds in three turns, each after its own hand-back,
+# the first and third identical, streak 2). A quote is a round when its text is new since the last
+# hold-only record, or when a source (tx_sources above) carrying that same verdict arrived after
+# the previous quote of it. A re-quote with no new source behind it is still one round, as before.
+# With no source in the transcript this is exactly the old rule (first occurrence since the hold).
+_src_at = {}
+for _pos, _s in tx_sources:
+    _src_at.setdefault(_pos, set()).update(v for _, v in turn_verdicts(_s))
+# A source that arrives AFTER a counted quote with no source behind it belongs to that quote: the
+# agent quoted the verdict from a hook notice before the hand-back reached it (session 1adc5585,
+# records 4158 and 4191: one round, quoted before and after its hand-back).
+_pending, _seen, _unbacked, round_flags = set(), set(), set(), []
+for _i, _t in enumerate(turns):
+    if _i == _cycle_start:
+        _seen, _unbacked = set(), set()
+    for _v in _src_at.get(_i, set()):
+        if _v in _unbacked:
+            _unbacked.discard(_v)
+        else:
+            _pending.add(_v)
+    _vs = turn_verdicts(_t)
+    _key = tuple(sorted(v for _, v in _vs))
+    _fresh = {v for _, v in _vs} & _pending
+    _new = bool(_vs) and (_key not in _seen or bool(_fresh))
+    round_flags.append(_new)
+    if _new and not _fresh:
+        _unbacked |= {v for _, v in _vs}
+    _pending -= _fresh
+    if _vs:
+        _seen.add(_key)
+        if not any(c == "break" for c, _ in _vs):
+            _seen, _unbacked = set(), set()
 turns = turns[_cycle_start:]
+round_flags = round_flags[_cycle_start:]
 
 # General "parked-turn" silence (0.44.5) — extends, without touching, the pattern the floor already
 # uses below: "if this turn contributes nothing, the same was already true at the previous turn, and
@@ -483,8 +566,7 @@ general_silence = (
 )
 
 streak = 0
-counted = set()
-for t in reversed(turns):
+for t, _is_round in zip(reversed(turns), reversed(round_flags)):
     vs = turn_verdicts(t)
     if not vs:
         continue          # a turn with no verdict neither counts nor interrupts the run
@@ -503,10 +585,8 @@ for t in reversed(turns):
         # (it advises less, never more).
         break
     # A turn quoting BOTH backends (e.g. subagent hold + external break) is ONE break round.
-    key = tuple(sorted(s for _, s in vs))
-    if key in counted:
-        continue          # verbatim re-quote of a round already counted — do not double-count
-    counted.add(key)
+    if not _is_round:
+        continue          # a re-quote of a round already counted (round_flags) — do not double-count
     streak += 1
 
 def remind(detail, skip_general_silence=False):

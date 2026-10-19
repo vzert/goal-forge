@@ -6,6 +6,36 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [Unreleased]
+
+### Fixed
+
+- **The convergence floor counts two rounds that came back with the same verdict as two.** The
+  Stop gate de-duplicated the verdict lines of the trailing run by their text alone, so two different
+  rounds whose verdicts had the same counts counted once, and an agent that ran three rounds in a row
+  could be told nothing (session 23c9f476: three rounds in three turns, each after its own hand-back,
+  the first and the third identical, streak 2). Now a quoted verdict counts as a new round when a
+  source carrying that same verdict arrived before it: a subagent hand-back, or a tool result with
+  both the `[ADVERSARY-MODEL:` line and the verdict (the external partner's output, a foreground
+  spawn's result). A re-quote with no new source behind it is still one round; a verdict quoted
+  from a hook notice before its hand-back arrived keeps that hand-back as its own (session
+  1adc5585); a transcript with no source at all keeps the old rule. The current turn counts too
+  when it quotes a new identical round the file has not caught up with. `test/gate-branches.py`:
+  6 new cases (46-51); against the 0.65.5 gate only 46, 48 and 50 change; `--compare` parity OK in
+  both modes; seven mutations of the new code each turn a case red. Replayed over the 923 Stops
+  that follow a verdict-carrying turn in 220 sessions on the maintainer's disk (2026-10-19): the
+  floor fires on 54 Stops instead of 46, in 7 more sessions, each inspected record by record as
+  three real rounds in a row; no Stop counts fewer than before.
+
+### Changed
+
+- **The convergence floor stays per transcript record, by decision** (p-044eaf7c80). 0.65.1 moved
+  the parked-turn silence to real turns and left the floor per record. Replaying the same 923 Stops
+  with the floor grouped by real turn changed 5 of them in 4 sessions, and in 3 it lost a real
+  streak of rounds run one after another inside a single turn (the worst an unattended turn with
+  five breaks and no Stop between them, which grouping counts as one). Recorded in the gate's
+  comment; no behaviour change.
+
 ## [0.65.5] - 2026-10-19
 
 ### Fixed

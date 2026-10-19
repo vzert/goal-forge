@@ -259,7 +259,20 @@ can go wrong quietly:
   does not reset the run. This is why the floor's wording says "no `hold`-**only** turn between them";
   an earlier wording said "no intervening hold" and an external adversary broke it on this exact case.
 - **20** — the same verdict string in three separate turns collapses to a floor of 1. A deliberate
-  under-count: the guard fires late rather than falsely.
+  under-count: the guard fires late rather than falsely. Case 20 has no hand-back or adversary
+  output in its transcript; with one before each quote it is three rounds (46).
+- **46–51** (0.65.6) — a round is told from a re-quote by where its verdict arrived: a subagent
+  hand-back (a user record from a peer) or a tool result with both the model line and the verdict.
+  46 and 48 are three rounds with the same text, each after its own hand-back or external output
+  (3, where 0.65.5 said 1); 50 is the same with the third round quoted in the current turn before
+  the file has it; 47 is one hand-back quoted three times (1); 49 is a tool result with a verdict
+  and no model line, which is not a source (1); 51 is a verdict quoted from a hook notice before
+  its hand-back arrived and again after it (one round). Against the 0.65.5 gate only 46, 48 and
+  50 change. Seven mutations of the new code (no source, peer not a source, model line not
+  required, late source ignored, freshness ignored, source not consumed, an early quote not
+  keeping its source) each turn a case red. Replayed over the 923 Stops of 220 real sessions
+  (2026-10-19): the floor now fires on 8 more Stops in 7 sessions, each inspected by record as
+  three real rounds in a row; no Stop counts fewer than before.
 - **24 / 25** — the bound on 0.18.0's hold-only fix, from both sides. A `hold` in the *most recent*
   verdict-carrying turn still ends the run (that is convergence; a floor there is noise), while an
   *earlier* hold-only turn no longer extinguishes it — and skipping it must not over-count two break

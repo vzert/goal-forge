@@ -71,6 +71,9 @@ CR_NONE = "[COMPLETION-REVIEW: none reason=clean close, no mutation and no inher
 CR_NONE_SHORT = "[COMPLETION-REVIEW: none reason=short]"
 WAIVER = "[GOAL-CLOSE-WAIVED reason=adversary sandbox limitation, not a defect in the outcome]"
 MODEL_REAL = "[ADVERSARY-MODEL: Claude Sonnet 5 / claude-sonnet-5]"
+HANDBACK_A = "[Subagent hand-back] The report follows:\n  " + MODEL_REAL + "\n  findings\n  " + V_BREAK_A
+EXTERNAL_A = "[ADVERSARY-MODEL: GPT-5 / UNKNOWN]\n- finding\n" + V_BREAK_A
+HANDBACK_B = "[Subagent hand-back] The report follows:\n  " + MODEL_REAL + "\n  findings\n  " + V_BREAK_B
 MODEL_UNKNOWN = "[ADVERSARY-MODEL: UNKNOWN / UNKNOWN]"
 # Real ids can contain brackets (the 1M-context variants). See cases 31-33.
 MODEL_BRACKET_ID = "[ADVERSARY-MODEL: Claude Opus 5 / claude-opus-5[1m]]"
@@ -280,6 +283,35 @@ CASES = [
      SPEC + MODEL_CAVEAT_IN_BRACKETS + "\n" + V_HOLD + "\n" + CR_ADV_DIFF, None,
      {"expect": "advisory-or-block"}),
 
+    # --- a round is told from a re-quote by where its verdict arrived (0.65.6) ---
+    # Case 20 is the same verdict three times with nothing behind it, and stays 1. Here each quote
+    # follows its own hand-back carrying that verdict: three rounds that happened to come back with
+    # the same counts (session 23c9f476, 2026-10-19, counted 2). 46, 48 and 50 change against 0.65.5.
+    ("46-identical-rounds-each-after-handback", SPEC + CR_ADV,
+     [SPEC, ("peer", HANDBACK_A), V_BREAK_A, ("peer", HANDBACK_A), V_BREAK_A,
+      ("peer", HANDBACK_A), V_BREAK_A], {"conv": "CONV!"}),
+    # One hand-back, then the executor quotes it three times: one round, as before.
+    ("47-one-handback-three-quotes", SPEC + CR_ADV,
+     [SPEC, ("peer", HANDBACK_A), V_BREAK_A, V_BREAK_A, V_BREAK_A], {"conv": "-"}),
+    # The external partner: its output reaches the executor as a tool result with both lines.
+    ("48-identical-rounds-each-after-external-output", SPEC + CR_ADV,
+     [SPEC, ("result", EXTERNAL_A), V_BREAK_A, ("result", EXTERNAL_A), V_BREAK_A,
+      ("result", EXTERNAL_A), V_BREAK_A], {"conv": "CONV!"}),
+    # A tool result that shows a verdict with no model line (a file read, a grep) is not a round.
+    ("49-verdict-without-model-line-is-not-a-source", SPEC + CR_ADV,
+     [SPEC, ("result", V_BREAK_A), V_BREAK_A, ("result", V_BREAK_A), V_BREAK_A,
+      ("result", V_BREAK_A), V_BREAK_A], {"conv": "-"}),
+    # The third round arrived after the last record and this turn quotes it: the file has not
+    # caught up, and its text equals the previous quote.
+    # The agent quoted the verdict from a hook notice before the hand-back arrived, then again after
+    # it: one round (session 1adc5585). Same as 0.65.5; without the rule it would count two.
+    ("51-quote-before-its-handback-then-again", SPEC + CR_ADV,
+     [SPEC, ("peer", HANDBACK_A), V_BREAK_A, V_BREAK_B, ("peer", HANDBACK_B), V_BREAK_B],
+     {"conv": "-"}),
+    ("50-current-turn-quotes-a-new-identical-round", V_BREAK_A + "\n" + CR_ADV,
+     [SPEC, ("peer", HANDBACK_A), V_BREAK_A, ("peer", HANDBACK_A), V_BREAK_A,
+      ("peer", HANDBACK_A)], {"conv": "CONV!"}),
+
     # --- parked-loop silence (0.36.0) ---
     # The other side of case 18. Same streak, same absent declaration — but THIS turn carries a
     # verdict of its own, so a round actually ran here: the floor is news and must still be said,
@@ -315,11 +347,22 @@ CASES = [
 
 
 def transcript(turns, name):
+    """Each item is an assistant text, or ("peer", text) for a subagent hand-back, or
+    ("result", text) for a tool result (0.65.6: where a verdict arrives, see ROUND cases)."""
     p = os.path.join(TMP, name + ".jsonl")
     with open(p, "w", encoding="utf-8") as fh:
-        for t in turns:
-            fh.write(json.dumps({"type": "assistant",
-                                 "message": {"content": [{"type": "text", "text": t}]}}) + "\n")
+        for i, t in enumerate(turns):
+            if isinstance(t, tuple) and t[0] == "peer":
+                rec = {"type": "user", "isMeta": True, "origin": {"kind": "peer", "from": "ag%d" % i},
+                       "message": {"role": "user", "content": [{"type": "text", "text": t[1]}]}}
+            elif isinstance(t, tuple) and t[0] == "result":
+                fh.write(json.dumps({"type": "assistant", "message": {"content": [
+                    {"type": "tool_use", "name": "Bash", "id": "tr-%d" % i, "input": {}}]}}) + "\n")
+                rec = {"type": "user", "message": {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "tr-%d" % i, "content": t[1]}]}}
+            else:
+                rec = {"type": "assistant", "message": {"content": [{"type": "text", "text": t}]}}
+            fh.write(json.dumps(rec) + "\n")
     return p
 
 
