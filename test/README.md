@@ -272,9 +272,8 @@ can go wrong quietly:
   required, late source ignored, freshness ignored, source not consumed, an early quote not
   keeping its source) each turn a case red. Replayed over the 923 Stops of 220 real sessions
   (2026-10-19): the floor now fires on 8 more Stops in 7 sessions, and no Stop counts fewer than
-  before. By record, 6 of those sessions are three rounds in a row, each after its own hand-back;
-  the 7th (96d73a0a) is two rounds and three reports, both backends on one round. The floor counts
-  reports, not rounds.
+  before. It counts quoted adversary reports, not rounds: both backends on one round in separate
+  records are two, and a report the agent never quoted is not seen.
 - **24 / 25** — the bound on 0.18.0's hold-only fix, from both sides. A `hold` in the *most recent*
   verdict-carrying turn still ends the run (that is convergence; a floor there is noise), while an
   *earlier* hold-only turn no longer extinguishes it — and skipping it must not over-count two break

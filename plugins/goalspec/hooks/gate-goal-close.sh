@@ -459,7 +459,9 @@ for _i, _t in enumerate(turns):
 # With no source in the transcript this is exactly the old rule (first occurrence since the hold).
 # It counts adversary REPORTS, not rounds: when both backends report on one round in separate
 # records, that is two, as it already was when their texts differed (session 96d73a0a: two rounds,
-# three reports, streak 3). A re-read of the external output file is a source again too.
+# three reports, streak 3). A re-read of the external output file is a source again too, and a
+# report the agent never quoted is not seen at all (session 1dd94da0: an unquoted hold between two
+# quoted breaks).
 _src_at = {}
 for _pos, _s in tx_sources:
     _src_at.setdefault(_pos, set()).update(v for _, v in turn_verdicts(_s))
