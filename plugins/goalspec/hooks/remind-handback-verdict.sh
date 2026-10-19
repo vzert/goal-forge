@@ -104,7 +104,8 @@ def report_text(transcript, strict=False):
     """-> (report, when, source): the adversary report -- its last SubagentHandback message, else its
     last text block -- the timestamp of the transcript line that carries it (file mtime if absent),
     and which of the two it was: "handback" when that call is the last thing it wrote, "resumed" when
-    text follows it (a resumed adversary at work again), "text" with no call; None with no report."""
+    any block follows it, text or another tool call (a resumed adversary at work again), "text" with
+    no call; None with no report."""
     handback = text = None
     after = False
     with open(transcript, encoding="utf-8") as fh:
