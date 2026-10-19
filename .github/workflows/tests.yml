@@ -1,7 +1,7 @@
 name: tests
 
 # The plugin is a skill + hooks + docs, so there is nothing to build and nothing to deploy. What
-# there IS: eighteen hermetic branch suites that drive the hook scripts, one rule-carrier check, and
+# there IS: nineteen hermetic branch suites that drive the hook scripts, one rule-carrier check, and
 # a manifest/wiring check. All of them are pure `python3` + `bash` + `git`, with no network, no
 # credential and no Claude Code install — which is exactly why they are worth running here.
 #
@@ -131,6 +131,8 @@ jobs:
           python --version
           git --version
           python -c "import os; print('os.name =', os.name)"
+          # What utf8-stdin-branches.py rests on: python here does not default to UTF-8.
+          python -c "import locale, os; print('locale encoding =', locale.getpreferredencoding(False), '| PYTHONUTF8 =', os.environ.get('PYTHONUTF8'), '| PYTHONIOENCODING =', os.environ.get('PYTHONIOENCODING'))"
 
       - name: run_dir on a real Windows host (the LOCALAPPDATA branch)
         run: |
