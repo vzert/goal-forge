@@ -210,6 +210,10 @@ CASES = [
     # absolute path is still codex (the match is on the basename).
     ("67-codex-profile-kept", None, {"GOAL_ADVERSARY_CMD": "codex exec -p suiteprofile"}, None,
      "pass+codexsilent+kept"),
+    ("69-codex-profile-equals-kept", None, {"GOAL_ADVERSARY_CMD": "codex exec -p=suiteprofile"}, None,
+     "pass+codexsilent+kept"),
+    ("70-codex-profile-attached-kept", None, {"GOAL_ADVERSARY_CMD": "codex exec -psuiteprofile"}, None,
+     "pass+codexsilent+kept"),
     ("68-codex-abspath-defaulted", None, {"GOAL_ADVERSARY_CMD": "FAKEBIN/codex exec"}, None,
      "pass+codexdefaulted+ww"),
     # --- reviewed-state isolation (worktree-isolation change). THE case: a "sibling session"
@@ -908,7 +912,7 @@ def _classify(res, case_name, repo=REPO):
     if case_name.startswith("51") and "MODIFIED the repository" in err:
         # Another session's file is not this partner's write: naming it is the false warning.
         branch += "+other-session-file-reported"
-    if case_name[:2] in ("22", "23", "65", "67", "68"):
+    if case_name[:2] in ("22", "23", "65", "67", "68", "69", "70"):
         if "added '-s workspace-write'" in err:
             branch += "+codexdefaulted"
         elif "sets no sandbox mode" in err:
@@ -921,7 +925,8 @@ def _classify(res, case_name, repo=REPO):
             branch += "+ww" if args[-2:] == ["-s", "workspace-write"] else "+noflag"
         else:
             want = {"23": ["-s", "read-only"], "65": ["exec", "--full-auto"],
-                    "67": ["exec", "-p", "suiteprofile"]}[case_name[:2]]
+                    "67": ["exec", "-p", "suiteprofile"], "69": ["exec", "-p=suiteprofile"],
+                    "70": ["exec", "-psuiteprofile"]}[case_name[:2]]
             branch += "+kept" if args == want else "+changed:" + " ".join(args)
     if case_name[:2] in ("36", "37", "38"):
         # Fail-open, not just a notice: the partner must have run in the LIVE repo (the dir that

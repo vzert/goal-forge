@@ -87,7 +87,7 @@ fi
 # warning: the operator could not tell which mode a round had. So a codex command with no mode of
 # its own now gets `-s workspace-write` (writes to the review copy, /tmp and TMPDIR; no network).
 # An explicit mode always wins: -s/--sandbox, a sandbox_ override, --full-auto, the bypass flag, or
-# a profile (-p/--profile), which may set one. A sandbox_mode set only in ~/.codex/config.toml is not
+# a profile (-p, -p=NAME, -pNAME or --profile), which may set one. A sandbox_mode set only in ~/.codex/config.toml is not
 # visible here and the flag overrides it: put the mode in external_cmd to keep it.
 # Network stays off on purpose: with it, a partner that can read ~/.ssh could push. What catches an
 # overreaching partner is still the content fingerprint below, not the mode. Other CLIs: untouched,
@@ -96,7 +96,7 @@ fi
 case "${BIN##*/}" in
   codex)
     case "$EXT_CMD" in
-      *-s\ *|*--sandbox*|*sandbox_*|*--full-auto*|*--dangerously-bypass*|*--yolo*|*\ -p\ *|*--profile*) ;;
+      *-s\ *|*--sandbox*|*sandbox_*|*--full-auto*|*--dangerously-bypass*|*--yolo*|*\ -p*|*--profile*) ;;
       *) EXT_CMD="$EXT_CMD -s workspace-write"
          echo "external-adversary: the codex command set no sandbox mode, so this hook added '-s workspace-write' (the review copy, /tmp and TMPDIR writable; no network). Put -s or --sandbox in external_cmd to choose another. See references/external-adversary-setup.md." >&2 ;;
     esac

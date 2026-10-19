@@ -53,7 +53,7 @@ whole number of seconds, the partner runs uncapped and the hook says so.
      round of that kind that showed its sandbox said `read-only` in the two untrusted projects of one
      user, and the scratch writes its probes and suites need failed there, while nobody saw the
      stderr warning that was the only sign of it. A mode you set wins: `-s`/`--sandbox`, a
-     `sandbox_` override, `--full-auto`, the bypass flag or a profile (`-p`/`--profile`) are passed
+     `sandbox_` override, `--full-auto`, the bypass flag or a profile (`-p`, `-p=NAME`, `-pNAME` or `--profile`) are passed
      through untouched. A `sandbox_mode` set only in `~/.codex/config.toml` is not visible to the hook
      and the added flag overrides it — put the mode in `external_cmd` to keep it. Network
      stays off unless you add `-c sandbox_workspace_write.network_access=true` yourself — with it, a
