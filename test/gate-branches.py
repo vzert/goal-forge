@@ -169,7 +169,8 @@ CASES = [
      {"expect": "silent"}),
     # an explicit waiver short-circuits everything, floor included
     ("19-waiver-with-3", SPEC + WAIVER, [SPEC, V_BREAK_A, V_BREAK_B, V_BREAK_C]),
-    # the SAME verdict string in three separate turns collapses to 1 — a deliberate under-count
+    # the SAME verdict string in three separate turns, with no hand-back or adversary output in the
+    # transcript (see 46-51 for the case with one), collapses to 1 — a deliberate under-count
     # (the fail-open direction), never a false "three breaks, stop editing"
     ("20-identical-requotes", SPEC + CR_ADV, [SPEC, V_BREAK_A, V_BREAK_A, V_BREAK_A]),
 

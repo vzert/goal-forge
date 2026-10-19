@@ -24,8 +24,12 @@ version bump are never delivered to already-installed users.
   6 new cases (46-51); against the 0.65.5 gate only 46, 48 and 50 change; `--compare` parity OK in
   both modes; seven mutations of the new code each turn a case red. Replayed over the 923 Stops
   that follow a verdict-carrying turn in 220 sessions on the maintainer's disk (2026-10-19): the
-  floor fires on 54 Stops instead of 46, in 7 more sessions, each inspected record by record as
-  three real rounds in a row; no Stop counts fewer than before.
+  floor fires on 54 Stops instead of 46, in 7 more sessions; no Stop counts fewer than before.
+  Inspected record by record: in 6 sessions those are three rounds in a row, each after its own
+  hand-back; in the 7th (96d73a0a, two Stops) they are two rounds and three reports, because both
+  backends reported on one round in separate records. The floor counts adversary reports, as it
+  already did when two backends' texts differed; a re-read of the external output file also
+  counts again, as the README already says ("can still over-count on re-quotes").
 
 ### Changed
 

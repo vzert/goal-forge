@@ -457,6 +457,9 @@ for _i, _t in enumerate(turns):
 # hold-only record, or when a source (tx_sources above) carrying that same verdict arrived after
 # the previous quote of it. A re-quote with no new source behind it is still one round, as before.
 # With no source in the transcript this is exactly the old rule (first occurrence since the hold).
+# It counts adversary REPORTS, not rounds: when both backends report on one round in separate
+# records, that is two, as it already was when their texts differed (session 96d73a0a: two rounds,
+# three reports, streak 3). A re-read of the external output file is a source again too.
 _src_at = {}
 for _pos, _s in tx_sources:
     _src_at.setdefault(_pos, set()).update(v for _, v in turn_verdicts(_s))
@@ -466,7 +469,7 @@ for _pos, _s in tx_sources:
 _pending, _seen, _unbacked, round_flags = set(), set(), set(), []
 for _i, _t in enumerate(turns):
     if _i == _cycle_start:
-        _seen, _unbacked = set(), set()
+        _seen, _unbacked, _pending = set(), set(), set()
     for _v in _src_at.get(_i, set()):
         if _v in _unbacked:
             _unbacked.discard(_v)
