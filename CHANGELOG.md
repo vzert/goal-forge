@@ -14,9 +14,11 @@ version bump are never delivered to already-installed users.
   because `hooks/lib/run_capped.py` started the partner from `python.exe`. That broke three ways: a bare
   `bash` resolved to the WSL launcher, a `codex.cmd` shim was not found, and a script with no extension
   is not a Win32 program. On Windows, the hook now has `run_capped.py` start Git Bash's own bash (its
-  native path, found with `cygpath -w`). That bash runs `exec "$@"` on the words of the command, so it
+  native path, from the `pwd -W` builtin). That bash runs `exec "$@"` on the words of the command, so it
   resolves them on its own PATH and keeps the backslashes of a `C:\` path. `taskkill /T` stops bash
-  and what it started. Without `cygpath`, the partner runs uncapped and the hook says so.
+  and what it started. It first sets TMP and TEMP again to the private scratch directory, because a
+  bash started from `python.exe` turns them back into `/tmp`-style paths. Without a usable bash
+  path, the partner runs uncapped and the hook says so.
   `test/external-adversary-branches.py` runs cases 61 and 62 on Windows again. Case 61 checks there,
   with `tasklist`, that the stub's child (by its Windows pid) is gone. Case 66 stays skipped on
   Windows, because it needs POSIX sessions.

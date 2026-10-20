@@ -755,18 +755,24 @@ fi
 # bare `bash` resolves to the WSL launcher, a `codex.cmd` shim is not found, and a script with no
 # extension is not a Win32 program -- in 0.65.7 every round there came back UNVERIFIED (windows CI,
 # run 39347209215), and 0.65.8 ran Windows uncapped. So there run_capped.py starts THIS bash (its
-# native path, from cygpath) with `exec "$@"` and the words of the command: bash resolves them on its
-# own PATH, as the uncapped call does, and does not re-parse them (a C:\ path keeps its backslashes).
-# taskkill /T in run_capped.py takes bash and what it started. No cygpath -> uncapped, and it says so.
+# native path, from the `pwd -W` builtin: no external cygpath) with `exec "$@"` and the words of the
+# command: bash resolves them on its own PATH, as the uncapped call does, and does not re-parse them
+# (a C:\ path keeps its backslashes). A bash started from python.exe turns TMP and TEMP back into
+# /tmp-style paths on startup, so the -c script sets them again to the native scratch path above
+# (windows CI, run 39428667453: cases 55-58 saw TMP and TEMP differ from TMPDIR). taskkill /T in
+# run_capped.py takes bash and what it started. No usable path -> uncapped, and it says so.
 ADV_LAUNCH=""
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*)
     if [ "$ADV_CAP" -gt 0 ]; then
-      ADV_BASH=$(cygpath -w "${BASH:-/usr/bin/bash}" 2>/dev/null || true)
-      if [ -n "$ADV_BASH" ]; then
+      _adv_b="${BASH:-/usr/bin/bash}"
+      ADV_BASH=$(cd "${_adv_b%/*}" 2>/dev/null && pwd -W 2>/dev/null || true)
+      _adv_n="${_adv_b##*/}"; case "$_adv_n" in *.exe) ;; *) _adv_n="$_adv_n.exe" ;; esac
+      [ -n "$ADV_BASH" ] && ADV_BASH="$ADV_BASH/$_adv_n"
+      if [ -n "$ADV_BASH" ] && [ -f "$ADV_BASH" ]; then
         ADV_LAUNCH=gitbash
       else
-        echo "external-adversary: no cygpath to find this bash for python.exe — GOAL_ADVERSARY_TIMEOUT is not enforced, the partner runs with no time cap." >&2
+        echo "external-adversary: cannot find this bash as a Windows path for python.exe — GOAL_ADVERSARY_TIMEOUT is not enforced, the partner runs with no time cap." >&2
         ADV_CAP=0
       fi
     fi
@@ -775,7 +781,8 @@ esac
 if [ "$ADV_CAP" -gt 0 ] && [ -f "$RUN_CAPPED_PY" ] && command -v "$PY" >/dev/null 2>&1; then
   ADV_CAPPED=1
   if [ "$ADV_LAUNCH" = gitbash ]; then
-    OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" "$ADV_BASH" -c 'exec "$@"' bash $EXT_CMD 2>&1)
+    OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" "$ADV_BASH" -c \
+      '[ -n "$1" ] && export TMP="$1" TEMP="$1"; shift; exec "$@"' bash "${TMP:-}" $EXT_CMD 2>&1)
   else
     OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" $EXT_CMD 2>&1)
   fi
