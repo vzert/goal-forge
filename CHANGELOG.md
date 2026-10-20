@@ -6,6 +6,17 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.65.8] - 2026-10-19
+
+### Fixed
+
+- **On Windows the external adversary ran no round at all in 0.65.7.** The time cap starts the
+  partner from `python.exe`, and there a bare `bash` resolves to the WSL launcher, a `codex.cmd` shim
+  is not found and a script with no extension is not a Win32 program, so every round came back an
+  UNVERIFIED hold (windows CI, run 39347209215; macOS and Ubuntu were green). On Windows the hook now
+  runs the partner uncapped, as before 0.65.7, and says that `GOAL_ADVERSARY_TIMEOUT` is not enforced
+  there. `test/external-adversary-branches.py` shows cases 61, 62 and 66 as skipped on Windows.
+
 ## [0.65.7] - 2026-10-19
 
 From an audit of the external adversary (`codex exec -m gpt-5.6-luna`, effort `high`) over the 490

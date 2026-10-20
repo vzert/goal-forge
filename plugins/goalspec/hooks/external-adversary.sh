@@ -726,6 +726,18 @@ if ! printf '%s' "$ADV_CAP" | grep -qE '^[0-9]+$'; then
   echo "external-adversary: GOAL_ADVERSARY_TIMEOUT='$ADV_CAP' is not a whole number of seconds — the partner runs with no time cap." >&2
   ADV_CAP=0
 fi
+# Not on Windows (0.65.8): there python.exe starts the command itself, and a bare `bash` resolves to
+# the WSL launcher, a `codex.cmd` shim is not found, and a script with no extension is not a Win32
+# program -- in 0.65.7 every round there came back UNVERIFIED (windows CI, run 39347209215). Until the
+# cap can start the command through Git Bash, Windows runs uncapped, as before 0.65.7, and says so.
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*)
+    if [ "$ADV_CAP" -gt 0 ]; then
+      echo "external-adversary: GOAL_ADVERSARY_TIMEOUT is not enforced on Windows yet — the partner runs with no time cap." >&2
+      ADV_CAP=0
+    fi
+    ;;
+esac
 if [ "$ADV_CAP" -gt 0 ] && [ -f "$RUN_CAPPED_PY" ] && command -v "$PY" >/dev/null 2>&1; then
   ADV_CAPPED=1
   OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" $EXT_CMD 2>&1)

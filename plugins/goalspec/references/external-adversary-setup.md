@@ -37,8 +37,9 @@ subagent. Set it in the `env` block of `settings.json` to change it for every se
 490 rounds (the Bash calls that ran the hook, started before 2026-10-19 22:00Z; a
 recount by another method gave 491) of `codex exec -m gpt-5.6-luna` (effort `high`; `max` in the first days of the window) in four projects,
 2026-10-05..19: the median round took 3.4 to 6.2 minutes per project, and 12 rounds ran 30 minutes or
-more, up to 53 — all of them in one project. With no Python interpreter, or a value that is not a
-whole number of seconds, the partner runs uncapped and the hook says so.
+more, up to 53 — all of them in one project. With no Python interpreter, a value that is not a whole
+number of seconds, or on Windows (not enforced there yet, since 0.65.8), the partner runs uncapped
+and the hook says so.
 
 ## Enabling the external backend
 

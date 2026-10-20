@@ -1070,6 +1070,11 @@ def suite(hook, workdir):
             skip = "skipped (windows): chmod does not deny on NTFS"
             rows.append((name, skip, skip, subprocess.CompletedProcess(argv, 0, "", "")))
             continue
+        if name[:2] in ("61", "62", "66") and os.name == "nt":
+            # 0.65.8: the cap is not enforced on Windows (the hook says so and runs uncapped).
+            skip = "skipped (windows): the time cap is not enforced on Windows"
+            rows.append((name, skip, skip, subprocess.CompletedProcess(argv, 0, "", "")))
+            continue
         if name.startswith("60") and os.name == "nt":
             # Windows has no process groups to signal (no os.killpg): shown as skipped, never dropped.
             skip = "skipped (windows): no os.killpg"
