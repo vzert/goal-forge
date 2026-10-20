@@ -8,9 +8,9 @@ version bump are never delivered to already-installed users.
 
 ## [0.65.7] - 2026-10-19
 
-From an audit of the external adversary (`codex exec -m gpt-5.6-luna`, effort `high`) over some 490
-rounds in four projects of one user, 2026-10-05..19, counted as the Bash calls that ran the hook
-(another recount gave 491). The median round took 3.4 to 6.2 minutes per project; the cost the user
+From an audit of the external adversary (`codex exec -m gpt-5.6-luna`, effort `high`) over the 490
+rounds that started 2026-10-05..2026-10-19 22:00Z in four projects of one user, counted as the Bash
+calls that ran the hook (a recount by another method gave 491; rounds run after the cutoff are not in it). The median round took 3.4 to 6.2 minutes per project; the cost the user
 felt as slowness was mostly the number of rounds, and the three changes below go at its causes.
 
 ### Added
