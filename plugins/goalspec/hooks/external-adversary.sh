@@ -751,21 +751,34 @@ if ! printf '%s' "$ADV_CAP" | grep -qE '^[0-9]+$'; then
   echo "external-adversary: GOAL_ADVERSARY_TIMEOUT='$ADV_CAP' is not a whole number of seconds — the partner runs with no time cap." >&2
   ADV_CAP=0
 fi
-# Not on Windows (0.65.8): there python.exe starts the command itself, and a bare `bash` resolves to
-# the WSL launcher, a `codex.cmd` shim is not found, and a script with no extension is not a Win32
-# program -- in 0.65.7 every round there came back UNVERIFIED (windows CI, run 39347209215). Until the
-# cap can start the command through Git Bash, Windows runs uncapped, as before 0.65.7, and says so.
+# ON WINDOWS THROUGH GIT BASH (0.66.1, p-f0a87542b2). python.exe cannot start the command itself: a
+# bare `bash` resolves to the WSL launcher, a `codex.cmd` shim is not found, and a script with no
+# extension is not a Win32 program -- in 0.65.7 every round there came back UNVERIFIED (windows CI,
+# run 39347209215), and 0.65.8 ran Windows uncapped. So there run_capped.py starts THIS bash (its
+# native path, from cygpath) with `exec "$@"` and the words of the command: bash resolves them on its
+# own PATH, as the uncapped call does, and does not re-parse them (a C:\ path keeps its backslashes).
+# taskkill /T in run_capped.py takes bash and what it started. No cygpath -> uncapped, and it says so.
+ADV_LAUNCH=""
 case "$(uname -s 2>/dev/null)" in
   MINGW*|MSYS*|CYGWIN*)
     if [ "$ADV_CAP" -gt 0 ]; then
-      echo "external-adversary: GOAL_ADVERSARY_TIMEOUT is not enforced on Windows yet — the partner runs with no time cap." >&2
-      ADV_CAP=0
+      ADV_BASH=$(cygpath -w "${BASH:-/usr/bin/bash}" 2>/dev/null || true)
+      if [ -n "$ADV_BASH" ]; then
+        ADV_LAUNCH=gitbash
+      else
+        echo "external-adversary: no cygpath to find this bash for python.exe — GOAL_ADVERSARY_TIMEOUT is not enforced, the partner runs with no time cap." >&2
+        ADV_CAP=0
+      fi
     fi
     ;;
 esac
 if [ "$ADV_CAP" -gt 0 ] && [ -f "$RUN_CAPPED_PY" ] && command -v "$PY" >/dev/null 2>&1; then
   ADV_CAPPED=1
-  OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" $EXT_CMD 2>&1)
+  if [ "$ADV_LAUNCH" = gitbash ]; then
+    OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" "$ADV_BASH" -c 'exec "$@"' bash $EXT_CMD 2>&1)
+  else
+    OUT=$(printf '%s' "$PROMPT" | "$PY" "$RUN_CAPPED_PY" "$ADV_CAP" $EXT_CMD 2>&1)
+  fi
 else
   [ "$ADV_CAP" -gt 0 ] && echo "external-adversary: no python interpreter to enforce GOAL_ADVERSARY_TIMEOUT — the partner runs with no time cap." >&2
   OUT=$(printf '%s' "$PROMPT" | $EXT_CMD 2>&1)

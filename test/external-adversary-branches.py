@@ -419,7 +419,7 @@ CASES = [
     # stands. 63: 0 turns the cap off. 64: a value that is not a whole number warns and runs uncapped.
     # Against 0.65.5 61/62 run the full 20 s (`uncapped`) and 64 prints no warning.
     ("61-cap-stops-silent-partner", "STUB_SLOW_SILENT", {"GOAL_ADVERSARY_TIMEOUT": "2"}, None,
-     "unfilled+capped+capnotice" + ("" if os.name == "nt" else "+child-gone")),
+     "unfilled+capped+capnotice+child-gone"),
     ("62-cap-keeps-printed-break", "STUB_SLOW_BREAK", {"GOAL_ADVERSARY_TIMEOUT": "2"}, None,
      "pass+capped+capnotice+break-kept"),
     ("66-cap-kills-other-session-child", "STUB_SLOW_NEWSESSION", {"GOAL_ADVERSARY_TIMEOUT": "2"},
@@ -550,6 +550,8 @@ _SLOW_HEAD = """#!/bin/bash
 cat >/dev/null
 sleep 20 &
 echo $! > "$SCRATCH_MARKER.child"
+# Git Bash: the Windows pid of that child, for the Windows check of case 61 (0.66.1).
+[ -r "/proc/$!/winpid" ] && cat "/proc/$!/winpid" > "$SCRATCH_MARKER.childwin"
 """
 STUB_SLOW_SILENT = _SLOW_HEAD + 'echo "- still probing, no verdict yet"\nwait\n'
 STUB_SLOW_BREAK = (_SLOW_HEAD + 'echo "%s"\necho "- the coverage-floor row claims done for an entity'
@@ -699,6 +701,20 @@ def cap_suffix(res, case_name, elapsed, scratch_marker):
         if case_name.startswith("62"):
             fills = re.findall(r"^\[ADVERSARY-VERDICT:\s*(break|hold)\s+ungrounded=\d+", res.stdout, re.M)
             b += "+break-kept" if fills and fills[-1] == "break" else "+break-lost"
+        if case_name.startswith("61") and os.name == "nt":
+            # 0.66.1: the cap runs on Windows through Git Bash; taskkill /T must take the child too.
+            time.sleep(1)
+            try:
+                wpid = int(open(scratch_marker + ".childwin").read().strip())
+                tl = subprocess.run(["tasklist", "/FI", "PID eq %d" % wpid, "/NH"],
+                                    capture_output=True, text=True).stdout
+                if str(wpid) in tl:
+                    b += "+child-alive"
+                    subprocess.run(["taskkill", "/F", "/PID", str(wpid)], capture_output=True)
+                else:
+                    b += "+child-gone"
+            except (OSError, ValueError):
+                b += "+child-unknown"
         if case_name[:2] in ("61", "66") and os.name != "nt":
             files = [(".child", "child")] + ([(".child2", "session-child")] if case_name.startswith("66") else [])
             time.sleep(0.5)
@@ -1073,9 +1089,10 @@ def suite(hook, workdir):
             skip = "skipped (windows): chmod does not deny on NTFS"
             rows.append((name, skip, skip, subprocess.CompletedProcess(argv, 0, "", "")))
             continue
-        if name[:2] in ("61", "62", "66") and os.name == "nt":
-            # 0.65.8: the cap is not enforced on Windows (the hook says so and runs uncapped).
-            skip = "skipped (windows): the time cap is not enforced on Windows"
+        if name.startswith("66") and os.name == "nt":
+            # A child in a session of its own is a POSIX shape (start_new_session); 61 and 62 run on
+            # Windows since 0.66.1, through Git Bash.
+            skip = "skipped (windows): no POSIX sessions"
             rows.append((name, skip, skip, subprocess.CompletedProcess(argv, 0, "", "")))
             continue
         if name.startswith("60") and os.name == "nt":
