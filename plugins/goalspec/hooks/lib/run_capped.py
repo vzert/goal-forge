@@ -55,9 +55,40 @@ def _signal_all(pids, sig):
             pass
 
 
-def _kill_tree(proc):
+def _job_for(proc):
+    """Windows: a job object holding the partner. Every process it starts joins the job too, so
+    TerminateJobObject takes the whole tree. taskkill /T alone follows parent pids, and a process
+    under Git Bash (the cap starts the partner through it since 0.66.1) did not always keep that link:
+    windows CI run 39433456595, case 61, the stub's `sleep` survived the cap in 1 of 3 runs.
+    None when it cannot be made; the caller falls back to taskkill /T."""
+    if os.name != "nt":
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateJobObjectW.restype = wintypes.HANDLE
+        k32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+        k32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+        job = k32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        if not k32.AssignProcessToJobObject(job, int(proc._handle)):
+            return None
+        return (k32, job)
+    except Exception:
+        return None
+
+
+def _kill_tree(proc, job=None):
     if os.name == "nt":
-        # No process groups: taskkill /T takes the children (codex spawns its own) with it.
+        if job is not None:
+            try:
+                job[0].TerminateJobObject(job[1], 1)
+            except Exception:
+                pass
+        # No process groups: taskkill /T takes the children (codex spawns its own) with it, for
+        # whatever the job missed (a process that broke away from it, or no job at all).
         subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return
@@ -107,6 +138,8 @@ def main():
     except OSError as e:
         sys.stdout.write("run_capped.py: cannot start %s: %s\n" % (sys.argv[2], e))
         return 127
+    # Before its stdin is fed: the partner starts nothing that matters before it reads its prompt.
+    job = _job_for(proc)
 
     def feed():
         try:
@@ -129,7 +162,7 @@ def main():
     # out of the hook's process group, so a SIGTERM or Ctrl-C sent to the hook's group (a timeout
     # around the hook, the user) would no longer reach it. Pass it on, then exit as killed.
     def forward(signum, _frame):
-        _kill_tree(proc)
+        _kill_tree(proc, job)
         sys.exit(128 + signum)
 
     for sig in (signal.SIGTERM, signal.SIGINT) + ((signal.SIGHUP,) if hasattr(signal, "SIGHUP") else ()):
@@ -143,7 +176,7 @@ def main():
     try:
         rc = proc.wait(timeout=cap if cap > 0 else None)
     except subprocess.TimeoutExpired:
-        _kill_tree(proc)
+        _kill_tree(proc, job)
         rc = TIMED_OUT
     reader.join(timeout=5)
     sys.stdout.buffer.write(b"".join(chunks))
