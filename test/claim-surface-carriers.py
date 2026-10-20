@@ -95,6 +95,10 @@ def external_env(**extra):
     env = dict(os.environ, **extra)
     env.pop("GOAL_ADVERSARY_ACTIVE", None)
     env.pop("GOAL_CONFIG_PATH", None)
+    # The subagent-first gate (0.66.0) is tested in subagent-gate-branches.py. Here it would refuse
+    # whenever this suite runs inside a Claude Code session (CLAUDE_CODE_SESSION_ID is inherited),
+    # and no prompt would be emitted to check.
+    env.setdefault("GOAL_ADVERSARY_AFTER_SUBAGENT", "0")
     return env
 DURABLE = os.path.join(P, "references", "durable-artifact.md")
 
@@ -443,6 +447,16 @@ def main():
           "ADDS the external CLI on terminal actions" in example)
     check("route-hook:external-is-added-not-instead",
           "ADDED to it, not routed " in route_out)
+    # 0.66.0: the external partner runs AFTER the subagent's hold, on the content it held. Four
+    # carriers; the route hook is checked on what it EMITS, not on its source.
+    _fl = lambda t: " ".join(t.split())
+    check("after-hold:skill-step6", "It runs after the subagent, never beside it (0.66.0)" in _fl(skill)
+          and "GOAL_ADVERSARY_AFTER_SUBAGENT=0" in skill)
+    check("after-hold:setup", "Since 0.66.0 the partner runs after the subagent's hold" in _fl(setup)
+          and "running both in parallel is fine" not in _fl(setup))
+    check("after-hold:adversary-skill", "after** the subagent's hold, on the content it held (0.66.0)" in _fl(adv_skill_txt)
+          or "after the subagent's hold, on the content it held (0.66.0)" in _fl(adv_skill_txt))
+    check("after-hold:route-emitted", "AFTER this subagent holds" in route_out and "NOT RUN" in route_out)
     _rh = json.loads(route_raw).get("systemMessage", "") if route_raw.strip() else ""
     check("route-hook:human-line-short", 0 < len(_rh) <= 200 and _rh != route_out, "%d chars" % len(_rh))
     check("route-hook:first-spawn-speaks", bool(route_first.strip()))
@@ -856,7 +870,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 254  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 258  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",

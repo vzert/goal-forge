@@ -293,6 +293,12 @@ if [ "$MODE" = "start" ]; then
   fi
   [ -n "$ROOTS" ] || ROOTS=$REPO_ROOT
   fingerprint > "$SNAP" 2>/dev/null || true
+  # The content this round starts from, for the subagent-first gate of the external partner
+  # (0.66.0, hooks/lib/subagent_gate.py): a hold counts only if the content did not change during
+  # the round. Fail-open: no library (a --compare copy without CLAUDE_PLUGIN_ROOT) means no record.
+  GATE_PY="$(dirname "$0")/lib/subagent_gate.py"
+  [ -f "$GATE_PY" ] || GATE_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/subagent_gate.py"
+  [ -f "$GATE_PY" ] && printf '%s\n' "$ROOTS" | "$PY" "$GATE_PY" start "$SNAP_DIR" "$AGENT_KEY" >/dev/null 2>&1 || true
   exit 0
 fi
 

@@ -1,6 +1,6 @@
 # test/
 
-**Nineteen** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Twenty** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -1027,6 +1027,31 @@ std streams the Windows code page, and for the two autoupdate cases also a Latin
 stdin, only under the POSIX stand-in; it stays as a POSIX case. `--selftest` drops the UTF-8 line from each of the three hooks it drives and
 requires a case to notice. It does not cover a user who sets `PYTHONIOENCODING` to something else
 on purpose: the hooks now override it.
+
+## `subagent-gate-branches.py` — the external partner runs on a tree the subagent held (0.66.0)
+
+`hooks/lib/subagent_gate.py` records every goal-adversary subagent verdict with the content hash of
+the trees it measured (called from `remind-handback-verdict.sh record`, on SubagentStop), and
+`external-adversary.sh` asks it before starting the partner. It runs when the subagent's last round
+held the current content, or after two subagent breaks in a row (SKILL.md step 6), with no session
+id, outside a git repository, or with `GOAL_ADVERSARY_AFTER_SUBAGENT=0`; otherwise the hook exits 3
+with an unprefixed `NOT RUN (goalspec external adversary): ...` line and no verdict line.
+
+Each case is a throwaway git repository with one committed file, zero or more recorded subagent
+rounds (a synthetic SubagentStop payload and subagent transcript, through the real `record`; in 17
+and 18 also the real `start`/`stop` of the adversary-writes rail), a change to the tree, and one run
+of the hook with a `cat` partner. The outcome is `run` or `block`. 19 cases:
+no round yet, a hold on the same content, work changed after it, only `.goalspec/` changed (ignored
+and tracked), the held content committed, one break, two breaks, a hold between two breaks, a new and
+a deleted file, no session id, the off switch, another session's hold, a report with no verdict after
+a hold, a hold measured on another repository, an edit during the subagent's round, the real rail
+with no change, and content git cannot hash (chmod 000; skipped on Windows). New in 0.66.0 with no
+predecessor, so `--selftest` applies 12 mutations to a copy of the plugin and requires a case to notice each.
+`external-adversary-branches.py` sets `GOAL_ADVERSARY_AFTER_SUBAGENT=0` for its own cases.
+
+The content hash is `git write-tree` of a copy of the index made with `shutil.copy2`: a plain copy
+gave the index a new mtime, git then trusted its stat cache for a same-size edit made in the second
+of the last index write, and case 03 came back `run` in 3 of 30 runs (0 of 30 with `copy2`).
 
 ## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)
 

@@ -103,6 +103,31 @@ case "${BIN##*/}" in
     ;;
 esac
 
+# THE PARTNER RUNS ON A TREE THE SUBAGENT HELD (0.66.0, p-d047a850d6). Measured over 15 days in one
+# user's four projects: 414 of 457 codex rounds ran on a tree the goal-adversary subagent had not held
+# (no subagent round yet, right after a subagent break, or work changed after its hold), and most of
+# their breaks were real defects the cheaper subagent round exists to find first. So this refuses,
+# with the reason, unless the subagent's last round held the current content, or it broke twice in a
+# row (the switch SKILL.md step 6 mandates). hooks/lib/subagent_gate.py has the rule and its limits.
+# Fail-open with no session id, outside a git repository, or when the gate itself fails; the human
+# turns it off with GOAL_ADVERSARY_AFTER_SUBAGENT=0. A refusal prints no verdict line at all.
+GATE_PY="$(dirname "$0")/lib/subagent_gate.py"
+[ -f "$GATE_PY" ] || GATE_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/subagent_gate.py"
+if [ -f "$GATE_PY" ]; then
+  # The native form of the cwd: on Git Bash $PWD is /c/..., which python.exe cannot open, and the
+  # gate would fail open on every Windows run. `pwd -W` exists only there.
+  GATE_CWD=$(pwd -W 2>/dev/null || pwd)
+  GATE_OUT=$("$PY" "$GATE_PY" gate "$GATE_CWD" 2>/dev/null || true)
+  case "$GATE_OUT" in
+    BLOCK*)
+      GATE_WHY=${GATE_OUT#BLOCK	}
+      echo "external-adversary: NOT RUN -- the external partner reviews only a tree the goal-adversary subagent held. $GATE_WHY (GOAL_ADVERSARY_AFTER_SUBAGENT=0 turns this off; only the human sets it.)" >&2
+      echo "NOT RUN (goalspec external adversary): no round ran, so there is no verdict to quote. $GATE_WHY" >&2
+      exit 3
+      ;;
+  esac
+fi
+
 PAYLOAD=$(cat)
 
 # EDITING THE PROMPT BELOW: keep single quotes/apostrophes BALANCED inside this heredoc. It sits in a

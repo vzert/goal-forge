@@ -6,6 +6,44 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.66.0] - 2026-10-20
+
+### Changed
+
+- **The external partner runs after the subagent's hold, on the content it held.** Before it
+  starts the partner, `hooks/external-adversary.sh` asks the new `hooks/lib/subagent_gate.py`. The
+  partner runs when the goal-adversary subagent's last round in this session held the current
+  content of the repository, or after two subagent breaks in a row (the switch SKILL.md step 6
+  mandates). Otherwise the hook prints why and an unprefixed
+  `NOT RUN (goalspec external adversary): ...` line, exits 3, and gives no verdict. A hold counts
+  only if the content did not change during the subagent's round (`watch-adversary-writes.sh start`
+  hashes it when the round begins). Two changes do
+  not undo a hold: a commit of the held content, and this session's `.goalspec/` files. It fails
+  open with no session id, outside a git repository, or when the gate fails. Only the human turns
+  it off, with `GOAL_ADVERSARY_AFTER_SUBAGENT=0`. `remind-handback-verdict.sh record` writes the
+  subagent's verdict and the content hash (`git write-tree` of a copy of the index) to the
+  session's run directory.
+  Why, measured over the codex rounds that started 2026-10-05..2026-10-20 03:30Z in four projects of
+  one user (515 rounds; 457 with a verdict, not counting 6 stub or sub-minute runs):
+  - 414 ran on content the subagent had not held: 97 with no subagent verdict yet, 156 right after
+    a subagent break, and 161 after a hold with work changed since.
+  - Of the 368 that broke, 268 found at least one real defect, by the reading of one classifier per
+    project, with 8 checked by hand: 5 clear, 3 debatable.
+  - On held content (43 rounds), the partner still found real defects the subagent had missed, in
+    17.
+  How many of those rounds the gate saves depends on how many of the partner's defects the subagent
+  would have found first. That is not measured yet.
+- `skills/goalspec/SKILL.md` step 6, `skills/adversary/SKILL.md`, `references/external-adversary-setup.md`
+  (which said running both in parallel was fine), README and the reminder of
+  `hooks/route-external-adversary.sh` say the partner runs after the hold.
+
+### Tests
+
+- New `test/subagent-gate-branches.py`: 19 cases and `--selftest` with 12 mutations.
+  `test/external-adversary-branches.py` and `test/claim-surface-carriers.py` turn the gate off for
+  their own runs; inside a Claude Code session they inherit a session id and the gate would refuse.
+  `claim-surface-carriers.py` checks the rule in its four carriers (EXPECTED_CHECKS 258).
+
 ## [0.65.8] - 2026-10-19
 
 ### Fixed

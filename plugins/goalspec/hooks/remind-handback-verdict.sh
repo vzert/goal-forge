@@ -191,6 +191,13 @@ if os.environ["MODE"] == "record":
                          stamp(datetime.datetime.now(datetime.timezone.utc)))
     if rec["verdict"] == "malformed":
         rec["tp"] = tp  # remind checks it for work written after this stop (a resumed adversary)
+    # The external partner runs only on a tree this subagent held (hooks/lib/subagent_gate.py):
+    # record the verdict with the content hash of the trees it measured. Fail-open.
+    try:
+        import subagent_gate
+        subagent_gate.record(sid, data.get("agent_id"), rec["verdict"], data.get("cwd") or "")
+    except Exception:
+        pass
     snap = run_dir.ensure(sid, HOOK_NAME)
     if not snap:
         sys.exit(0)

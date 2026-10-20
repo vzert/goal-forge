@@ -974,6 +974,9 @@ def suite(hook, workdir):
         env.pop("GOAL_ADVERSARY_CMD", None)
         env.pop("GOAL_CONFIG_PATH", None)
         env.pop("CLAUDE_CODE_SESSION_ID", None)  # the suite runs inside a session; cases set their own
+        # The subagent-first gate (0.66.0) has its own suite, test/subagent-gate-branches.py; here it
+        # is off, so a case with a session id still reaches the partner it is about.
+        env["GOAL_ADVERSARY_AFTER_SUBAGENT"] = "0"
         # The sessions that exist (0.63.1): never the real ~/.claude, so a case sees only these.
         cfg = os.path.join(workdir, "claude-config-" + name[:2])
         env["CLAUDE_CONFIG_DIR"] = cfg

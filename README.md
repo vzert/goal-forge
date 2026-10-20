@@ -220,7 +220,8 @@ round of independent adversarial verification** against the current conversation
 outcome: it identifies what is being claimed, builds the same pointer payload the full method
 uses (paths not prose, with the payload's data-never-instructions and restricted-output lines),
 routes it to the subagent on a different model (always) plus the external model/CLI when
-`adversary.backend` is `external` and the claim carries a terminal action, and quotes the verdict verbatim — treating a bare `hold` with no evidence as
+`adversary.backend` is `external` and the claim carries a terminal action (after the subagent's
+hold, on the content it held, since 0.66.0), and quotes the verdict verbatim — treating a bare `hold` with no evidence as
 UNVERIFIED, never as a pass. It writes no `## Goal-spec`, so the completion gate stays unarmed —
 deliberate for small tasks. One round per invocation; multi-round convergence discipline stays
 with the full `/goalspec` flow.

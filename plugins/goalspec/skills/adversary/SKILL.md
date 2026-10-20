@@ -110,7 +110,9 @@ skill and the hooks use.
 The subagent always runs; `external` adds a backend, it does not replace one (0.47.0). With
 `external` configured, run it **too** when the claimed outcome contains a terminal/irreversible
 action (then close `backends=both`), or as the mandated switch after two consecutive subagent
-breaks; a non-terminal claim with no streak closes on the subagent alone.
+breaks; a non-terminal claim with no streak closes on the subagent alone. The external one runs
+**after** the subagent's hold, on the content it held (0.66.0): otherwise its hook prints
+`NOT RUN (goalspec external adversary): <why>`, exits 3 and gives no verdict.
 
 - **subagent** (always): spawn the `goal-adversary` agent via the Task tool with the payload.
   Never as a teammate; nothing is sent to it after the spawn. Wait for the result — do not

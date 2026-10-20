@@ -18,7 +18,7 @@ a **different vendor's model/CLI** — the "partner reviews, never the host" pat
 | Backend | Independence | Setup | Use when |
 |---|---|---|---|
 | `subagent` (default) | Fresh context; different *tier* of the same family on every run (self-attested; you declare the degradation, ungated) | None | Every run — it is the round every goalspec run gets |
-| `external` | Different **vendor** *and* context | A second CLI on PATH | **Added** to the subagent, not instead of it: on terminal actions (then `backends=both`), and as the mandated switch after two consecutive subagent breaks |
+| `external` | Different **vendor** *and* context | A second CLI on PATH | **Added** to the subagent, not instead of it, and run **after** its hold: on terminal actions (then `backends=both`), and as the mandated switch after two consecutive subagent breaks |
 
 **Since 0.47.0 `external` adds a backend; it no longer replaces one.** Before, `backend: external`
 meant "route the adversary here instead of the subagent", so every round of every run went to the
@@ -27,6 +27,20 @@ Now the subagent on a different model runs on every run, plans and investigation
 external partner joins it where undoing is hard. A host that pins subagents to a weak tier (the
 reason some setups chose `external` globally) still gets that subagent round; the external partner
 is what brings the capable reader on terminal actions, and after two subagent breaks on any run.
+
+**Since 0.66.0 the partner runs after the subagent's hold, on the content it held.**
+`hooks/external-adversary.sh` asks `hooks/lib/subagent_gate.py` before it starts the partner. The
+partner runs when the subagent's last round in this session held the current content of the
+repository, or after two subagent breaks in a row (the switch SKILL.md step 6 mandates). It also
+runs with no session id, outside a git repository, or when the gate fails. Otherwise the hook
+prints why and an unprefixed `NOT RUN (goalspec external adversary): ...` line, exits 3, and gives
+no verdict. "Content" is everything git would add, ignored files left out. Two changes do not
+count: a commit of the held content, and this session's `.goalspec/` files. Every other change
+counts, `memory/` included, because a tracked memory directory is where an unconfirmed conclusion
+lands. Why: over 15 days in one user's four projects, 414 of 457 partner rounds ran on content the
+subagent had not held. Most of their breaks were real defects the subagent round finds too, only
+later and slower. On held content, the partner still found real defects the subagent missed, in 17
+of 43 rounds. Only the human turns the gate off, with `GOAL_ADVERSARY_AFTER_SUBAGENT=0`.
 
 **Time cap (0.65.7).** The hook stops the partner after `GOAL_ADVERSARY_TIMEOUT` seconds (default
 1800; `0` turns it off), killing it and every process below it at that moment —
@@ -272,8 +286,8 @@ the very adversary it was about, and one of them read it as a role change and wr
   external partner had already returned (that's why the close read `external-only`) but its own
   self-report was `UNKNOWN`, so it couldn't carry that accreditation either. The completion-review
   said so honestly without noticing that "honest" and "sufficient" had come apart. When you spawn a
-  backend for a terminal decision, wait for it; running both in parallel is fine, closing before the
-  slower one answers is not. **Neither of these is something any check catches** — a still-running
+  backend for a terminal decision, wait for it; closing before it answers is not fine. (Since 0.66.0
+  the two do not run in parallel: the partner starts only on content the subagent held.) **Neither of these is something any check catches** — a still-running
   spawn leaves no marker, and the tree each backend actually verified isn't recorded anywhere either
   — so, like the bullet above, both are instruction, not mechanism: nothing here gates on the field's
   presence, and this doesn't decide whether it should.

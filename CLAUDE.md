@@ -42,7 +42,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (every run
    since 0.47.0; with an external backend configured, the terminal action adds that one too) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **the nineteen branch suites plus the carrier suite** (twenty commands; one of them is not a
+3. Run **the twenty branch suites plus the carrier suite** (twenty-one commands; one of them is not a
    branch suite — it checks written rules across their carriers): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`12`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
@@ -95,7 +95,11 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    with no predecessor, so run `--selftest` too), and `python3 test/utf8-stdin-branches.py` (the
    hooks read stdin, print and open() files as UTF-8 on Windows too — it sends the payload as UTF-8
    bytes with the accents unescaped, as Claude Code does; on POSIX it gives the std streams cp1252
-   to stand in for Windows; new in 0.65.5, 4 of 7 fail against 0.65.4 on Windows CI, run `--selftest` too).
+   to stand in for Windows; new in 0.65.5, 4 of 7 fail against 0.65.4 on Windows CI, run `--selftest` too),
+   and `python3 test/subagent-gate-branches.py` (the external partner runs only on a tree the
+   goal-adversary subagent held, or after two subagent breaks in a row — throwaway git repos, synthetic
+   SubagentStop payloads, per-case state directory; new in 0.66.0 with no predecessor, so run
+   `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every
    `hooks.json` path resolving to a file that exists, and the suite counts in this file and
