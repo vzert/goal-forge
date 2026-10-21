@@ -269,6 +269,20 @@ def c19(c):  # content git cannot hash (an unreadable untracked file): run, neve
         os.chmod(p, 0o600)
 
 
+def c30(c):  # this session only READ the ledger another writer changed (codex round, 0.67.0)
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.transcript(("Bash", {"command": "sed -n 1,5p memory/review-stats/ledger.jsonl 2>/dev/null; ls memory/review-stats"}))
+    return c.partner()
+
+
+def c31(c):  # a redirect into the path is a write
+    c.subagent(H)
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Bash", {"command": "echo 'x = 2' > work.py"}))
+    return c.partner()
+
+
 def c28(c):  # an ordinary held run prints no other-writer notice
     c.subagent(H)
     return c.partner()
@@ -363,6 +377,8 @@ CASES = [
     ("27-other-session-edit-runs", c27, "run+notice"),
     ("28-held-run-prints-no-notice", c28, "run"),
     ("29-unhashable-after-hold-runs", c29, "run-unhashable"),
+    ("30-own-bash-read-of-ledger-runs", c30, "run+notice"),
+    ("31-own-redirect-write-blocks", c31, "block"),
 ]
 
 MUTATIONS = [
@@ -394,6 +410,8 @@ MUTATIONS = [
     ("other-writer notice dropped", EXT_REL, '      echo "external-adversary: ${GATE_OUT#RUN', '      : "external-adversary: ${GATE_OUT#RUN'),
     ("current content unhashable crashes", GATE_REL, '        return True, "the current content could not be hashed (git add failed)"',
      '        pass'),
+    ("bash reads count as writes", GATE_REL, "                        if not _BASH_WRITES.search(", "                        if False and not _BASH_WRITES.search("),
+    ("dev-null redirect is a write", GATE_REL, '_REDIRECT_NOISE = re.compile(r"', '_REDIRECT_NOISE = re.compile(r"NEVER'),
     ("record never called", HBV_REL, "        subagent_gate.record(", "        (lambda *a: None)("),
 ]
 

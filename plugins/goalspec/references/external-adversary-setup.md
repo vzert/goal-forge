@@ -39,7 +39,8 @@ count: a commit of the held content, this session's `.goalspec/` files, and (0.6
 no tool call of this session or its subagents made after the hold. Every other change counts,
 `memory/` included, because a tracked memory directory is where an unconfirmed conclusion lands.
 "Made by this session" is read from its own transcript: a Write, Edit, MultiEdit or NotebookEdit of
-the path, a Bash command that names the path or its file name, or a git command that rewrites the
+the path, a Bash command that can write (a redirect, tee, an in-place sed, mv, cp, rm and the like)
+and names the path or its file name (one that only reads it, such as `ls` or `sed -n`, does not count), or a git command that rewrites the
 tree without naming files (merge, pull, rebase, checkout, reset, stash and the like), which makes
 every changed path this session's. Why: on a shared server where several accounts append to
 `memory/review-stats/`, the gate refused the partner in 15 of 32 attempts on 2026-10-20, because

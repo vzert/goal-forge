@@ -1046,15 +1046,17 @@ and tracked), the held content committed, one break, two breaks, a hold between 
 a deleted file, no session id, the off switch, another session's hold, a report with no verdict after
 a hold, a hold measured on another repository, an edit during the subagent's round, the real rail
 with no change, and content git cannot hash (chmod 000; skipped on Windows). New in 0.66.0 with no
-predecessor, so `--selftest` applies 20 mutations to a copy of the plugin and requires a case to notice each.
+predecessor, so `--selftest` applies 22 mutations to a copy of the plugin and requires a case to notice each.
 
-Since 0.67.0, 29 cases: ten more for a change after the hold that no tool call of this session made
+Since 0.67.0, 31 cases: twelve more for a change after the hold that no tool call of this session made
 (a synthetic transcript of the session under `CLAUDE_CONFIG_DIR/projects/`). Another writer's
 file (a shared ledger) runs; this session's Edit, its Bash naming the file, a git command that
 rewrites the tree, a subagent's Write of the file, and the ledger plus an own edit block; an Edit
 made before the hold and another session's Edit run; 20 and 27 also require the hook to print the
 other-writer notice, 28 that an ordinary held run prints none, and 29 that content which cannot be
-hashed after the hold runs with that reason instead of crashing the gate (skipped on Windows). Cases 20, 24 and 27 come back `block` against
+hashed after the hold runs with that reason instead of crashing the gate (skipped on Windows); 30
+that a Bash command which only reads the ledger (`sed -n`, `ls`, a `2>/dev/null`) leaves it to the
+other writer, and 31 that a redirect into the path is this session's write. Cases 20, 24 and 27 come back `block` against
 the 0.66.1 gate (measured with that module swapped into a copy of the plugin); the other five
 already blocked there, because 0.66.1 counted every change.
 `external-adversary-branches.py` sets `GOAL_ADVERSARY_AFTER_SUBAGENT=0` for its own cases.

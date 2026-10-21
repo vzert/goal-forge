@@ -230,6 +230,17 @@ _GIT_REWRITE = re.compile(r"\bgit\b(?:\s+-[Cc]\s+\S+)*\s+(merge|pull|rebase|chec
                           r"apply|cherry-pick|revert|restore|mv|rm|clean|read-tree|checkout-index)\b")
 
 
+# A Bash command counts as a write of a path it names only when it can write at all: a redirect, tee,
+# an in-place sed/perl, or a command that moves, copies, removes or creates files. A command that only
+# reads (the executor checking the shared ledger with `ls` or `sed -n` right after a refusal, as the
+# server's sessions did) names the path without changing it. Redirects to /dev/null or to another fd
+# are not writes. An interpreter running a script is not counted: if it does write, the partner runs
+# on content the subagent did not hold, which costs a round.
+_REDIRECT_NOISE = re.compile(r"\d*>>?\s*/dev/null|\d*>&\s*\d+|&>\s*/dev/null")
+_BASH_WRITES = re.compile(r">|\btee\b|\b(?:sed|perl)\b[^|;&\n]*\s-i|\b(?:mv|cp|rm|touch|truncate|patch|dd|"
+                          r"install|ln|rsync|unzip)\b|\btar\b[^|;&\n]*\s-?[a-zA-Z]*x")
+
+
 def session_transcripts(session_id):
     base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
     if not os.path.isabs(base) or not session_id:
@@ -251,7 +262,8 @@ def own_changes(session_id, since, paths):
     when its transcript is not found (then nothing can be attributed and the gate blocks as before).
 
     A path is this session's when, at or after the hold, one of its own or its subagents' tool calls
-    wrote it (Write, Edit, MultiEdit, NotebookEdit), a Bash command names it (path or file name), or
+    wrote it (Write, Edit, MultiEdit, NotebookEdit), a Bash command that can write names it (path or
+    file name; a command that only reads it does not count), or
     a git command that rewrites the tree without naming files ran (then every path is). Anything else
     is another writer's: the shared memory ledger other accounts append to on a shared server, which
     kept the partner from running in 15 of 32 attempts there (2026-10-20). The wrong direction is
@@ -303,6 +315,8 @@ def own_changes(session_id, since, paths):
                         cmd = str(inp.get("command") or "")
                         if _GIT_REWRITE.search(cmd):
                             return set(want)
+                        if not _BASH_WRITES.search(_REDIRECT_NOISE.sub(" ", cmd)):
+                            continue  # reading a path (cat, sed -n, ls, grep) does not change it
                         for abs_p, (_root, rel) in want.items():
                             if rel in cmd or os.path.basename(rel) in cmd:
                                 own.add(abs_p)
