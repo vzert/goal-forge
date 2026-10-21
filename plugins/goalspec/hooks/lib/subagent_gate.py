@@ -230,15 +230,15 @@ _GIT_REWRITE = re.compile(r"\bgit\b(?:\s+-[Cc]\s+\S+)*\s+(merge|pull|rebase|chec
                           r"apply|cherry-pick|revert|restore|mv|rm|clean|read-tree|checkout-index)\b")
 
 
-# A Bash command counts as a write of a path it names only when it can write at all: a redirect, tee,
-# an in-place sed/perl, or a command that moves, copies, removes or creates files. A command that only
-# reads (the executor checking the shared ledger with `ls` or `sed -n` right after a refusal, as the
-# server's sessions did) names the path without changing it. Redirects to /dev/null or to another fd
-# are not writes. An interpreter running a script is not counted: if it does write, the partner runs
-# on content the subagent did not hold, which costs a round.
-_REDIRECT_NOISE = re.compile(r"\d*>>?\s*/dev/null|\d*>&\s*\d+|&>\s*/dev/null")
-_BASH_WRITES = re.compile(r">|\btee\b|\b(?:sed|perl)\b[^|;&\n]*\s-i|\b(?:mv|cp|rm|touch|truncate|patch|dd|"
-                          r"install|ln|rsync|unzip)\b|\btar\b[^|;&\n]*\s-?[a-zA-Z]*x")
+# Text a command carries as data, not as a command: a heredoc body (an adversary payload, a file
+# written with cat <<EOF) and a quoted string (a commit message). A git verb inside either is not a
+# git command that ran.
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?\n[ \t]*\2[ \t]*(?=\n|$)", re.S)
+_QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
+
+
+def _command_text(cmd):
+    return _QUOTED.sub(" ", _HEREDOC.sub(" ", cmd))
 
 
 def session_transcripts(session_id):
@@ -261,17 +261,20 @@ def own_changes(session_id, since, paths):
     """-> the changed paths ("<root>/<path>") this session may have written after `since`, or None
     when its transcript is not found (then nothing can be attributed and the gate blocks as before).
 
-    A path is this session's when, at or after the hold, one of its own or its subagents' tool calls
-    wrote it (Write, Edit, MultiEdit, NotebookEdit), a Bash command that can write names it (its path
-    in the repository or its absolute path; a bare file name does not count, because the same name in
-    another directory would make another writer's file this session's; a command that only reads it
-    does not count), or
-    a git command that rewrites the tree without naming files ran (then every path is). Anything else
-    is another writer's: the shared memory ledger other accounts append to on a shared server, which
-    kept the partner from running in 15 of 32 attempts there (2026-10-20). The wrong direction is
-    deliberately the cheap one: a write this cannot see (a script that edits a file it does not name)
-    lets the partner run on content the subagent did not hold, which costs a round; it never blocks
-    a review."""
+    A path is this session's when, at or after the hold, one of its own or its subagents' Write,
+    Edit, MultiEdit or NotebookEdit calls wrote it and did not fail, or when a git command that
+    rewrites the tree without naming files ran (merge, pull, rebase, checkout, reset, stash and the
+    like; then every path is). A git verb inside a heredoc body or a quoted string is data, not a
+    command. Anything else is another writer's: the shared memory ledger other accounts append to on
+    a shared server, which kept the partner from running in 15 of 32 attempts there (2026-10-20).
+
+    Bash writes are deliberately not attributed. Guessing them from command text was tried three ways
+    in the 0.67.0 review rounds (any mention of the path, then only commands that can write, then the
+    path and not the bare file name), and each time the external partner found an ordinary command the
+    guess got wrong in the expensive direction: a read of the ledger, a write to another file with the
+    same name, a payload heredoc that mentions the ledger path, each blocked a review this rule exists
+    to let run. A Bash write this session makes (sed -i, a redirect, a script) therefore lets the
+    partner run on content the subagent did not hold: that costs a round and never blocks a review."""
     files = session_transcripts(session_id)
     start = _epoch(since)
     if not files or start is None:
@@ -280,48 +283,54 @@ def own_changes(session_id, since, paths):
     for root, ps in paths.items():
         for p in ps:
             want[os.path.join(root, p)] = (root, p)
+    want_real = {abs_p: os.path.normcase(os.path.realpath(abs_p)) for abs_p in want}
     own = set()
     for f in files:
+        writes = []  # (tool_use id, real path)
+        failed = set()
         try:
             fh = open(f, encoding="utf-8", errors="replace")
         except OSError:
             return None
         with fh:
             for line in fh:
-                if '"tool_use"' not in line:
+                if '"tool_use"' not in line and '"is_error"' not in line:
                     continue
                 try:
                     e = json.loads(line)
                 except ValueError:
                     continue
-                t = _epoch(e.get("timestamp"))
-                if t is None or t < int(start):
-                    continue
                 content = (e.get("message") or {}).get("content")
                 if not isinstance(content, list):
                     continue
                 for b in content:
-                    if not isinstance(b, dict) or b.get("type") != "tool_use":
+                    if not isinstance(b, dict):
                         continue
-                    inp = b.get("input") or {}
+                    if b.get("type") == "tool_result" and b.get("is_error"):
+                        failed.add(b.get("tool_use_id"))
+                        continue
+                    if b.get("type") != "tool_use":
+                        continue
+                    t = _epoch(e.get("timestamp"))
+                    if t is None or t < int(start):
+                        continue
+                    inp = b.get("input")
+                    inp = inp if isinstance(inp, dict) else {}
                     name = b.get("name")
                     if name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
                         fp = inp.get("file_path") or inp.get("notebook_path") or ""
                         # realpath on both sides: git prints /private/var/... where the agent
                         # wrote /var/... (a symlink on macOS), and a match by spelling misses it.
-                        fp = os.path.normcase(os.path.realpath(fp)) if os.path.isabs(fp) else ""
-                        for abs_p in want:
-                            if fp and os.path.normcase(os.path.realpath(abs_p)) == fp:
-                                own.add(abs_p)
-                    elif name == "Bash":
-                        cmd = str(inp.get("command") or "")
-                        if _GIT_REWRITE.search(cmd):
-                            return set(want)
-                        if not _BASH_WRITES.search(_REDIRECT_NOISE.sub(" ", cmd)):
-                            continue  # reading a path (cat, sed -n, ls, grep) does not change it
-                        for abs_p, (_root, rel) in want.items():
-                            if rel in cmd or abs_p in cmd:
-                                own.add(abs_p)
+                        if isinstance(fp, str) and os.path.isabs(fp):
+                            writes.append((b.get("id"), os.path.normcase(os.path.realpath(fp))))
+                    elif name == "Bash" and _GIT_REWRITE.search(_command_text(str(inp.get("command") or ""))):
+                        return set(want)
+        for tid, fp in writes:
+            if tid in failed:
+                continue
+            for abs_p, real in want_real.items():
+                if real == fp:
+                    own.add(abs_p)
     return own
 
 

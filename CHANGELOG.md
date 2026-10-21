@@ -14,17 +14,21 @@ version bump are never delivered to already-installed users.
   the partner whenever the repository content changed after the subagent's hold. On a shared server
   where several accounts append to `memory/review-stats/`, that ledger changed between almost every
   hold and the partner. On 2026-10-20, 15 of 32 partner attempts in 14 developer sessions came back
-  `NOT RUN` (6 stated in the log, 9 inferred from a run under 15 s followed by a check of the ledger), and 4 sessions pushed or merged with the subagent as the only reviewer (read from the
-  server's session log, which has no tool outputs, so most outcomes are inferred; one developer filed
-  it as #9595: "4 de 4 intentos"). `hooks/lib/subagent_gate.py` now reads the paths that changed since
+  `NOT RUN`: 6 of them stated in the server's session log (one developer filed it as #9595, "4 de 4
+  intentos"), and 9 more probable but not proven, because that log keeps no tool outputs (each ended
+  in under 15 s and was followed by a check of the ledger). `hooks/lib/subagent_gate.py` now reads the paths that changed since
   the hold and this session's own transcript (and its subagents'). A path counts as this session's
-  when, at or after the hold, a Write, Edit, MultiEdit or NotebookEdit wrote it, a Bash command that
-  can write (a redirect, tee, an in-place sed, mv, cp, rm and the like) names it (its path in the repository or its absolute path, not a bare file name), or a git command that rewrites the tree without naming files ran (then every
-  path does). If no changed path is this session's, the partner runs and the hook says which paths it
-  left to another writer. With no transcript found, every change counts, as before. A write this
-  cannot see (a script that edits a file it does not name) lets the partner run on content the
-  subagent did not hold: that costs a round and never blocks a review.
-  `test/subagent-gate-branches.py`: 32 cases (13 new) and 23 mutations; cases 20, 24 and 27 come back
+  when, at or after the hold, a Write, Edit, MultiEdit or NotebookEdit that did not fail wrote it, or
+  a git command that rewrites the tree without naming files ran (then every path does; a git verb
+  inside a heredoc body or a quoted string is data). If no changed path is this session's, the
+  partner runs and the hook says which paths it left to another writer. With no transcript found,
+  every change counts, as before. Bash writes are not attributed: guessing them from command text
+  was tried three ways during this release's review, and each time the external partner found an
+  ordinary command it got wrong in the direction that blocks a review (a read of the ledger, a
+  write to another file with the same name, a payload heredoc that names the ledger). A Bash write
+  this session makes lets the partner run on content the subagent did not hold: that costs a round
+  and never blocks a review.
+  `test/subagent-gate-branches.py`: 34 cases (15 new) and 22 mutations; cases 20, 24 and 27 come back
   `block` against the 0.66.1 gate.
 
 ### Changed

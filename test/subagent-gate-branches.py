@@ -276,19 +276,19 @@ def c30(c):  # this session only READ the ledger another writer changed (codex r
     return c.partner()
 
 
-def c31(c):  # a redirect into the path is a write
+def c31(c):  # a redirect into the path is not attributed either
     c.subagent(H)
     c.write("work.py", "x = 2\n")
     c.transcript(("Bash", {"command": "echo 'x = 2' > work.py"}))
     return c.partner()
 
 
-def c32(c):  # this session wrote b/work.py; another writer changed a/work.py (same file name)
+def c32(c):  # this session wrote b/work.py (Write); another writer changed a/work.py (same file name)
     c.subagent(H)
     c.write("a/work.py", "x = 1\n")
     c.write("b/work.py", "x = 2\n")
     git(c.repo, "add", "-A")  # both tracked; the hold measured neither, so both changed
-    c.transcript(("Bash", {"command": "printf 'x = 2\\n' > b/work.py"}))
+    c.transcript(("Write", {"file_path": os.path.join(c.repo, "b", "work.py"), "content": "x = 2\n"}))
     return "own-only-b" if c.partner() == "block" and _reason_names(c, "b/work.py", "a/work.py") else "other"
 
 
@@ -297,6 +297,26 @@ def _reason_names(c, want, not_want):
     r = subprocess.run([sys.executable, os.path.join(c.plugin, GATE_REL), "gate", c.repo],
                        capture_output=True, text=True, env=env, cwd=c.repo)
     return want in r.stdout and not_want not in r.stdout
+
+
+def c33(c):  # an Edit that failed changed nothing: the change is another writer's
+    c.subagent(H)
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "zz", "new_string": "2"}))
+    base = os.path.join(c.env["CLAUDE_CONFIG_DIR"], "projects", "-tmp-repo", SID + ".jsonl")
+    with open(base, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"type": "user", "message": {"content": [
+            {"type": "tool_result", "tool_use_id": "t%d" % c.n, "is_error": True,
+             "content": "String to replace not found"}]}}) + "\n")
+    return c.partner()
+
+
+def c34(c):  # a payload heredoc that names the ledger and a git verb is data, not a write or a command
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.transcript(("Bash", {"command": "cat > /tmp/payload.txt <<'EOF'\nread memory/review-stats/ledger.jsonl\n"
+                                      "after git merge origin/main\nEOF\ngit commit -m \"before git reset\""}))
+    return c.partner()
 
 
 def c28(c):  # an ordinary held run prints no other-writer notice
@@ -318,7 +338,7 @@ def c21(c):  # this session edited the file after the hold
     return c.partner()
 
 
-def c22(c):  # this session changed it through a Bash command that names it
+def c22(c):  # a Bash write is not attributed (0.67.0 design): the partner runs, which costs a round
     c.subagent(H)
     c.write("work.py", "x = 2\n")
     c.transcript(("Bash", {"command": "sed -i.bak 's/1/2/' work.py"}))
@@ -385,7 +405,7 @@ CASES = [
     ("19-unhashable-content-runs", c19, "run"),
     ("20-other-writer-change-runs", c20, "run+notice"),
     ("21-own-edit-after-hold-blocks", c21, "block"),
-    ("22-own-bash-naming-path-blocks", c22, "block"),
+    ("22-own-bash-write-not-attributed-runs", c22, "run+notice"),
     ("23-own-git-rewrite-blocks", c23, "block"),
     ("24-own-edit-before-hold-runs", c24, "run+notice"),
     ("25-own-subagent-write-blocks", c25, "block"),
@@ -394,8 +414,10 @@ CASES = [
     ("28-held-run-prints-no-notice", c28, "run"),
     ("29-unhashable-after-hold-runs", c29, "run-unhashable"),
     ("30-own-bash-read-of-ledger-runs", c30, "run+notice"),
-    ("31-own-redirect-write-blocks", c31, "block"),
+    ("31-own-redirect-not-attributed-runs", c31, "run+notice"),
     ("32-same-file-name-elsewhere-not-own", c32, "own-only-b"),
+    ("33-failed-edit-not-own-runs", c33, "run+notice"),
+    ("34-heredoc-and-quoted-are-data-runs", c34, "run+notice"),
 ]
 
 MUTATIONS = [
@@ -415,22 +437,19 @@ MUTATIONS = [
     ("start never recorded", WATCH_REL, '"$PY" "$GATE_PY" start "$SNAP_DIR"', '"$PY" "$GATE_PY" nostart "$SNAP_DIR"'),
     ("unhashable blocks for good", GATE_REL, '        return True, "the content of the held tree could not be hashed',
      '        return False, "the content of the held tree could not be hashed'),
-    ("own writes ignored", GATE_REL, "                                own.add(abs_p)\n                    elif",
-     "                                pass\n                    elif"),
-    ("bash never counted", GATE_REL, "                            if rel in cmd or abs_p in cmd:",
-     "                            if False:"),
-    ("git rewrite not counted", GATE_REL, "                        if _GIT_REWRITE.search(cmd):", "                        if False:"),
-    ("hold time ignored", GATE_REL, "                if t is None or t < int(start):", "                if t is None:"),
+    ("own writes ignored", GATE_REL, "                if real == fp:\n                    own.add(abs_p)",
+     "                if real == fp:\n                    pass"),
+    ("git rewrite not counted", GATE_REL, 'elif name == "Bash" and _GIT_REWRITE.search(', 'elif False and _GIT_REWRITE.search('),
+    ("hold time ignored", GATE_REL, "                    if t is None or t < int(start):", "                    if t is None:"),
     ("subagent transcripts skipped", GATE_REL, '"subagents", "*.jsonl"))\n    return found',
      '"nosubagents", "*.jsonl"))\n    return found'),
     ("other writer never attributed", GATE_REL, "        if own is not None and not own and all(", "        if False and all("),
     ("other-writer notice dropped", EXT_REL, '      echo "external-adversary: ${GATE_OUT#RUN', '      : "external-adversary: ${GATE_OUT#RUN'),
     ("current content unhashable crashes", GATE_REL, '        return True, "the current content could not be hashed (git add failed)"',
      '        pass'),
-    ("bash reads count as writes", GATE_REL, "                        if not _BASH_WRITES.search(", "                        if False and not _BASH_WRITES.search("),
-    ("dev-null redirect is a write", GATE_REL, '_REDIRECT_NOISE = re.compile(r"', '_REDIRECT_NOISE = re.compile(r"NEVER'),
-    ("bare file name counts", GATE_REL, "                            if rel in cmd or abs_p in cmd:",
-     "                            if rel in cmd or os.path.basename(rel) in cmd:"),
+    ("failed edits counted", GATE_REL, "            if tid in failed:\n                continue", "            pass"),
+    ("heredoc not stripped", GATE_REL, "    return _QUOTED.sub(\" \", _HEREDOC.sub(\" \", cmd))", "    return _QUOTED.sub(\" \", cmd)"),
+    ("quoted not stripped", GATE_REL, "    return _QUOTED.sub(\" \", _HEREDOC.sub(\" \", cmd))", "    return _HEREDOC.sub(\" \", cmd)"),
     ("record never called", HBV_REL, "        subagent_gate.record(", "        (lambda *a: None)("),
 ]
 
