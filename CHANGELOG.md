@@ -69,9 +69,10 @@ version bump are never delivered to already-installed users.
 ### Not changed
 
 - The hook rule first proposed for this release (do not re-run the partner when only the checkpoint
-  changed since its break) would have skipped 2 of the 13 partner re-runs on the machine that could be matched to a codex verdict, both of which
-  ended in a hold: between the other 11, the executor changed tracked files (tests, CHANGELOG,
-  `memory/`). It was dropped.
+  changed since its break) would have skipped few rounds. Of the partner re-runs on the machine whose
+  content could be compared with the previous one (10, from the subagent's recorded fingerprints;
+  6 more have no record), 2 ran on unchanged content and both ended in a hold; before the other 8 the
+  executor had changed tracked files (tests, CHANGELOG, `memory/`). It was dropped.
 
 ## [0.66.1] - 2026-10-20
 
