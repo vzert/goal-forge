@@ -14,7 +14,7 @@ version bump are never delivered to already-installed users.
   the partner whenever the repository content changed after the subagent's hold. On a shared server
   where several accounts append to `memory/review-stats/`, that ledger changed between almost every
   hold and the partner. On 2026-10-20, 15 of 32 partner attempts in 14 developer sessions came back
-  `NOT RUN`, and 4 sessions pushed or merged with the subagent as the only reviewer (read from the
+  `NOT RUN` (6 stated in the log, 9 inferred from a run under 15 s followed by a check of the ledger), and 4 sessions pushed or merged with the subagent as the only reviewer (read from the
   server's session log, which has no tool outputs, so most outcomes are inferred; one developer filed
   it as #9595: "4 de 4 intentos"). `hooks/lib/subagent_gate.py` now reads the paths that changed since
   the hold and this session's own transcript (and its subagents'). A path counts as this session's
