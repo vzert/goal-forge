@@ -24,6 +24,9 @@ session's .goalspec/ left out. It does not depend on HEAD or on the real index, 
 held tree does not undo the hold; refreshing the checkpoint does not either. Any other change does:
 a source file, a test, a doc, memory/ (where a tracked memory directory is, an unconfirmed
 conclusion lands, and SKILL.md calls that write terminal). Ignored files are invisible to it.
+Since 0.67.0 a change counts only when this session (or one of its subagents) may have made it after
+the hold, read from its own transcript (own_changes below); a change no tool call of the session
+made is another writer's, and the partner runs. With no transcript found, every change counts.
 
 Declared limits: a round with no `start` record (the plugin installed mid-round) is judged on its
 stop hash alone; content git cannot add (a file this user cannot read) gives no hash, and then the
@@ -33,6 +36,7 @@ repository the subagent never measured is refused; with no session id (CLAUDE_CO
 gate cannot tell sessions apart and lets the partner run.
 """
 import datetime
+import glob
 import json
 import os
 import re
@@ -191,12 +195,118 @@ def gate(session_id, cwd):
                        "subagent on this tree." % (last["ts"], ", ".join(sorted(trees)) or "no tree", here))
     if any(h is None for h in trees.values()):
         return True, "the content of the held tree could not be hashed (git add failed)"
-    changed = [r for r, h in sorted(trees.items()) if content_hash(r) != h]
+    now = {r: content_hash(r) for r in sorted(trees)}
+    if any(h is None for h in now.values()):
+        return True, "the current content could not be hashed (git add failed)"
+    changed = [r for r, h in sorted(trees.items()) if now[r] != h]
     if changed:
+        paths = {r: changed_paths(r, trees[r], now[r]) for r in changed}
+        own = own_changes(session_id, last["ts"], paths)
+        if own is not None and not own and all(paths[r] for r in changed):
+            shown = sorted(p for r in changed for p in paths[r])
+            return True, ("the subagent held this content at %s; what changed since (%s) is in no write of "
+                          "this session's transcript, so another writer made it (a shared ledger, another "
+                          "account)" % (last["ts"], ", ".join(shown[:5]) + (" and %d more" % (len(shown) - 5)
+                                                                           if len(shown) > 5 else "")))
         return False, ("the content changed after the subagent's last hold (%s) in %s (.goalspec/ "
                        "and a commit of the same content do not count). Run the subagent on the "
-                       "current tree first." % (last["ts"], ", ".join(changed)))
+                       "current tree first." % (last["ts"], _few(sorted(own) if own else changed)))
     return True, "the subagent held this content at %s" % last["ts"]
+
+
+def _few(items, n=5):
+    return ", ".join(items[:n]) + (" and %d more" % (len(items) - n) if len(items) > n else "")
+
+
+def changed_paths(root, before, after):
+    """-> the paths that differ between two content hashes of `root`, or [] when git cannot say."""
+    out = _git(root, "diff-tree", "-r", "--name-only", "--no-renames", before, after)
+    return [p for p in (out or "").splitlines() if p]
+
+
+# A git command that rewrites the working tree without naming the files it changes: after one of
+# these, every changed path counts as this session's.
+_GIT_REWRITE = re.compile(r"\bgit\b(?:\s+-[Cc]\s+\S+)*\s+(merge|pull|rebase|checkout|switch|reset|stash|am|"
+                          r"apply|cherry-pick|revert|restore|mv|rm|clean|read-tree|checkout-index)\b")
+
+
+def session_transcripts(session_id):
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    if not os.path.isabs(base) or not session_id:
+        return []
+    found = glob.glob(os.path.join(base, "projects", "*", glob.escape(session_id) + ".jsonl"))
+    found += glob.glob(os.path.join(base, "projects", "*", glob.escape(session_id), "subagents", "*.jsonl"))
+    return found
+
+
+def _epoch(ts):
+    try:
+        return datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def own_changes(session_id, since, paths):
+    """-> the changed paths ("<root>/<path>") this session may have written after `since`, or None
+    when its transcript is not found (then nothing can be attributed and the gate blocks as before).
+
+    A path is this session's when, at or after the hold, one of its own or its subagents' tool calls
+    wrote it (Write, Edit, MultiEdit, NotebookEdit), a Bash command names it (path or file name), or
+    a git command that rewrites the tree without naming files ran (then every path is). Anything else
+    is another writer's: the shared memory ledger other accounts append to on a shared server, which
+    kept the partner from running in 15 of 32 attempts there (2026-10-20). The wrong direction is
+    deliberately the cheap one: a write this cannot see (a script that edits a file it does not name)
+    lets the partner run on content the subagent did not hold, which costs a round; it never blocks
+    a review."""
+    files = session_transcripts(session_id)
+    start = _epoch(since)
+    if not files or start is None:
+        return None
+    want = {}
+    for root, ps in paths.items():
+        for p in ps:
+            want[os.path.join(root, p)] = (root, p)
+    own = set()
+    for f in files:
+        try:
+            fh = open(f, encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        with fh:
+            for line in fh:
+                if '"tool_use"' not in line:
+                    continue
+                try:
+                    e = json.loads(line)
+                except ValueError:
+                    continue
+                t = _epoch(e.get("timestamp"))
+                if t is None or t < int(start):
+                    continue
+                content = (e.get("message") or {}).get("content")
+                if not isinstance(content, list):
+                    continue
+                for b in content:
+                    if not isinstance(b, dict) or b.get("type") != "tool_use":
+                        continue
+                    inp = b.get("input") or {}
+                    name = b.get("name")
+                    if name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+                        fp = inp.get("file_path") or inp.get("notebook_path") or ""
+                        # realpath on both sides: git prints /private/var/... where the agent
+                        # wrote /var/... (a symlink on macOS), and a match by spelling misses it.
+                        fp = os.path.normcase(os.path.realpath(fp)) if os.path.isabs(fp) else ""
+                        for abs_p in want:
+                            if fp and os.path.normcase(os.path.realpath(abs_p)) == fp:
+                                own.add(abs_p)
+                    elif name == "Bash":
+                        cmd = str(inp.get("command") or "")
+                        if _GIT_REWRITE.search(cmd):
+                            return set(want)
+                        for abs_p, (_root, rel) in want.items():
+                            if rel in cmd or os.path.basename(rel) in cmd:
+                                own.add(abs_p)
+    return own
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ and HOME, no network, no real ~/.claude.
 No predecessor exists (new in 0.66.0), so `--selftest` copies the plugin, applies one mutation at a
 time, and requires at least one case to notice.
 """
-import json, os, shutil, subprocess, sys, tempfile
+import datetime, json, os, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
@@ -96,6 +96,19 @@ class Case:
         with open(p, "w") as fh:
             fh.write(text)
 
+    def transcript(self, *calls, sid=SID, sub=False, ago=0):
+        """Append tool calls to this session's own transcript (sub=True: a subagent's), stamped now
+        minus `ago` seconds. Each call is (name, input)."""
+        base = os.path.join(self.env["CLAUDE_CONFIG_DIR"], "projects", "-tmp-repo")
+        d = os.path.join(base, sid, "subagents") if sub else base
+        os.makedirs(d, exist_ok=True)
+        ts = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(seconds=ago)).isoformat()
+        with open(os.path.join(d, "w.jsonl" if sub else sid + ".jsonl"), "a", encoding="utf-8") as fh:
+            for name, inp in calls:
+                self.n += 1
+                fh.write(json.dumps({"type": "assistant", "timestamp": ts.replace("+00:00", "Z"), "message": {
+                    "content": [{"type": "tool_use", "id": "t%d" % self.n, "name": name, "input": inp}]}}) + "\n")
+
     def partner(self, sid=SID, **extra):
         fx = os.path.join(self.tmp, "partner.txt")
         with open(fx, "w") as fh:
@@ -110,7 +123,7 @@ class Case:
         if r.returncode == 3 and "NOT RUN (goalspec external adversary):" in out and "[ADVERSARY-VERDICT:" not in out:
             return "block"
         if "re-ran the suite: green" in out:
-            return "run"
+            return "run+notice" if "so another writer made it" in r.stderr else "run"
         return "other(rc=%d)" % r.returncode
 
 
@@ -225,6 +238,24 @@ def c18(c):  # the real start/stop rail with no change during the round
     return c.partner()
 
 
+def c29(c):  # unhashable content appears AFTER the hold: run with that reason, not a crash
+    c.subagent(H)
+    p = os.path.join(c.repo, "secret2.bin")
+    with open(p, "w") as fh:
+        fh.write("s\n")
+    os.chmod(p, 0)
+    try:
+        fx = os.path.join(c.tmp, "partner.txt")
+        with open(fx, "w") as fh:
+            fh.write(PARTNER_OUT)
+        env = dict(c.env, GOAL_ADVERSARY_CMD="cat " + fx, GOAL_ADVERSARY_TIMEOUT="0", CLAUDE_CODE_SESSION_ID=SID)
+        r = subprocess.run([sys.executable, os.path.join(c.plugin, GATE_REL), "gate", c.repo],
+                           capture_output=True, text=True, env=env, cwd=c.repo)
+        return "run-unhashable" if r.stdout.startswith("RUN\tthe current content could not be hashed") else r.stdout.strip()[:60]
+    finally:
+        os.chmod(p, 0o600)
+
+
 def c19(c):  # content git cannot hash (an unreadable untracked file): run, never block for good
     c.subagent(H)
     p = os.path.join(c.repo, "secret.bin")
@@ -236,6 +267,70 @@ def c19(c):  # content git cannot hash (an unreadable untracked file): run, neve
         return c.partner()
     finally:
         os.chmod(p, 0o600)
+
+
+def c28(c):  # an ordinary held run prints no other-writer notice
+    c.subagent(H)
+    return c.partner()
+
+
+def c20(c):  # another writer (a shared ledger) changed a file; this session wrote nothing since
+    c.transcript(("Read", {"file_path": os.path.join(c.repo, "work.py")}))
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    return c.partner()
+
+
+def c21(c):  # this session edited the file after the hold
+    c.subagent(H)
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "1", "new_string": "2"}))
+    return c.partner()
+
+
+def c22(c):  # this session changed it through a Bash command that names it
+    c.subagent(H)
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Bash", {"command": "sed -i.bak 's/1/2/' work.py"}))
+    return c.partner()
+
+
+def c23(c):  # a git command that rewrites the tree without naming files: every path is this session's
+    c.subagent(H)
+    c.write("other.py", "y = 1\n")
+    c.transcript(("Bash", {"command": "git " + "merge origin/main"}))
+    return c.partner()
+
+
+def c24(c):  # an edit BEFORE the hold does not make a later change by someone else this session's
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "1", "new_string": "1"}), ago=3600)
+    c.subagent(H)
+    c.write("work.py", "x = 5\n")
+    return c.partner()
+
+
+def c25(c):  # a subagent of this session wrote it after the hold (its main transcript wrote nothing)
+    c.transcript(("Read", {"file_path": os.path.join(c.repo, "work.py")}))
+    c.subagent(H)
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Write", {"file_path": os.path.join(c.repo, "work.py"), "content": "x = 2\n"}), sub=True)
+    return c.partner()
+
+
+def c26(c):  # the ledger changed AND this session edited the work: blocks
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "1", "new_string": "2"}))
+    return c.partner()
+
+
+def c27(c):  # another session's transcript writing the path does not make it this session's
+    c.transcript(("Read", {"file_path": "x"}))
+    c.subagent(H)
+    c.write("work.py", "x = 2\n")
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "1", "new_string": "2"}), sid=OTHER)
+    return c.partner()
 
 
 CASES = [
@@ -258,6 +353,16 @@ CASES = [
     ("17-edit-during-round-blocks", c17, "block"),
     ("18-real-rail-no-change-runs", c18, "run"),
     ("19-unhashable-content-runs", c19, "run"),
+    ("20-other-writer-change-runs", c20, "run+notice"),
+    ("21-own-edit-after-hold-blocks", c21, "block"),
+    ("22-own-bash-naming-path-blocks", c22, "block"),
+    ("23-own-git-rewrite-blocks", c23, "block"),
+    ("24-own-edit-before-hold-runs", c24, "run+notice"),
+    ("25-own-subagent-write-blocks", c25, "block"),
+    ("26-ledger-plus-own-edit-blocks", c26, "block"),
+    ("27-other-session-edit-runs", c27, "run+notice"),
+    ("28-held-run-prints-no-notice", c28, "run"),
+    ("29-unhashable-after-hold-runs", c29, "run-unhashable"),
 ]
 
 MUTATIONS = [
@@ -277,6 +382,18 @@ MUTATIONS = [
     ("start never recorded", WATCH_REL, '"$PY" "$GATE_PY" start "$SNAP_DIR"', '"$PY" "$GATE_PY" nostart "$SNAP_DIR"'),
     ("unhashable blocks for good", GATE_REL, '        return True, "the content of the held tree could not be hashed',
      '        return False, "the content of the held tree could not be hashed'),
+    ("own writes ignored", GATE_REL, "                                own.add(abs_p)\n                    elif",
+     "                                pass\n                    elif"),
+    ("bash never counted", GATE_REL, "                            if rel in cmd or os.path.basename(rel) in cmd:",
+     "                            if False:"),
+    ("git rewrite not counted", GATE_REL, "                        if _GIT_REWRITE.search(cmd):", "                        if False:"),
+    ("hold time ignored", GATE_REL, "                if t is None or t < int(start):", "                if t is None:"),
+    ("subagent transcripts skipped", GATE_REL, '"subagents", "*.jsonl"))\n    return found',
+     '"nosubagents", "*.jsonl"))\n    return found'),
+    ("other writer never attributed", GATE_REL, "        if own is not None and not own and all(", "        if False and all("),
+    ("other-writer notice dropped", EXT_REL, '      echo "external-adversary: ${GATE_OUT#RUN', '      : "external-adversary: ${GATE_OUT#RUN'),
+    ("current content unhashable crashes", GATE_REL, '        return True, "the current content could not be hashed (git add failed)"',
+     '        pass'),
     ("record never called", HBV_REL, "        subagent_gate.record(", "        (lambda *a: None)("),
 ]
 
@@ -284,7 +401,7 @@ MUTATIONS = [
 def suite(plugin):
     rows = []
     # Windows has no mode bits: a chmod 000 file is still readable there. Shown, never dropped.
-    nt_skip = {"19": "mode bits"} if os.name == "nt" else {}
+    nt_skip = {"19": "mode bits", "29": "mode bits"} if os.name == "nt" else {}
     for name, fn, want in CASES:
         if name[:2] in nt_skip:
             rows.append((name, "skipped (windows): " + nt_skip[name[:2]], "skipped (windows): " + nt_skip[name[:2]]))

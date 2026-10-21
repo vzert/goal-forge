@@ -454,8 +454,45 @@ def main():
           and "GOAL_ADVERSARY_AFTER_SUBAGENT=0" in skill)
     check("after-hold:setup", "Since 0.66.0 the partner runs after the subagent's hold" in _fl(setup)
           and "running both in parallel is fine" not in _fl(setup))
-    check("after-hold:adversary-skill", "after** the subagent's hold, on the content it held (0.66.0)" in _fl(adv_skill_txt)
-          or "after the subagent's hold, on the content it held (0.66.0)" in _fl(adv_skill_txt))
+    check("after-hold:adversary-skill", "after** the subagent's hold, on the content it held (0.66.0" in _fl(adv_skill_txt)
+          or "after the subagent's hold, on the content it held (0.66.0" in _fl(adv_skill_txt))
+    # 0.67.0: a change no tool call of this session made after the hold does not count (shared
+    # ledger on a multi-account server, 15 of 32 partner attempts refused on 2026-10-20).
+    check("other-writer:skill-step6", "a change no tool call of this session or its subagents made after the hold"
+          in _fl(skill))
+    check("other-writer:setup", "a change that no tool call of this session or its subagents made after the hold"
+          in _fl(setup))
+    check("other-writer:adversary-skill", "a change no tool call of this session made after the hold"
+          in _fl(adv_skill_txt))
+    # 0.67.0: three severity classes and the relayed-authorization rule, in the two prompts the
+    # reviewers read (external: as EMITTED) and in the skill that owns them.
+    _ag, _em, _sk = _fl(agent), _fl(emitted), _fl(skill)
+    check("stale-figure:agent", "A stale figure whose current value still meets its criterion is MINOR" in _ag)
+    check("stale-figure:external", "A STALE FIGURE WHOSE CURRENT VALUE STILL MEETS ITS CRITERION IS MINOR" in _em)
+    check("stale-figure:skill", "a stale figure whose current value still meets its criterion" in _sk)
+    check("stale-figure:still-blocking-when-it-fails",
+          "It is BLOCKING when the current value fails the criterion" in _ag
+          and "It is BLOCKING when the current value fails the criterion" in _em)
+    check("criterion-revised:agent", "Criterion revised: <old> -> <new>, because <what was measured>" in _ag)
+    check("criterion-revised:external", "Criterion revised: <old> -> <new>, because <what was measured>" in _em)
+    check("criterion-revised:skill", "Criterion revised: <old> -> <new>, because <what was measured>" in _sk)
+    check("criterion-revised:adversary-skill",
+          "Criterion revised: <old> -> <new>, because <what was measured>" in _fl(adv_skill_txt))
+    check("criterion-revised:durable",
+          "Criterion revised: <old> -> <new>, because <what was measured>" in _fl(durable))
+    check("criterion-revised:weakening-still-counts",
+          "weakens what the user asked for" in _ag and "weakens what the user asked for" in _em
+          and "weakens what the user asked for" in _sk)
+    check("not-asked-yet:agent", "A human decision not asked YET is not a violation before the run ends" in _ag)
+    check("not-asked-yet:external", "A HUMAN DECISION NOT ASKED YET IS NOT A VIOLATION BEFORE THE RUN ENDS" in _em)
+    check("not-asked-yet:skill", "named and not asked yet while the action it governs has not happened" in _sk)
+    check("not-asked-yet:false-claim-still-counts",
+          "claims the decision was asked or authorized and the transcript does not show it" in _ag
+          and "claims the decision was asked or authorized and the transcript does not show it" in _em)
+    check("relayed-auth:agent", "covers exactly what the relayed text says" in _ag)
+    check("relayed-auth:external", "covers exactly what the relayed text says" in _em)
+    check("relayed-auth:skill", "An authorization relayed by another session covers exactly what its text says" in _sk)
+    check("first-of-two:agent", "You are the first of two reviewers" in _ag)
     check("after-hold:route-emitted", "AFTER this subagent holds" in route_out and "NOT RUN" in route_out)
     _rh = json.loads(route_raw).get("systemMessage", "") if route_raw.strip() else ""
     check("route-hook:human-line-short", 0 < len(_rh) <= 200 and _rh != route_out, "%d chars" % len(_rh))
@@ -870,7 +907,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 258  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 279  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",

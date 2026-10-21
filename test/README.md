@@ -1040,13 +1040,23 @@ with an unprefixed `NOT RUN (goalspec external adversary): ...` line and no verd
 Each case is a throwaway git repository with one committed file, zero or more recorded subagent
 rounds (a synthetic SubagentStop payload and subagent transcript, through the real `record`; in 17
 and 18 also the real `start`/`stop` of the adversary-writes rail), a change to the tree, and one run
-of the hook with a `cat` partner. The outcome is `run` or `block`. 19 cases:
+of the hook with a `cat` partner. The outcome is `run` or `block`. The first 19 cases:
 no round yet, a hold on the same content, work changed after it, only `.goalspec/` changed (ignored
 and tracked), the held content committed, one break, two breaks, a hold between two breaks, a new and
 a deleted file, no session id, the off switch, another session's hold, a report with no verdict after
 a hold, a hold measured on another repository, an edit during the subagent's round, the real rail
 with no change, and content git cannot hash (chmod 000; skipped on Windows). New in 0.66.0 with no
-predecessor, so `--selftest` applies 12 mutations to a copy of the plugin and requires a case to notice each.
+predecessor, so `--selftest` applies 20 mutations to a copy of the plugin and requires a case to notice each.
+
+Since 0.67.0, 29 cases: ten more for a change after the hold that no tool call of this session made
+(a synthetic transcript of the session under `CLAUDE_CONFIG_DIR/projects/`). Another writer's
+file (a shared ledger) runs; this session's Edit, its Bash naming the file, a git command that
+rewrites the tree, a subagent's Write of the file, and the ledger plus an own edit block; an Edit
+made before the hold and another session's Edit run; 20 and 27 also require the hook to print the
+other-writer notice, 28 that an ordinary held run prints none, and 29 that content which cannot be
+hashed after the hold runs with that reason instead of crashing the gate (skipped on Windows). Cases 20, 24 and 27 come back `block` against
+the 0.66.1 gate (measured with that module swapped into a copy of the plugin); the other five
+already blocked there, because 0.66.1 counted every change.
 `external-adversary-branches.py` sets `GOAL_ADVERSARY_AFTER_SUBAGENT=0` for its own cases.
 
 The content hash is `git write-tree` of a copy of the index made with `shutil.copy2`: a plain copy

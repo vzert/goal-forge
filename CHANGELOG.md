@@ -6,6 +6,69 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.67.0] - 2026-10-21
+
+### Fixed
+
+- **The external partner is no longer switched off by other writers (p-2fbcd92ef0).** 0.66.0 refused
+  the partner whenever the repository content changed after the subagent's hold. On a shared server
+  where several accounts append to `memory/review-stats/`, that ledger changed between almost every
+  hold and the partner. On 2026-10-20, 15 of 32 partner attempts in 14 developer sessions came back
+  `NOT RUN`, and 4 sessions pushed or merged with the subagent as the only reviewer (read from the
+  server's session log, which has no tool outputs, so most outcomes are inferred; one developer filed
+  it as #9595: "4 de 4 intentos"). `hooks/lib/subagent_gate.py` now reads the paths that changed since
+  the hold and this session's own transcript (and its subagents'). A path counts as this session's
+  when, at or after the hold, a Write, Edit, MultiEdit or NotebookEdit wrote it, a Bash command names
+  it or its file name, or a git command that rewrites the tree without naming files ran (then every
+  path does). If no changed path is this session's, the partner runs and the hook says which paths it
+  left to another writer. With no transcript found, every change counts, as before. A write this
+  cannot see (a script that edits a file it does not name) lets the partner run on content the
+  subagent did not hold: that costs a round and never blocks a review.
+  `test/subagent-gate-branches.py`: 29 cases (10 new) and 20 mutations; cases 20, 24 and 27 come back
+  `block` against the 0.66.1 gate.
+
+### Changed
+
+- **Three classes of finding are MINOR for both reviewers, and a relayed authorization covers only
+  what it says.** Measured 2026-10-20/21 on external breaks over trees the subagent had held: on one
+  machine 22 breaks with 47 blocking findings (24 about the executor's record, 12 about the work, 6
+  about authorization), and on the shared server 12 breaks with about 24 findings (10 record, 5 work,
+  5 authorization). Most record findings were a count copied into the checkpoint that the work had
+  since moved while it still met its criterion ("252 pass", now 276). `agents/goal-adversary.md` and
+  the prompt of `hooks/external-adversary.sh` now say:
+  - a stale figure in the live goal-spec or the coverage table whose current value, re-derived, still
+    meets its criterion is MINOR (BLOCKING when it fails the criterion, was shown to a human for a
+    decision, or is the threshold itself);
+  - a criterion revised in writing, `Criterion revised: <old> -> <new>, because <what was measured>`,
+    is judged as revised; the measurement is re-derived, and a revision that weakens the ask counts;
+  - a human decision named and not asked yet is MINOR while the action it governs has not run; a
+    claim that it was asked when the transcript does not show it still counts;
+  - an authorization relayed by another session covers exactly what the relayed text says. All 6
+    authorization findings on the machine came from sessions under a lookout supervisor whose relay
+    carried only the decision id (`aprobado (d288)`), so neither the worker nor the partner could read
+    what had been approved; in one, the partner read a definition of done ("push y PR pedidos") as a
+    claim that the request had been made. lookout 0.13.44 now types the approved question with the id.
+  `skills/goalspec/SKILL.md` carries the executor side: write criteria as a command and a threshold
+  rather than a copied count, the revised-criterion line as the one exception to "never change a
+  criterion", and ask the relayer for the scope of an id-only approval. Also in
+  `skills/adversary/SKILL.md`, `references/durable-artifact.md` and
+  `references/external-adversary-setup.md`.
+- **The subagent is told it is the first of two reviewers.** On held trees the partner still found a
+  real defect in the work in 11 of 22 breaks on one machine and 4 of 12 on the server.
+  `agents/goal-adversary.md` now names the shapes it missed (an input class the format allows, a race
+  with a concurrent writer, a path a guard does not cover, a criterion its measurement contradicts, a
+  figure that does not re-derive) and asks for a probe per shape before a hold. Whether this lowers the
+  partner's work findings is not measured yet.
+- `test/claim-surface-carriers.py`: 21 more checks (EXPECTED_CHECKS 279) for these rules in their
+  carriers. Presence only: whether a reviewer then applies them is not testable here.
+
+### Not changed
+
+- The hook rule first proposed for this release (do not re-run the partner when only the checkpoint
+  changed since its break) would have skipped 2 of the 13 partner re-runs on the machine that could be matched to a codex verdict, both of which
+  ended in a hold: between the other 11, the executor changed tracked files (tests, CHANGELOG,
+  `memory/`). It was dropped.
+
 ## [0.66.1] - 2026-10-20
 
 ### Fixed

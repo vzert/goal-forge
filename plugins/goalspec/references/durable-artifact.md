@@ -248,7 +248,12 @@ commit id or HEAD label, a measured count, a row's done/pending status ("pushed"
 each is a claim the adversary attacks as written, and the work makes them stale between rounds. So
 re-read both sections before you spawn and update what is no longer true. Refresh only those pointers —
 never a criterion's target, threshold or wording (its baseline included), and never drop a criterion; changing one after a
-verdict is specification gaming. Measured 2026-10-14 on 60 codex breaks over a tree the subagent had
+verdict is specification gaming. The one exception is written under the criterion (0.67.0):
+`Criterion revised: <old> -> <new>, because <what was measured>`, when the work measured that the
+cause the criterion names is not the real one; both backends judge the revised criterion and
+re-derive the measurement. Better than refreshing a count is not copying one: write a criterion as a
+command and a threshold, and a stale figure whose current value still meets its criterion is a
+MINOR note for both backends since 0.67.0. Measured 2026-10-14 on 60 codex breaks over a tree the subagent had
 held: 13 of the 18 that found no defect in the work broke on a claim in one of these two sections.
 The step that owns it: the goalspec skill's step 6, same grep term.
 

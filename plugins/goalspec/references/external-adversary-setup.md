@@ -34,10 +34,19 @@ partner runs when the subagent's last round in this session held the current con
 repository, or after two subagent breaks in a row (the switch SKILL.md step 6 mandates). It also
 runs with no session id, outside a git repository, or when the gate fails. Otherwise the hook
 prints why and an unprefixed `NOT RUN (goalspec external adversary): ...` line, exits 3, and gives
-no verdict. "Content" is everything git would add, ignored files left out. Two changes do not
-count: a commit of the held content, and this session's `.goalspec/` files. Every other change
-counts, `memory/` included, because a tracked memory directory is where an unconfirmed conclusion
-lands. Why: over 15 days in one user's four projects, 414 of 457 partner rounds ran on content the
+no verdict. "Content" is everything git would add, ignored files left out. Three changes do not
+count: a commit of the held content, this session's `.goalspec/` files, and (0.67.0) a change that
+no tool call of this session or its subagents made after the hold. Every other change counts,
+`memory/` included, because a tracked memory directory is where an unconfirmed conclusion lands.
+"Made by this session" is read from its own transcript: a Write, Edit, MultiEdit or NotebookEdit of
+the path, a Bash command that names the path or its file name, or a git command that rewrites the
+tree without naming files (merge, pull, rebase, checkout, reset, stash and the like), which makes
+every changed path this session's. Why: on a shared server where several accounts append to
+`memory/review-stats/`, the gate refused the partner in 15 of 32 attempts on 2026-10-20, because
+the ledger changed between the subagent's hold and the partner. A write this cannot see (a script
+that edits a file it does not name) lets the partner run on content the subagent did not hold: that
+costs a round and never blocks a review. With no transcript found for the session, nothing is
+attributed and every change counts, as before. Why: over 15 days in one user's four projects, 414 of 457 partner rounds ran on content the
 subagent had not held. Most of their breaks were real defects the subagent round finds too, only
 later and slower. On held content, the partner still found real defects the subagent missed, in 17
 of 43 rounds. Only the human turns the gate off, with `GOAL_ADVERSARY_AFTER_SUBAGENT=0`.
