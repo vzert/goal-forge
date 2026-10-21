@@ -283,6 +283,22 @@ def c31(c):  # a redirect into the path is a write
     return c.partner()
 
 
+def c32(c):  # this session wrote b/work.py; another writer changed a/work.py (same file name)
+    c.subagent(H)
+    c.write("a/work.py", "x = 1\n")
+    c.write("b/work.py", "x = 2\n")
+    git(c.repo, "add", "-A")  # both tracked; the hold measured neither, so both changed
+    c.transcript(("Bash", {"command": "printf 'x = 2\\n' > b/work.py"}))
+    return "own-only-b" if c.partner() == "block" and _reason_names(c, "b/work.py", "a/work.py") else "other"
+
+
+def _reason_names(c, want, not_want):
+    env = dict(c.env, CLAUDE_CODE_SESSION_ID=SID)
+    r = subprocess.run([sys.executable, os.path.join(c.plugin, GATE_REL), "gate", c.repo],
+                       capture_output=True, text=True, env=env, cwd=c.repo)
+    return want in r.stdout and not_want not in r.stdout
+
+
 def c28(c):  # an ordinary held run prints no other-writer notice
     c.subagent(H)
     return c.partner()
@@ -379,6 +395,7 @@ CASES = [
     ("29-unhashable-after-hold-runs", c29, "run-unhashable"),
     ("30-own-bash-read-of-ledger-runs", c30, "run+notice"),
     ("31-own-redirect-write-blocks", c31, "block"),
+    ("32-same-file-name-elsewhere-not-own", c32, "own-only-b"),
 ]
 
 MUTATIONS = [
@@ -400,7 +417,7 @@ MUTATIONS = [
      '        return False, "the content of the held tree could not be hashed'),
     ("own writes ignored", GATE_REL, "                                own.add(abs_p)\n                    elif",
      "                                pass\n                    elif"),
-    ("bash never counted", GATE_REL, "                            if rel in cmd or os.path.basename(rel) in cmd:",
+    ("bash never counted", GATE_REL, "                            if rel in cmd or abs_p in cmd:",
      "                            if False:"),
     ("git rewrite not counted", GATE_REL, "                        if _GIT_REWRITE.search(cmd):", "                        if False:"),
     ("hold time ignored", GATE_REL, "                if t is None or t < int(start):", "                if t is None:"),
@@ -412,6 +429,8 @@ MUTATIONS = [
      '        pass'),
     ("bash reads count as writes", GATE_REL, "                        if not _BASH_WRITES.search(", "                        if False and not _BASH_WRITES.search("),
     ("dev-null redirect is a write", GATE_REL, '_REDIRECT_NOISE = re.compile(r"', '_REDIRECT_NOISE = re.compile(r"NEVER'),
+    ("bare file name counts", GATE_REL, "                            if rel in cmd or abs_p in cmd:",
+     "                            if rel in cmd or os.path.basename(rel) in cmd:"),
     ("record never called", HBV_REL, "        subagent_gate.record(", "        (lambda *a: None)("),
 ]
 

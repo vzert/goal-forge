@@ -19,12 +19,12 @@ version bump are never delivered to already-installed users.
   it as #9595: "4 de 4 intentos"). `hooks/lib/subagent_gate.py` now reads the paths that changed since
   the hold and this session's own transcript (and its subagents'). A path counts as this session's
   when, at or after the hold, a Write, Edit, MultiEdit or NotebookEdit wrote it, a Bash command that
-  can write (a redirect, tee, an in-place sed, mv, cp, rm and the like) names it or its file name, or a git command that rewrites the tree without naming files ran (then every
+  can write (a redirect, tee, an in-place sed, mv, cp, rm and the like) names it (its path in the repository or its absolute path, not a bare file name), or a git command that rewrites the tree without naming files ran (then every
   path does). If no changed path is this session's, the partner runs and the hook says which paths it
   left to another writer. With no transcript found, every change counts, as before. A write this
   cannot see (a script that edits a file it does not name) lets the partner run on content the
   subagent did not hold: that costs a round and never blocks a review.
-  `test/subagent-gate-branches.py`: 31 cases (12 new) and 22 mutations; cases 20, 24 and 27 come back
+  `test/subagent-gate-branches.py`: 32 cases (13 new) and 23 mutations; cases 20, 24 and 27 come back
   `block` against the 0.66.1 gate.
 
 ### Changed

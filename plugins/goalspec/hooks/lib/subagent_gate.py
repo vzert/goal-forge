@@ -262,8 +262,10 @@ def own_changes(session_id, since, paths):
     when its transcript is not found (then nothing can be attributed and the gate blocks as before).
 
     A path is this session's when, at or after the hold, one of its own or its subagents' tool calls
-    wrote it (Write, Edit, MultiEdit, NotebookEdit), a Bash command that can write names it (path or
-    file name; a command that only reads it does not count), or
+    wrote it (Write, Edit, MultiEdit, NotebookEdit), a Bash command that can write names it (its path
+    in the repository or its absolute path; a bare file name does not count, because the same name in
+    another directory would make another writer's file this session's; a command that only reads it
+    does not count), or
     a git command that rewrites the tree without naming files ran (then every path is). Anything else
     is another writer's: the shared memory ledger other accounts append to on a shared server, which
     kept the partner from running in 15 of 32 attempts there (2026-10-20). The wrong direction is
@@ -318,7 +320,7 @@ def own_changes(session_id, since, paths):
                         if not _BASH_WRITES.search(_REDIRECT_NOISE.sub(" ", cmd)):
                             continue  # reading a path (cat, sed -n, ls, grep) does not change it
                         for abs_p, (_root, rel) in want.items():
-                            if rel in cmd or os.path.basename(rel) in cmd:
+                            if rel in cmd or abs_p in cmd:
                                 own.add(abs_p)
     return own
 
