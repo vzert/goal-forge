@@ -457,7 +457,8 @@ def main():
     check("after-hold:adversary-skill", "after** the subagent's hold, on the content it held (0.66.0" in _fl(adv_skill_txt)
           or "after the subagent's hold, on the content it held (0.66.0" in _fl(adv_skill_txt))
     # 0.67.0: a change no tool call of this session made after the hold does not count (shared
-    # ledger on a multi-account server, 15 of 32 partner attempts refused on 2026-10-20).
+    # ledger on a multi-account server, 6 of 32 partner attempts refused on 2026-10-20 by the log,
+    # 9 more probable).
     check("other-writer:skill-step6", "a change no tool call of this session or its subagents made after the hold"
           in _fl(skill))
     check("other-writer:setup", "a change that no tool call of this session or its subagents made after the hold"

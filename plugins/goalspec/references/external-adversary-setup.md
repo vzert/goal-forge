@@ -42,7 +42,8 @@ no tool call of this session or its subagents made after the hold. Every other c
 the path that did not fail, or a git command that rewrites the tree without naming files (merge,
 pull, rebase, checkout, reset, stash and the like; not one inside a heredoc body or a quoted
 string), which makes every changed path this session's. A Bash write is not attributed. Why: on a shared server where several accounts append to
-`memory/review-stats/`, the gate refused the partner in 15 of 32 attempts on 2026-10-20, because
+`memory/review-stats/`, the gate refused the partner on 2026-10-20 in 6 of 32 attempts that the
+server's session log states, and probably in 9 more it cannot prove (it keeps no tool outputs), because
 the ledger changed between the subagent's hold and the partner. A write this does not see (any
 Bash write) lets the partner run on content the subagent did not hold: that costs a round and
 never blocks a review. With no transcript found for the session, nothing is

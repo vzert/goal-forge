@@ -204,9 +204,9 @@ def gate(session_id, cwd):
         own = own_changes(session_id, last["ts"], paths)
         if own is not None and not own and all(paths[r] for r in changed):
             shown = sorted(p for r in changed for p in paths[r])
-            return True, ("the subagent held this content at %s; what changed since (%s) is in no write of "
+            return True, ("the subagent held this content at %s; what changed since (%s) is in no Write or Edit of "
                           "this session's transcript, so another writer made it (a shared ledger, another "
-                          "account)" % (last["ts"], ", ".join(shown[:5]) + (" and %d more" % (len(shown) - 5)
+                          "account) or a Bash write of this session, which is not attributed" % (last["ts"], ", ".join(shown[:5]) + (" and %d more" % (len(shown) - 5)
                                                                            if len(shown) > 5 else "")))
         return False, ("the content changed after the subagent's last hold (%s) in %s (.goalspec/ "
                        "and a commit of the same content do not count). Run the subagent on the "
@@ -266,7 +266,8 @@ def own_changes(session_id, since, paths):
     rewrites the tree without naming files ran (merge, pull, rebase, checkout, reset, stash and the
     like; then every path is). A git verb inside a heredoc body or a quoted string is data, not a
     command. Anything else is another writer's: the shared memory ledger other accounts append to on
-    a shared server, which kept the partner from running in 15 of 32 attempts there (2026-10-20).
+    a shared server, which kept the partner from running there on 2026-10-20 in 6 of 32 attempts the
+    server's log states, and probably in 9 more it cannot prove.
 
     Bash writes are deliberately not attributed. Guessing them from command text was tried three ways
     in the 0.67.0 review rounds (any mention of the path, then only commands that can write, then the

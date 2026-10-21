@@ -13,9 +13,9 @@ version bump are never delivered to already-installed users.
 - **The external partner is no longer switched off by other writers (p-2fbcd92ef0).** 0.66.0 refused
   the partner whenever the repository content changed after the subagent's hold. On a shared server
   where several accounts append to `memory/review-stats/`, that ledger changed between almost every
-  hold and the partner. On 2026-10-20, 15 of 32 partner attempts in 14 developer sessions came back
-  `NOT RUN`: 6 of them stated in the server's session log (one developer filed it as #9595, "4 de 4
-  intentos"), and 9 more probable but not proven, because that log keeps no tool outputs (each ended
+  hold and the partner. On 2026-10-20, of 32 partner attempts in 14 developer sessions, 6 came back
+  `NOT RUN` as stated in the server's session log (one developer filed it as #9595, "4 de 4
+  intentos"), and 9 more probably did, not proven, because that log keeps no tool outputs (each ended
   in under 15 s and was followed by a check of the ledger). `hooks/lib/subagent_gate.py` now reads the paths that changed since
   the hold and this session's own transcript (and its subagents'). A path counts as this session's
   when, at or after the hold, a Write, Edit, MultiEdit or NotebookEdit that did not fail wrote it, or
