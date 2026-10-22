@@ -947,6 +947,31 @@ case("115c-cd-out-no-start-dir-on-record-DENY", _fq_moved("115c", False, False))
 case("115d-cd-into-other-repo-hold-quoted-there-DENY", _fq_moved("115d", True, False, quote_in_cwd=True))
 
 
+# 0.68.2 (issue #1): a spec written only to the plan-mode plan file is a spec, so a push needs a hold
+# (115e); a hold line quoted into the plan file is never a quote -- only the checkpoint carries one (115f).
+PLAN_CFG = os.path.join(TMP, "plan-config")
+os.makedirs(os.path.join(PLAN_CFG, "plans"), exist_ok=True)
+PLAN_FILE = os.path.join(PLAN_CFG, "plans", "bright-otter.md")
+
+
+def _plan_case(name, events, want):
+    def fn():
+        LAST_MESSAGE[0] = ""
+        decision, detail = run_hook(make_repo(name, None, {"src/app.js": "code"}), "git push origin main",
+                                    transcript(events, name), session_id=SID,
+                                    env_extra={"CLAUDE_CONFIG_DIR": PLAN_CFG})
+        return (decision, detail) if decision == want else (decision, "expected " + want)
+    return fn
+
+
+case("115e-spec-only-in-plan-file-push-DENY", _plan_case(
+    "115e", [{"write": (PLAN_FILE, "# Plan\n\n" + SPEC_TEXT), "write_id": "w115e"}], "deny"))
+case("115f-hold-quoted-into-plan-file-is-no-quote-DENY", _plan_case(
+    "115f", HB_REL + [{"write": (PLAN_FILE, HOLD_LINE), "write_id": "w115f"}], "deny"))
+case("115g-no-spec-plan-file-without-spec-ALLOW", _plan_case(
+    "115g", [{"write": (PLAN_FILE, "# Plan\nno spec here\n"), "write_id": "w115g"}], "allow"))
+
+
 # --- 0.55.0 (p-ff03d9a39d): the canonical own-mktemp-dir delete is not terminal -------------------
 # Measured 2026-10-10: 76-77 of 159 real `destructive` denials were a local delete of a temp dir the
 # session made. Only `rm -rf <abs path>...` with no shell syntax passes, each path's REAL location

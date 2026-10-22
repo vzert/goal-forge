@@ -50,6 +50,12 @@ def transcript(events, name, entrypoint="cli"):
                 fh.write(json.dumps({**base, "type": "user", "message": {"content": [
                     {"type": "text", "text": ev["typed"]}]}}) + "\n")
                 continue
+            if "exit_result" in ev:  # 0.68.2: the harness result of an ExitPlanMode
+                tid, is_error, text = ev["exit_result"]
+                fh.write(json.dumps({**base, "type": "user", "message": {"content": [
+                    {"type": "tool_result", "tool_use_id": tid, "is_error": is_error,
+                     "content": text}]}}) + "\n")
+                continue
             if "result" in ev:
                 tid, is_error = ev["result"]
                 fh.write(json.dumps({**base, "type": "user", "message": {"content": [
@@ -65,6 +71,9 @@ def transcript(events, name, entrypoint="cli"):
                 fp, body = ev["write"]
                 content.append({"type": "tool_use", "name": "Write", "id": ev.get("id", "w0"),
                                 "input": {"file_path": fp, "content": body}})
+            if "exit" in ev:
+                content.append({"type": "tool_use", "name": "ExitPlanMode", "id": ev["exit"],
+                                "input": {"plan": "the plan"}})
             if "ask" in ev:
                 content.append({"type": "tool_use", "name": "AskUserQuestion", "id": ev["ask"],
                                 "input": {"questions": []}})
@@ -98,7 +107,8 @@ def run(plugin, payload_text, env_extra=None):
                                  "Only the minimal fix", "Stop means execute nothing",
                                  "LATER message", "end your turn with the same question as text",
                                  "GOAL_RATIFY_BRAKE=0", "Read, Grep and Glob are not held",
-                                 "an approval relayed by another session does not")):
+                                 "an approval relayed by another session does not",
+                                 "call ExitPlanMode")):
         return "deny-ratify"
     return "deny-other"
 
@@ -215,7 +225,35 @@ CASES = [
      lambda: pre([{"start": PROJ}, LOAD, {"write": (os.path.join(PROJ, CKPT), SPEC), "id": "w1"},
                   {"ask": "q1"}, {"result": ("q1", False)}], "42", cwd=OUTSIDE), "allow"),
 ]
+# 0.68.2 (issue #1): in native plan mode the plan file holds the spec and ExitPlanMode is where the
+# human approves it. An approved ExitPlanMode (not an error, the harness approval text) after the spec
+# releases the hold; a rejected one, any other result, one with no result yet, or one before the spec
+# does not. Writes to the plan file are not held.
+CFG = os.path.join(TMP, "config")
+os.makedirs(os.path.join(CFG, "plans"), exist_ok=True)
+PLAN = os.path.join(CFG, "plans", "bright-otter.md")
+CFG_ENV = {"CLAUDE_CONFIG_DIR": CFG}
+PW = {"write": (PLAN, "# Plan\n\n" + SPEC), "id": "wp"}
+APPROVED = "User has approved your plan. You can now start coding."
 ENV_CASES = [
+    ("p1-plan-file-spec-no-approval-denied", lambda: pre([LOAD, PW], "p1"), CFG_ENV, "deny-ratify"),
+    ("p2-plan-approved-releases",
+     lambda: pre([LOAD, PW, {"exit": "x1"}, {"exit_result": ("x1", False, APPROVED)}], "p2"), CFG_ENV, "allow"),
+    ("p3-plan-rejected-error-denied",
+     lambda: pre([LOAD, PW, {"exit": "x1"},
+                  {"exit_result": ("x1", True, "The user does not want to proceed with this tool use.")}], "p3"),
+     CFG_ENV, "deny-ratify"),
+    ("p4-plan-other-result-denied",
+     lambda: pre([LOAD, PW, {"exit": "x1"}, {"exit_result": ("x1", False, "User rejected the plan.")}], "p4"),
+     CFG_ENV, "deny-ratify"),
+    ("p5-plan-exit-no-result-yet-denied", lambda: pre([LOAD, PW, {"exit": "x1"}], "p5"), CFG_ENV, "deny-ratify"),
+    ("p6-plan-approved-before-spec-denied",
+     lambda: pre([LOAD, {"exit": "x0"}, {"exit_result": ("x0", False, APPROVED)}, PW], "p6"),
+     CFG_ENV, "deny-ratify"),
+    ("p7-text-spec-plan-approved-releases",
+     lambda: pre([LOAD, TXT, {"exit": "x1"}, {"exit_result": ("x1", False, APPROVED)}], "p7"), CFG_ENV, "allow"),
+    ("p8-plan-file-write-not-held",
+     lambda: pre([LOAD, TXT], "p8", tool="Write", tool_input={"file_path": PLAN}), CFG_ENV, "allow"),
     ("50-ratify-opt-out", lambda: pre([LOAD, TXT], "50"), {"GOAL_RATIFY_BRAKE": "0"}, "allow"),
     ("51-spec-brake-opt-out-covers-both", lambda: pre([LOAD, TXT], "51"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
     ("52-ratify-opt-out-keeps-spec-brake", lambda: pre([LOAD], "52"), {"GOAL_RATIFY_BRAKE": "0"},
@@ -227,11 +265,24 @@ MUTATIONS = [
      'if os.environ.get("GOAL_RATIFY_BRAKE") != "0" and ta.ratify_brake_armed(items, sid, cwd):',
      "if False:"),
     ("ratify opt-out dropped", HOOK, 'os.environ.get("GOAL_RATIFY_BRAKE") != "0" and ', ""),
-    ("ask no longer releases", LIB, 'it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:]',
-     'it["kind"] in ("user_prompt",) for it in items[i0 + 1:]'),
+    ("ask no longer releases", LIB,
+     'it["kind"] in ("ask", "user_prompt", "plan_approved") for it in items[i0 + 1:]',
+     'it["kind"] in ("user_prompt", "plan_approved") for it in items[i0 + 1:]'),
     ("typed prompt no longer releases", LIB,
-     'it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:]',
-     'it["kind"] in ("ask",) for it in items[i0 + 1:]'),
+     'it["kind"] in ("ask", "user_prompt", "plan_approved") for it in items[i0 + 1:]',
+     'it["kind"] in ("ask", "plan_approved") for it in items[i0 + 1:]'),
+    ("approved ExitPlanMode no longer releases", LIB,
+     'it["kind"] in ("ask", "user_prompt", "plan_approved") for it in items[i0 + 1:]',
+     'it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:]'),
+    ("any ExitPlanMode result counts as approval", LIB,
+     'and not (it["kind"] == "plan_approved" and it.get("id") not in approved)]',
+     ']'),
+    ("approval text not required", LIB,
+     '                        and PLAN_APPROVED_RE.match(_tool_result_text(blk.get("content"))):',
+     '                        and True:'),
+    ("plan-file write held", HOOK,
+     'if ta.is_plan_file(str(inp.get("file_path") or inp.get("notebook_path") or "")):', "if False:"),
+    ("reason loses the plan-mode clause", LIB, "call ExitPlanMode: the human approving it", "carry on: it"),
     ("ask before the spec counts", LIB, "for it in items[i0 + 1:])", "for it in items)"),
     ("keyed on the latest spec, not the first", LIB,
      "    for i, it in enumerate(items):\n        if i < start:",
@@ -250,12 +301,14 @@ MUTATIONS = [
      "    if not any(it[\"kind\"] == \"goalspec_entry\" and it.get(\"skill\") == \"goalspec\" for it in items):\n        return False\n    cr =",
      "    cr ="),
     ("foreign checkpoint counts as the spec", LIB,
-     "            if own.search(p) and _in_own_root(p, cwd, roots):", "            if True:"),
+     "            if it.get(\"plan\") or (own.search(p) and _in_own_root(p, cwd, roots)):",
+     "            if True:"),
     ("checkpoint spec ignored", LIB,
      '        if it["kind"] == "goal_spec_file" and spec_has_body(it["text"]):',
      '        if False:'),
     ("unanswered ask counts", LIB,
-     '            and not (it["kind"] == "ask" and it.get("id") not in answered)]', "            ]"),
+     '            and not (it["kind"] == "ask" and it.get("id") not in answered)\n',
+     "\n"),
     ("answers never recorded", LIB,
      'state.setdefault("answered_tool_uses", set()).add(blk.get("tool_use_id"))', "pass"),
     ("completion-review does not start a cycle", LIB,

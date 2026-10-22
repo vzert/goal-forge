@@ -579,6 +579,33 @@ CR_RE = r"\[COMPLETION-REVIEW:\s*(adversary|none)\b([^\]]*)\]"
 CHECKPOINT_PATH_RE = re.compile(r"(^|/)\.goalspec/checkpoint(-[A-Za-z0-9._-]+)?\.md$")
 
 
+# 0.68.2 (issue #1) -- the file a native plan-mode session writes its plan to: a .md directly in
+# <config dir>/plans/, the config dir being $CLAUDE_CONFIG_DIR or ~/.claude. Plan mode lets the agent
+# edit only that file, so neither brake may hold it, and a ## Goal-spec written there is the spec.
+def plans_dir():
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    try:
+        return os.path.realpath(os.path.join(base, "plans"))
+    except Exception:
+        return None
+
+
+def is_plan_file(path):
+    if not isinstance(path, str) or not path.endswith(".md") or not os.path.isabs(path):
+        return False
+    pd = plans_dir()
+    try:
+        return bool(pd) and os.path.dirname(os.path.realpath(path)) == pd
+    except Exception:
+        return False
+
+
+# The harness result of an ExitPlanMode the human approved. Measured 2026-10-22 over ~1500 local
+# transcripts: 2 approvals, both is_error false and starting with this text; no rejection was found,
+# so a rejection is recognised by NOT matching (an error, or any other text), never by its own shape.
+PLAN_APPROVED_RE = re.compile(r"^\s*User has approved your plan\b")
+
+
 # 0.45.0 — the goalspec ENTRY points: invoking either one promises a `## Goal-spec` (the loop
 # writes it; the interview hands off to the loop, which writes it). `goalspec:adversary` is not an
 # entry: it verifies a claim and promises no spec. Why this exists: a field report (VPS, 4 devs,
@@ -726,6 +753,10 @@ def _collect_event(ev, items, state=None):
             elif isinstance(blk, dict) and blk.get("type") == "tool_result":
                 # 0.60.0: an AskUserQuestion counts for the ratify brake only once answered.
                 state.setdefault("answered_tool_uses", set()).add(blk.get("tool_use_id"))
+                # 0.68.2 (issue #1): an ExitPlanMode counts only with the harness approval text.
+                if blk.get("tool_use_id") in state.get("plan_exits", ()) \
+                        and PLAN_APPROVED_RE.match(_tool_result_text(blk.get("content"))):
+                    state.setdefault("approved_plans", set()).add(blk.get("tool_use_id"))
             if isinstance(blk, dict) and blk.get("type") == "tool_result" \
                     and blk.get("tool_use_id") in state["adversary_spawns"]:
                 rtext = _tool_result_text(blk.get("content"))
@@ -795,6 +826,11 @@ def _collect_event(ev, items, state=None):
             # 0.60.0: a modal raised to the human (ratify_brake_armed). read_transcript_items
             # keeps it only once its result has arrived and is not an error.
             items.append({"kind": "ask", "timestamp": ts, "text": "", "id": blk.get("id")})
+        elif blk.get("type") == "tool_use" and blk.get("name") == "ExitPlanMode":
+            # 0.68.2 (issue #1): in plan mode the human approves the plan through ExitPlanMode, which
+            # is the ratification step 4b asks for. Kept only once its result is the approval.
+            state.setdefault("plan_exits", set()).add(blk.get("id"))
+            items.append({"kind": "plan_approved", "timestamp": ts, "text": "", "id": blk.get("id")})
         elif blk.get("type") == "tool_use" and blk.get("name") == "Bash":
             cmd = (blk.get("input") or {}).get("command")
             if isinstance(cmd, str) and cmd:
@@ -842,6 +878,15 @@ def _collect_event(ev, items, state=None):
             # just platform-shaped. Inherited from the `endswith` this replaced, found
             # by the decision-log sweep on this change, fixed here on the user-s call.
             # Synthetic: the Windows CI job runs the suites since 0.65.2, but the path is a fixture.
+            # 0.68.2 (issue #1): in plan mode the plan file is the only file the agent may write, so a
+            # spec written there counts as one written to the checkpoint (for the spec and ratify
+            # brakes and for "a spec exists"). Never a verdict or waiver line: those stay checkpoint-only.
+            if isinstance(fp, str) and is_plan_file(fp):
+                for key in ("content", "new_string"):
+                    v = ti.get(key)
+                    if isinstance(v, str) and re.search(GOAL_SPEC_RE, v, re.I):
+                        items.append({"kind": "goal_spec_file", "timestamp": ts, "text": v,
+                                      "path": fp.replace("\\", "/"), "id": blk.get("id"), "plan": True})
             if isinstance(fp, str) and CHECKPOINT_PATH_RE.search(fp.replace("\\", "/")):
                 for key in ("content", "new_string"):
                     v = ti.get(key)
@@ -909,10 +954,12 @@ def read_transcript_items(transcript_path):
         return []
     failed = state.get("failed_tool_uses") or set()
     answered = state.get("answered_tool_uses") or set()
+    approved = state.get("approved_plans") or set()
     return [it for it in items
             if not (it["kind"] in ("goal_spec_file", "verdict_file", "waiver_file")
                     and it.get("id") is not None and it["id"] in failed)
-            and not (it["kind"] == "ask" and it.get("id") not in answered)]
+            and not (it["kind"] == "ask" and it.get("id") not in answered)
+            and not (it["kind"] == "plan_approved" and it.get("id") not in approved)]
 
 
 def last_completion_review_index(items):
@@ -1037,7 +1084,8 @@ SPEC_BRAKE_REASON = (
     "held until it has one. Do ONE of these, then call the tool again in a LATER message (a "
     "message reaches the transcript only after its tool calls run): (1) use the Write tool to "
     "create {path} with the ## Goal-spec in it (Asked line, then the six answers) -- it is shown "
-    "to the human as soon as you write it; or (2) post the ## Goal-spec as a text block in your "
+    "to the human as soon as you write it (in plan mode, where only the plan file can be written, "
+    "put the ## Goal-spec at the top of the plan file instead); or (2) post the ## Goal-spec as a text block in your "
     "reply -- less sure: text you write in the middle of a turn can be stored as a summary without "
     "the ## Goal-spec heading, while a tool call is stored as written. " + BASH_WRITE_NOTE + " A spec you wrote or planned "
     "only in your thinking does not count, even if you believe "
@@ -1128,8 +1176,9 @@ def spec_brake_armed(items, session_id=None, cwd=None):
         return False
     own = own_checkpoint_re(session_id)
     roots = own_checkpoint_roots(cwd, items)
-    if any(it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")
-           and _in_own_root(it.get("path") or "", cwd, roots)
+    if any(it["kind"] == "goal_spec_file"
+           and (it.get("plan") or (own.search(it.get("path") or "")
+                                   and _in_own_root(it.get("path") or "", cwd, roots)))
            and spec_has_body(it["text"]) for it in items):
         return False
     return not spec_has_body("\n".join(it["text"] for it in items if it["kind"] == "text"))
@@ -1170,7 +1219,9 @@ RATIFY_BRAKE_REASON = (
     "goes'; Stop means execute nothing) and call the tool again in a LATER message. If "
     "AskUserQuestion is not available here, end your turn with the same question as text; the "
     "human's reply releases this. Only an answered AskUserQuestion or a message typed in this "
-    "session releases it -- an approval relayed by another session does not. Read, Grep and Glob "
+    "session releases it -- an approval relayed by another session does not. In plan mode, write the "
+    "plan (with the ## Goal-spec) to the plan file and call ExitPlanMode: the human approving it "
+    "there releases this too. Read, Grep and Glob "
     "are not held. Only the human can turn this "
     "off (GOAL_RATIFY_BRAKE=0 in the environment Claude Code runs in)."
 )
@@ -1208,7 +1259,7 @@ def _first_spec_index(items, session_id=None, cwd=None, start=0):
             if own is None:
                 own, roots = own_checkpoint_re(session_id), own_checkpoint_roots(cwd, items)
             p = it.get("path") or ""
-            if own.search(p) and _in_own_root(p, cwd, roots):
+            if it.get("plan") or (own.search(p) and _in_own_root(p, cwd, roots)):
                 return i
     return None
 
@@ -1217,8 +1268,9 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
     """True when an interactive session (entrypoint cli or claude-vscode) entered the goalspec loop,
     has a `## Goal-spec` with a body (visible text, or a Write/Edit to its own checkpoint, as
     spec_brake_armed reads it), and since the first such spec of the current cycle has neither
-    raised an AskUserQuestion that was answered (a result that is not an error) nor received a
-    typed user prompt.
+    raised an AskUserQuestion that was answered (a result that is not an error), nor received a
+    typed user prompt, nor had an ExitPlanMode approved (0.68.2, issue #1: in plan mode that
+    approval is the human ratifying the plan they see).
 
     The current cycle starts after the last `[COMPLETION-REVIEW: ...]` in visible text (outside a
     code fence and outside the spec's own text block -- _last_close_index): its first
@@ -1239,7 +1291,7 @@ def ratify_brake_armed(items, session_id=None, cwd=None):
     i0 = _first_spec_index(items, session_id, cwd, 0 if cr is None else cr + 1)
     if i0 is None:
         return False
-    return not any(it["kind"] in ("ask", "user_prompt") for it in items[i0 + 1:])
+    return not any(it["kind"] in ("ask", "user_prompt", "plan_approved") for it in items[i0 + 1:])
 
 
 # v3 — what hooks/show-checkpoint-spec.sh shows the human when the spec reaches them only through

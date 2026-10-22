@@ -28,6 +28,10 @@
 # sessions with a spec asked before their first Bash, Write or Edit. Same exemptions as above
 # (Read-class tools, .goalspec/ writes, subagents); headless (sdk-*) sessions are never held.
 #
+# 0.68.2 (issue #1) -- native plan mode: a write to the plan file (a .md directly in
+# $CLAUDE_CONFIG_DIR/plans or ~/.claude/plans) is held by neither, a spec written there counts, and
+# an ExitPlanMode whose result is the approval ratifies the spec (terminal_actions.is_plan_file).
+#
 # Escape hatches for the human: GOAL_SPEC_BRAKE=0 turns off both holds; GOAL_RATIFY_BRAKE=0 only
 # the second.
 #
@@ -72,6 +76,9 @@ inp = data.get("tool_input") or {}
 if tool != "Bash":
     path = str(inp.get("file_path") or inp.get("notebook_path") or "").replace(os.sep, "/")
     if path.startswith(".goalspec/") or "/.goalspec/" in path:
+        sys.exit(0)
+    # 0.68.2 (issue #1): the plan-mode plan file is the only file plan mode lets the agent write.
+    if ta.is_plan_file(str(inp.get("file_path") or inp.get("notebook_path") or "")):
         sys.exit(0)
 
 items = ta.read_transcript_items(data.get("transcript_path"))

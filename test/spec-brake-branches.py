@@ -85,7 +85,8 @@ def run(plugin, payload_text, env_extra=None):
     if (hso.get("hookEventName") == "PreToolUse" and hso.get("permissionDecision") == "deny"
             and "## Goal-spec" in reason and "LATER message" in reason
             and "only in your thinking does not count" in reason and "Evidence:" in reason
-            and "can be stored as a summary without the ## Goal-spec heading" in reason):
+            and "can be stored as a summary without the ## Goal-spec heading" in reason
+            and "put the ## Goal-spec at the top of the plan file instead" in reason):
         # Which evidence: the agent's own last visible text quoted back, or "no visible text".
         if "QUOTE-ME-BACK" in reason and "2 visible text block(s)" in reason:
             return "deny-quotes"
@@ -241,7 +242,47 @@ CASES += [
      lambda: pre([LOAD, {"moved": OUTSIDE}], "29b", start_cwd=REPO2, cwd=OUTSIDE, session_id="SID-42"),
      "deny-startpath"),
 ]
+# 0.68.2 (issue #1): native plan mode lets the agent write only the plan file, a .md directly in
+# $CLAUDE_CONFIG_DIR/plans (else ~/.claude/plans). Neither brake holds that file, and a spec with a
+# body written there counts. A subdirectory of plans/, a lookalike plans/ elsewhere, a relative
+# path or another extension is neither. HOME is pointed at a temp dir for the default location.
+CFG = os.path.join(TMP, "config")
+os.makedirs(os.path.join(CFG, "plans", "sub"), exist_ok=True)
+HOMEDIR = os.path.join(TMP, "home")
+os.makedirs(os.path.join(HOMEDIR, ".claude", "plans"), exist_ok=True)
+PLAN = os.path.join(CFG, "plans", "bright-otter.md")
+CFG_ENV = {"CLAUDE_CONFIG_DIR": CFG}
 ENV_CASES = [
+    ("p1-plan-file-write-exempt",
+     lambda: pre([LOAD], "p1", tool="Write", tool_input={"file_path": PLAN}), CFG_ENV, "allow"),
+    ("p1b-plan-file-edit-exempt",
+     lambda: pre([LOAD], "p1b", tool="Edit", tool_input={"file_path": PLAN}), CFG_ENV, "allow"),
+    ("p2-spec-in-plan-file-releases",
+     lambda: pre([LOAD, {"write": (PLAN, "# Plan\n\n" + SPEC)}], "p2"), CFG_ENV, "allow"),
+    ("p2b-default-home-plan-file-releases",
+     lambda: pre([LOAD, {"write": (os.path.join(HOMEDIR, ".claude", "plans", "x.md"), SPEC)}], "p2b"),
+     {"CLAUDE_CONFIG_DIR": "", "HOME": HOMEDIR}, "allow"),
+    ("p3-plans-subdir-write-denied",
+     lambda: pre([LOAD], "p3", tool="Write",
+                 tool_input={"file_path": os.path.join(CFG, "plans", "sub", "x.md")}), CFG_ENV, "deny-none"),
+    ("p3b-spec-in-plans-subdir-denies",
+     lambda: pre([LOAD, {"write": (os.path.join(CFG, "plans", "sub", "x.md"), SPEC)}], "p3b"),
+     CFG_ENV, "deny-none"),
+    ("p4-lookalike-plans-dir-write-denied",
+     lambda: pre([LOAD], "p4", tool="Write", tool_input={"file_path": os.path.join(TMP, "plans", "x.md")}),
+     CFG_ENV, "deny-none"),
+    ("p4b-spec-in-lookalike-plans-dir-denies",
+     lambda: pre([LOAD, {"write": (os.path.join(TMP, "plans", "x.md"), SPEC)}], "p4b"), CFG_ENV, "deny-none"),
+    ("p5-bare-heading-in-plan-file-denies",
+     lambda: pre([LOAD, {"write": (PLAN, BARE)}], "p5"), CFG_ENV, "deny-none"),
+    ("p6-relative-plans-path-denied",
+     lambda: pre([LOAD], "p6", tool="Write", tool_input={"file_path": "plans/x.md"}), CFG_ENV, "deny-none"),
+    ("p7-plan-file-not-markdown-denied",
+     lambda: pre([LOAD], "p7", tool="Write", tool_input={"file_path": os.path.join(CFG, "plans", "x.txt")}),
+     CFG_ENV, "deny-none"),
+    ("p8-failed-plan-file-write-denies",
+     lambda: pre([LOAD, {"write": (PLAN, SPEC), "id": "w8"}, {"result": ("w8", True)}], "p8"),
+     CFG_ENV, "deny-none"),
     ("23-opt-out-env-allowed", lambda: pre([LOAD], "23"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
     ("24-other-env-value-still-denies", lambda: pre([LOAD], "24"), {"GOAL_SPEC_BRAKE": "1"}, "deny-none"),
 ]
@@ -330,9 +371,11 @@ MUTATIONS = [
     ("body requirement dropped", LIB,
      "        if len(re.sub(r\"\\s\", \"\", body)) >= SPEC_BRAKE_MIN_BODY:", "        if True:"),
     ("own-checkpoint restriction dropped", LIB,
-     'it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")', 'it["kind"] == "goal_spec_file"'),
+     'and (it.get("plan") or (own.search(it.get("path") or "")\n',
+     'and (it.get("plan") or (True\n'),
     ("working-directory restriction dropped", LIB,
-     '           and _in_own_root(it.get("path") or "", cwd, roots)\n', ""),
+     '                                   and _in_own_root(it.get("path") or "", cwd, roots)))\n',
+     '                                   and True))\n'),
     ("denied checkpoint write still counts", LIB,
      'blk.get("type") == "tool_result" and blk.get("is_error") is True:',
      'blk.get("type") == "tool_result" and False:'),
@@ -350,6 +393,19 @@ MUTATIONS = [
      'path = os.path.join(ta.session_start_cwd(items) or cwd, path).replace(os.sep, "/")', "pass"),
     ("reason path under the current cwd", HOOK,
      "os.path.join(ta.session_start_cwd(items) or cwd, path)", "os.path.join(cwd, path)"),
+    ("plan-file exemption dropped", HOOK,
+     'if ta.is_plan_file(str(inp.get("file_path") or inp.get("notebook_path") or "")):', "if False:"),
+    ("plan file widened to any depth under plans/", LIB,
+     "return bool(pd) and os.path.dirname(os.path.realpath(path)) == pd",
+     "return bool(pd) and os.path.realpath(path).startswith(pd)"),
+    ("plan file directory not anchored to the config dir", LIB,
+     "return bool(pd) and os.path.dirname(os.path.realpath(path)) == pd",
+     'return os.path.basename(os.path.dirname(path)) == "plans"'),
+    ("plan file needs no .md", LIB, 'not path.endswith(".md") or ', ""),
+    ("CLAUDE_CONFIG_DIR ignored", LIB, 'os.environ.get("CLAUDE_CONFIG_DIR") or ', ""),
+    ("plan-file spec not a carrier", LIB, "if isinstance(fp, str) and is_plan_file(fp):", "if False:"),
+    ("reason loses the plan-mode clause", LIB, "put the ## Goal-spec at the top of the plan file instead",
+     "say nothing of it"),
     ("reason path not filled", HOOK, 'ta.SPEC_BRAKE_REASON.format(path=path)',
      'ta.SPEC_BRAKE_REASON.format(path=".goalspec/checkpoint-<session>.md")'),
 ]
