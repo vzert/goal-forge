@@ -17,7 +17,7 @@ and HOME, no network, no real ~/.claude.
 No predecessor exists (new in 0.66.0), so `--selftest` copies the plugin, applies one mutation at a
 time, and requires at least one case to notice.
 """
-import datetime, json, os, shutil, subprocess, sys, tempfile
+import datetime, glob, json, os, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
@@ -383,6 +383,64 @@ def c27(c):  # another session's transcript writing the path does not make it th
     return c.partner()
 
 
+def c35(c):  # another writer changed a file DURING the round (0.67.1: 7 of 19 calls on 2026-10-21)
+    c.transcript(("Read", {"file_path": os.path.join(c.repo, "work.py")}))
+    c.begin()
+    c.write("memory/sessions/other.md", "another session\n")
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
+def c36(c):  # this session edited the work DURING the round: the hold covers content that is gone
+    c.begin()
+    c.write("work.py", "x = 2\n")
+    n = c.n  # transcript() counts calls; the stop must name the agent begin() started
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "1", "new_string": "2"}))
+    c.n = n
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
+def c37(c):  # another writer AND this session's edit during the round: blocks
+    c.begin()
+    c.write("memory/sessions/other.md", "another session\n")
+    c.write("work.py", "x = 2\n")
+    n = c.n  # transcript() counts calls; the stop must name the agent begin() started
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "work.py"), "old_string": "1", "new_string": "2"}))
+    c.n = n
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
+def c38(c):  # a start record from 0.67.0 (no time): a change during that round cannot be attributed
+    c.transcript(("Read", {"file_path": os.path.join(c.repo, "work.py")}))
+    c.begin()
+    for p in glob.glob(os.path.join(c.env["XDG_STATE_HOME"], "**", "*.gate-start"), recursive=True):
+        with open(p, encoding="utf-8") as fh:
+            rec = json.load(fh)
+        with open(p, "w", encoding="utf-8") as fh:
+            json.dump(rec["trees"], fh)
+    c.write("memory/sessions/other.md", "another session\n")
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
+def c39(c):  # a change during the round with no transcript found: nothing can be attributed
+    c.begin()
+    c.write("memory/sessions/other.md", "another session\n")
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
+def c40(c):  # an edit BEFORE the round does not make a change during it this session's
+    c.transcript(("Edit", {"file_path": os.path.join(c.repo, "memory", "sessions", "other.md"),
+                           "old_string": "a", "new_string": "b"}), ago=3600)
+    c.begin()
+    c.write("memory/sessions/other.md", "another session\n")
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
 CASES = [
     ("01-no-subagent-round-blocks", c01, "block"),
     ("02-hold-same-tree-runs", c02, "run"),
@@ -418,6 +476,12 @@ CASES = [
     ("32-same-file-name-elsewhere-not-own", c32, "own-only-b"),
     ("33-failed-edit-not-own-runs", c33, "run+notice"),
     ("34-heredoc-and-quoted-are-data-runs", c34, "run+notice"),
+    ("35-other-writer-during-round-runs", c35, "run+notice"),
+    ("36-own-edit-during-round-blocks", c36, "block"),
+    ("37-other-plus-own-during-round-blocks", c37, "block"),
+    ("38-old-start-record-stays-moved", c38, "block"),
+    ("39-during-round-no-transcript-blocks", c39, "block"),
+    ("40-own-edit-before-round-runs", c40, "run+notice"),
 ]
 
 MUTATIONS = [
@@ -451,6 +515,14 @@ MUTATIONS = [
     ("heredoc not stripped", GATE_REL, "    return _QUOTED.sub(\" \", _HEREDOC.sub(\" \", cmd))", "    return _QUOTED.sub(\" \", cmd)"),
     ("quoted not stripped", GATE_REL, "    return _QUOTED.sub(\" \", _HEREDOC.sub(\" \", cmd))", "    return _HEREDOC.sub(\" \", cmd)"),
     ("record never called", HBV_REL, "        subagent_gate.record(", "        (lambda *a: None)("),
+    ("during-round never attributed", GATE_REL, "    if own is None or own:\n        return []", "    if True:\n        return []"),
+    ("during-round own writes ignored", GATE_REL, "    if own is None or own:\n        return []",
+     "    if own is None:\n        return []"),
+    ("round start time ignored", GATE_REL, "by_other = moved_by_other(session_id, began_ts,",
+     'by_other = moved_by_other(session_id, "1970-01-01T00:00:00Z",'),
+    ("old start record attributed", GATE_REL, 'began_ts = began.get("ts") if isinstance(began.get("trees"), dict) else None',
+     'began_ts = began.get("ts") if isinstance(began.get("trees"), dict) else "1970-01-01T00:00:00Z"'),
+    ("during-round notice dropped", GATE_REL, '    if last.get("moved_by_other"):', "    if False:"),
 ]
 
 

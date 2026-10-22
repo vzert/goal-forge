@@ -6,6 +6,24 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.67.1] - 2026-10-21
+
+### Fixed
+
+- **Another writer during the subagent's round no longer switches the external partner off.** 0.67.0
+  attributed the changes made after the subagent's hold, but not the ones made while the round ran:
+  `record()` still turned any such hold into `hold-moved`, which the gate refuses. In the first
+  hours of 0.67.0 on one Mac (2026-10-21 14:23Z to 2026-10-22 01:41Z), 7 of 19 partner calls came
+  back `NOT RUN`, every one after a `hold-moved`, and in each window another session was writing in
+  the same checkout (`memory/sessions/` in one project, `handoffs/infra/` in another). The start
+  record (`<agent>.gate-start`) now keeps the time the round began, and `record()` applies the same
+  attribution as the gate: when no Write or Edit of this session (or a tree-rewriting git command)
+  touched the changed paths during the round, the hold stands, the paths go to `moved_by_other`, and
+  the hook names them when the partner runs. The session's own write during the round still makes it
+  `hold-moved`. A start record written by 0.67.0 or older (no time), a path git cannot list, or no
+  transcript found keeps `hold-moved`, as before. `test/subagent-gate-branches.py`: six new cases
+  (35 to 40) and five new mutations.
+
 ## [0.67.0] - 2026-10-21
 
 ### Fixed

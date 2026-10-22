@@ -11,12 +11,14 @@ SKILL.md step 6 already mandates), and otherwise refuses with the reason.
 
 Three steps, all fail-open:
   start (from watch-adversary-writes.sh `start`, on SubagentStart of a goal-adversary): hash the
-    content of every tree the round measures, to `<agent>.gate-start` in this session's run
-    directory (hooks/lib/run_dir.py).
+    content of every tree the round measures, and the time, to `<agent>.gate-start` in this
+    session's run directory (hooks/lib/run_dir.py).
   record (from remind-handback-verdict.sh `record`, on SubagentStop): hash it again and append the
     subagent's verdict to `subagent-rounds`. A hold over content that changed DURING the round (an
     executor edit under an in-flight background subagent: 21 of 927 rounds over 60 s in one user's
-    transcripts, adversary round of 0.66.0) is recorded as `hold-moved`, which is not a hold.
+    transcripts, adversary round of 0.66.0) is recorded as `hold-moved`, which is not a hold. Since
+    0.67.1 the attribution gate() uses applies there too: a change during the round that no tool call
+    of this session made keeps the hold, with its paths in `moved_by_other` (moved_by_other below).
   gate (from external-adversary.sh, before the partner starts): read that file and decide.
 
 THE CONTENT HASH is `git write-tree` of a private copy of the index after `git add -A`, with the
@@ -114,8 +116,11 @@ def start(snap, agent_key, roots):
     adversary-writes rail already resolved)."""
     if not snap or not agent_key or not os.path.isdir(snap):
         return
+    # The time first: own_changes() reads the session's writes at or after it, and a write made
+    # while the hashes are computed must not fall before it.
+    ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(os.path.join(snap, agent_key + ".gate-start"), "w", encoding="utf-8") as fh:
-        json.dump({r: content_hash(r) for r in roots if r}, fh)
+        json.dump({"ts": ts, "trees": {r: content_hash(r) for r in roots if r}}, fh)
 
 
 def record(session_id, agent_id, verdict, cwd):
@@ -140,12 +145,41 @@ def record(session_id, agent_id, verdict, cwd):
             os.remove(sp)
         except OSError:
             pass
-    if verdict == "hold" and any(r in began and began[r] != h for r, h in trees.items()):
-        verdict = "hold-moved"
+    # A start record from 0.67.0 or older is the bare {root: hash} map, with no time: a change
+    # during that round cannot be attributed, and it stays hold-moved.
+    began = began if isinstance(began, dict) else {}
+    began_ts = began.get("ts") if isinstance(began.get("trees"), dict) else None
+    began = began["trees"] if isinstance(began.get("trees"), dict) else began
+    moved = [r for r, h in sorted(trees.items()) if r in began and began[r] != h]
+    by_other = []
+    if verdict == "hold" and moved:
+        by_other = moved_by_other(session_id, began_ts, {r: (began[r], trees[r]) for r in moved})
+        if not by_other:
+            verdict = "hold-moved"
     rec = {"ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
            "agent": str(agent_id or ""), "verdict": verdict, "trees": trees}
+    if by_other:
+        rec["moved_by_other"] = by_other
     with open(os.path.join(snap, ROUNDS), "a", encoding="utf-8") as fh:
         fh.write(json.dumps(rec) + "\n")
+
+
+def moved_by_other(session_id, since, hashes):
+    """-> the paths ("<root>/<path>") that changed during a round when no tool call of this session
+    wrote any of them after `since` (the round's start), else []. Since 0.67.1: until then any
+    change during the round made it hold-moved, and on 2026-10-21 that refused the partner in 7 of
+    19 calls on one Mac, every one of them while another session wrote memory/ or handoffs/ in the
+    same checkout. [] (stay hold-moved) when the start has no time, a hash is missing, git cannot
+    list the paths, or the transcript is not found: the same direction gate() fails in."""
+    if not since or any(b is None or a is None for b, a in hashes.values()):
+        return []
+    paths = {r: changed_paths(r, b, a) for r, (b, a) in hashes.items()}
+    if not all(paths.values()):
+        return []
+    own = own_changes(session_id, since, paths)
+    if own is None or own:
+        return []
+    return sorted(os.path.join(r, p) for r, ps in paths.items() for p in ps)
 
 
 def gate(session_id, cwd):
@@ -211,6 +245,11 @@ def gate(session_id, cwd):
         return False, ("the content changed after the subagent's last hold (%s) in %s (.goalspec/ "
                        "and a commit of the same content do not count). Run the subagent on the "
                        "current tree first." % (last["ts"], _few(sorted(own) if own else changed)))
+    if last.get("moved_by_other"):
+        return True, ("the subagent held this content at %s; what changed during that round (%s) is in no "
+                      "Write or Edit of this session's transcript, so another writer made it (a shared ledger, "
+                      "another session in this checkout) or a Bash write of this session, which is not attributed"
+                      % (last["ts"], _few(last["moved_by_other"])))
     return True, "the subagent held this content at %s" % last["ts"]
 
 
