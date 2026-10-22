@@ -252,6 +252,25 @@ HOMEDIR = os.path.join(TMP, "home")
 os.makedirs(os.path.join(HOMEDIR, ".claude", "plans"), exist_ok=True)
 PLAN = os.path.join(CFG, "plans", "bright-otter.md")
 CFG_ENV = {"CLAUDE_CONFIG_DIR": CFG}
+# plansDirectory: SPROJ sets a relative one in .claude/settings.json; SPROJ2 sets one in
+# settings.local.json while the user settings (CFG2) set another, which the local one shadows; with
+# CFG2 alone (SP3, a project with no settings) the user's absolute one counts.
+SPROJ = os.path.join(TMP, "sproj")
+os.makedirs(os.path.join(SPROJ, ".claude"), exist_ok=True)
+os.makedirs(os.path.join(SPROJ, "docs", "plans", "deep"), exist_ok=True)
+json.dump({"plansDirectory": "docs/plans"}, open(os.path.join(SPROJ, ".claude", "settings.json"), "w"))
+SPROJ2 = os.path.join(TMP, "sproj2")
+os.makedirs(os.path.join(SPROJ2, ".claude"), exist_ok=True)
+os.makedirs(os.path.join(SPROJ2, "local-plans"), exist_ok=True)
+json.dump({"plansDirectory": "./local-plans"}, open(os.path.join(SPROJ2, ".claude", "settings.local.json"), "w"))
+json.dump({"plansDirectory": "docs/other"}, open(os.path.join(SPROJ2, ".claude", "settings.json"), "w"))
+CFG2 = os.path.join(TMP, "config2")
+os.makedirs(CFG2, exist_ok=True)
+os.makedirs(os.path.join(TMP, "user-plans"), exist_ok=True)
+json.dump({"plansDirectory": os.path.join(TMP, "user-plans")}, open(os.path.join(CFG2, "settings.json"), "w"))
+SP_ENV = {"CLAUDE_CONFIG_DIR": CFG, "CLAUDE_PROJECT_DIR": SPROJ}
+SP2_ENV = {"CLAUDE_CONFIG_DIR": CFG2, "CLAUDE_PROJECT_DIR": SPROJ2}
+SP3_ENV = {"CLAUDE_CONFIG_DIR": CFG2, "CLAUDE_PROJECT_DIR": PROJ}
 ENV_CASES = [
     ("p1-plan-file-write-exempt",
      lambda: pre([LOAD], "p1", tool="Write", tool_input={"file_path": PLAN}), CFG_ENV, "allow"),
@@ -283,6 +302,24 @@ ENV_CASES = [
     ("p8-failed-plan-file-write-denies",
      lambda: pre([LOAD, {"write": (PLAN, SPEC), "id": "w8"}, {"result": ("w8", True)}], "p8"),
      CFG_ENV, "deny-none"),
+    # External round on the first cut of 0.68.2: the plansDirectory setting moves the plan file.
+    ("p9-plansDirectory-relative-in-project-settings-exempt",
+     lambda: pre([LOAD], "p9", tool="Write", tool_input={"file_path": os.path.join(SPROJ, "docs", "plans", "x.md")}),
+     SP_ENV, "allow"),
+    ("p9b-spec-in-plansDirectory-releases",
+     lambda: pre([LOAD, {"write": (os.path.join(SPROJ, "docs", "plans", "x.md"), SPEC)}], "p9b"), SP_ENV, "allow"),
+    ("p9c-local-settings-win-over-user",
+     lambda: pre([LOAD], "p9c", tool="Write", tool_input={"file_path": os.path.join(SPROJ2, "local-plans", "x.md")}),
+     SP2_ENV, "allow"),
+    ("p9d-user-plansDirectory-shadowed-by-local-denied",
+     lambda: pre([LOAD], "p9d", tool="Write", tool_input={"file_path": os.path.join(TMP, "user-plans", "x.md")}),
+     SP2_ENV, "deny-none"),
+    ("p9e-user-plansDirectory-absolute-exempt",
+     lambda: pre([LOAD], "p9e", tool="Write", tool_input={"file_path": os.path.join(TMP, "user-plans", "x.md")}),
+     SP3_ENV, "allow"),
+    ("p9f-plansDirectory-subdir-denied",
+     lambda: pre([LOAD], "p9f", tool="Write",
+                 tool_input={"file_path": os.path.join(SPROJ, "docs", "plans", "deep", "x.md")}), SP_ENV, "deny-none"),
     ("23-opt-out-env-allowed", lambda: pre([LOAD], "23"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
     ("24-other-env-value-still-denies", lambda: pre([LOAD], "24"), {"GOAL_SPEC_BRAKE": "1"}, "deny-none"),
 ]
@@ -396,11 +433,20 @@ MUTATIONS = [
     ("plan-file exemption dropped", HOOK,
      'if ta.is_plan_file(str(inp.get("file_path") or inp.get("notebook_path") or "")):', "if False:"),
     ("plan file widened to any depth under plans/", LIB,
-     "return bool(pd) and os.path.dirname(os.path.realpath(path)) == pd",
-     "return bool(pd) and os.path.realpath(path).startswith(pd)"),
+     "return os.path.dirname(os.path.realpath(path)) in plans_dirs()",
+     "return any(os.path.realpath(path).startswith(d) for d in plans_dirs())"),
     ("plan file directory not anchored to the config dir", LIB,
-     "return bool(pd) and os.path.dirname(os.path.realpath(path)) == pd",
+     "return os.path.dirname(os.path.realpath(path)) in plans_dirs()",
      'return os.path.basename(os.path.dirname(path)) == "plans"'),
+    ("plansDirectory setting ignored", LIB, '                v = json.load(fh).get("plansDirectory")',
+     '                v = None'),
+    ("plansDirectory: user settings win over the project", LIB,
+     """    for f in (os.path.join(proj, ".claude", "settings.local.json"),
+              os.path.join(proj, ".claude", "settings.json"), os.path.join(cfg, "settings.json")):""",
+     """    for f in (os.path.join(cfg, "settings.json"), os.path.join(proj, ".claude", "settings.local.json"),
+              os.path.join(proj, ".claude", "settings.json")):"""),
+    ("plansDirectory relative value taken from the hook cwd", LIB,
+     "v if os.path.isabs(v) else os.path.join(proj, v)", "os.path.abspath(v)"),
     ("plan file needs no .md", LIB, 'not path.endswith(".md") or ', ""),
     ("CLAUDE_CONFIG_DIR ignored", LIB, 'os.environ.get("CLAUDE_CONFIG_DIR") or ', ""),
     ("plan-file spec not a carrier", LIB, "if isinstance(fp, str) and is_plan_file(fp):", "if False:"),

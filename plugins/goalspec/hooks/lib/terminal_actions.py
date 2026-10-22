@@ -580,22 +580,43 @@ CHECKPOINT_PATH_RE = re.compile(r"(^|/)\.goalspec/checkpoint(-[A-Za-z0-9._-]+)?\
 
 
 # 0.68.2 (issue #1) -- the file a native plan-mode session writes its plan to: a .md directly in
-# <config dir>/plans/, the config dir being $CLAUDE_CONFIG_DIR or ~/.claude. Plan mode lets the agent
-# edit only that file, so neither brake may hold it, and a ## Goal-spec written there is the spec.
-def plans_dir():
-    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+# <config dir>/plans/ (the config dir being $CLAUDE_CONFIG_DIR or ~/.claude), or directly in the
+# directory the `plansDirectory` setting names. Plan mode lets the agent edit only that file, so
+# neither brake may hold it, and a ## Goal-spec written there is the spec. The setting is read from
+# the project's .claude/settings.local.json, then .claude/settings.json, then the user's
+# settings.json -- the first that sets it wins; a relative value is taken from the project root
+# (the Claude Code changelog says the setting is checked against it). External round on the first
+# cut of 0.68.2: with only <config dir>/plans, plan mode still deadlocked for that setting.
+def plans_dirs(project_dir=None):
+    cfg = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
+    proj = project_dir or os.environ.get("CLAUDE_PROJECT_DIR") or os.getcwd()
+    dirs = set()
     try:
-        return os.path.realpath(os.path.join(base, "plans"))
+        dirs.add(os.path.realpath(os.path.join(cfg, "plans")))
     except Exception:
-        return None
+        pass
+    for f in (os.path.join(proj, ".claude", "settings.local.json"),
+              os.path.join(proj, ".claude", "settings.json"), os.path.join(cfg, "settings.json")):
+        try:
+            with open(f, encoding="utf-8") as fh:
+                v = json.load(fh).get("plansDirectory")
+        except Exception:
+            continue
+        if isinstance(v, str) and v.strip():
+            v = os.path.expanduser(v.strip())
+            try:
+                dirs.add(os.path.realpath(v if os.path.isabs(v) else os.path.join(proj, v)))
+            except Exception:
+                pass
+            break
+    return dirs
 
 
 def is_plan_file(path):
     if not isinstance(path, str) or not path.endswith(".md") or not os.path.isabs(path):
         return False
-    pd = plans_dir()
     try:
-        return bool(pd) and os.path.dirname(os.path.realpath(path)) == pd
+        return os.path.dirname(os.path.realpath(path)) in plans_dirs()
     except Exception:
         return False
 
