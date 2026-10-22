@@ -1112,8 +1112,8 @@ def _in_own_root(path, cwd, roots):
 def spec_brake_armed(items, session_id=None, cwd=None):
     """True when this session entered the goalspec LOOP (the Skill tool or a typed
     /goalspec[:goalspec]) and has no `## Goal-spec` with a body yet, neither in the assistant's
-    visible text nor in a Write/Edit to THIS session's .goalspec/ checkpoint, in the working directory
-    or the git top level above it.
+    visible text nor in a Write/Edit to THIS session's .goalspec/ checkpoint, under one of
+    own_checkpoint_roots (the directory the session started in, or its git top level).
 
     v3 (ronda 6 of p-718231fa66): v1 and v2 accepted only visible text, and 2 of 6 agents stayed
     stuck in both -- they believed they had posted a spec that existed nowhere visible, and no
@@ -1307,8 +1307,8 @@ def file_waiver_line(items, command, tool_use_id=None, session_id=None, cwd=None
     written, so a waiver in the checkpoint survives where the text did not.
 
     Counts only when all hold:
-      * a waiver_file in this session's checkpoint (own_checkpoint_re, under the cwd or the git top
-        level -- as file_quoted_hold), from a Write/Edit whose result was not an error;
+      * a waiver_file in this session's checkpoint (own_checkpoint_re, under own_checkpoint_roots
+        -- as file_quoted_hold), from a Write/Edit whose result was not an error;
       * written after the last terminal Bash call and the last user prompt (_waiver_window);
       * its line is new: not in any earlier waiver_file or visible text of the session. A Write
         re-writes the whole checkpoint, so an old waiver kept in it would otherwise pass again on
@@ -1420,8 +1420,8 @@ def file_quoted_hold(items, session_id=None, cwd=None):
 
     Counts only when all hold, mirroring the visible-text quote (which passes while the most recent
     verdict is not a break):
-      * a verdict_file in THIS session's checkpoint (own_checkpoint_re, under the cwd or the git top
-        level -- as the spec brake), from a Write/Edit whose result was not an error
+      * a verdict_file in THIS session's checkpoint (own_checkpoint_re, under own_checkpoint_roots
+        -- as the spec brake), from a Write/Edit whose result was not an error
         (read_transcript_items), whose last verdict line is a hold;
       * that line is the same line as the most recent hand-back verdict before the Write, and that
         verdict is a hold: a hold written with no adversary behind it, or an old hold left in the
