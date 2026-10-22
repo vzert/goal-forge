@@ -8,8 +8,10 @@
 
   "adversary": {
     "backend": "subagent",
-    "external_cmd": "codex exec"
+    "external_cmd": "codex exec",
+    "max_external_rounds": 3
   },
+  "_max_external_rounds_comment": "0.68.0: how many external rounds one goal-spec cycle may run before the partner stops and the human decides (default 3; 0 = no cap). Per key, project then global. Your cost call: set it before the run, not after a break.",
 
   "_usage_budget_comment": "OFF BY DEFAULT, and unlike every other key above, opting in has a real security implication: hooks/check-usage-budget.sh reads your LOCAL Claude Code OAuth credential (the same file/Keychain entry Claude Code itself uses) and sends it to Anthropic's own account-usage endpoint (api.anthropic.com/api/oauth/usage) to read your real 5-hour/7-day usage percentage. The token is never logged, cached, or printed -- only the resulting percentages are cached, locally, briefly. Read references/usage-budget-setup.md before enabling this. Only fires as an advisory nudge (never blocks) within a goalspec-tracked session, and only when usage crosses warn_threshold.",
   "usage_budget": {

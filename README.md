@@ -471,7 +471,7 @@ picked by one reader because their blocking findings looked mostly like edge cas
 52 rested on an input only the adversary had built, and 28 came back as a new variant of the same root. Measured before the
 change over 65 real break rounds: 5 had only minor findings, 13 mixed a blocking one with minor ones,
 and in 6 of them the executor had called 8 blocking findings "wording" (a CHANGELOG line
-contradicting the code, a cited path that did not exist, an overstated published figure).
+contradicting the code, a cited path that did not exist, an overstated published figure). Since v0.68.0 the same holds for a hole that needs an actor the adversary supposed (another administrator acting in the same seconds, a spoof, an attacker): it counts only when that actor can really act, and an ordinary failure nobody causes on purpose counts as before. With `codex exec` the hook now decides that from the facts the partner reports in a JSON answer, not from the severity it gives itself, and it stops the partner after `adversary.max_external_rounds` rounds per goal-spec cycle (default 3) so the human decides.
 
 **What `GOAL_GATE_ENFORCE=1` actually buys (measured, 0.19.0).** It sends the *same reminder* as a
 formal block rather than as advisory context, **at most once per user prompt** — the re-entrant

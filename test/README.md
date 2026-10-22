@@ -1,6 +1,6 @@
 # test/
 
-**Twenty** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
+**Twenty-one** mechanical suites (one per `*-branches.py` in this directory — keep this count in step when
 you add one), plus `claim-surface-carriers.py` (a rule-carrier check, not a branch suite),
 `manifest-checks.py` (manifest and wiring checks), and one check by hand.
 
@@ -1076,6 +1076,29 @@ The content hash is `git write-tree` of a copy of the index made with `shutil.co
 gave the index a new mtime, git then trusted its stat cache for a same-size edit made in the second
 of the last index write, and case 03 came back `run` in 3 of 30 runs (0 of 30 with `copy2`).
 
+
+## `external-schema-branches.py` — structured answer and round cap of the external partner (0.68.0)
+
+`python3 test/external-schema-branches.py` (and `--selftest`). Covers `hooks/lib/external_review.py`
+and its three calls in `external-adversary.sh`: the round cap before a round, the
+`--output-schema`/`-o` flags on a codex command, and the rendering after it. Each case runs the hook
+with a fake `codex` on PATH that writes a chosen JSON answer to the `-o` file (and, for the fallback
+cases, prints a text verdict); the outcome is the verdict the hook resolved plus its notices.
+Hermetic: per-case TMPDIR, HOME, state directory and `CLAUDE_CONFIG_DIR`, no network.
+
+30 cases: the severity rule (an ordinary-use defect blocks even unconfirmed; a supposed actor or a
+crafted input only with evidence that it occurs, and a cited line of the vulnerable code is not that; the verifier's environment and the run's bookkeeping never; a
+record only when a reader acts on it; autonomy only with evidence; a pre-existing defect only when a
+criterion rests on it), the counts mapped to the verdict keys, an answer that is not JSON falling
+back to the text verdict with a notice, `GOAL_ADVERSARY_SCHEMA=0`, the schema flags reaching codex
+and no other CLI, the prompt codex receives asking for the JSON answer
+and naming every field, a model self-report printed once when it already carries the marker name, a model self-report that cannot forge the marker, a repeated root demoted unless
+it brings a new scenario and its repro, `NOT CONVERGED` when the blocking count did not fall, and
+the cap (the 4th round of a cycle does not run; the config raises it; `0` removes it; a new
+`## Goal-spec` starts a new cycle; text-path rounds count too, a placeholder-derived break counts, a run that gave no verdict does not;
+a text round is never the round the next one is compared with; a finding with no root uses its title; a round is stamped finer than a second). Skipped on Windows, where the
+structured answer is off. New in 0.68.0 with no predecessor, so `--selftest` applies 26 mutations to
+a copy of the plugin and requires a case to notice each.
 ## `handback-verdict-branches.py` — reminder to quote a hand-back verdict (0.46.8)
 
 For `hooks/remind-handback-verdict.sh`. A goal-adversary launched in the background reports later,

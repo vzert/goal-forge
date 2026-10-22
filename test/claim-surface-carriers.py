@@ -77,6 +77,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 P = os.path.join(REPO, "plugins", "goalspec")
@@ -99,6 +100,11 @@ def external_env(**extra):
     # whenever this suite runs inside a Claude Code session (CLAUDE_CODE_SESSION_ID is inherited),
     # and no prompt would be emitted to check.
     env.setdefault("GOAL_ADVERSARY_AFTER_SUBAGENT", "0")
+    # The round cap (0.68.0) keeps a ledger per session: run inside a Claude Code session, this suite
+    # would spend that session's real rounds and, past the cap, get no prompt to check. Its own
+    # state directory, under this run's TMPDIR (removed at exit by tmp_cleanup).
+    st = os.path.join(tempfile.gettempdir(), "carriers-state")
+    env["XDG_STATE_HOME"] = env["LOCALAPPDATA"] = st
     return env
 DURABLE = os.path.join(P, "references", "durable-artifact.md")
 
@@ -774,6 +780,25 @@ def main():
         check("built:%s-variant-of-root-is-minor" % name, "variant of the same root is MINOR" in t)
         check("built:%s-narrows-count-not-probe" % name, "never what you probe or read" in t)
         check("built:%s-probe-real-inputs-first" % name, "First look in the real data" in t)
+        # 0.68.0: a hole that needs an actor the adversary supposed counts only when that actor can act.
+        check("actor:%s-rule" % name, "only when that actor can really act" in t.lower().replace("**", ""))
+        check("actor:%s-four-conditions" % name, all(k in t for k in (
+            "logs, history or transcripts", "who acts that way in normal use", "names that actor",
+            'a general "safe" is not that line')))
+        check("actor:%s-ordinary-failure-counts" % name, "ordinary failure the operator meets" in t)
+        check("actor:%s-negative-claim-untouched" % name, "does not touch the negative-claim rule" in t)
+    check("actor:skill-step6", "counts only when that actor can really act" in fs_
+          and "negative-claim rule is unchanged" in fs_)
+    check("actor:adversary-skill", "counts only when that actor can really" in fk_)
+    check("actor:readme", "counts only when that actor can really act" in fl(readme))
+    # 0.68.0: with codex the hook computes severity from the facts of each finding, and caps the rounds.
+    st_ = fl(setup)
+    check("struct:skill-hook-decides", "the hook, not codex, decides what blocks" in fs_)
+    check("struct:skill-cap", "adversary.max_external_rounds" in fs_ and "NOT CONVERGED" in fs_)
+    check("struct:setup-section", "Structured answer and round cap (0.68.0)" in st_
+          and "GOAL_ADVERSARY_SCHEMA=0" in st_ and "adversary.max_external_rounds" in st_)
+    check("struct:setup-fields-are-reports", "The fields are the model's report" in st_)
+    check("struct:readme-cap", "adversary.max_external_rounds" in fl(readme))
     check("built:skill-step6", "counts only when that input can really occur" in fs_)
     check("built:adversary-skill", "counts only when that input can really occur" in fk_)
     check("sev:agent-verdict-counts-blocking", "`break` if the total confirmed BLOCKING count" in agent)
@@ -908,7 +933,7 @@ def main():
 #                                      -> every negative check must FAIL under some PLANT(X)
 # Then every label must be accounted for: proven positive, proven negative, a declared comment
 # carrier, or one of NO_COMMENT_FORM below. An unclassified label fails the selftest.
-EXPECTED_CHECKS = 279  # the count the selftest proves; a deleted check must not pass silently
+EXPECTED_CHECKS = 295  # the count the selftest proves; a deleted check must not pass silently
 
 CARRIER_FILES = (
     "plugins/goalspec/skills/goalspec/SKILL.md", "plugins/goalspec/skills/adversary/SKILL.md",

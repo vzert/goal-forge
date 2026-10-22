@@ -52,6 +52,26 @@ subagent had not held. Most of their breaks were real defects the subagent round
 later and slower. On held content, the partner still found real defects the subagent missed, in 17
 of 43 rounds. Only the human turns the gate off, with `GOAL_ADVERSARY_AFTER_SUBAGENT=0`.
 
+**Structured answer and round cap (0.68.0).** With `codex exec`, the hook adds `--output-schema` and
+`-o` and asks for a JSON answer: for each finding, what it attacks (`about`: work, record, process),
+what triggers it (`trigger`: ordinary_use, supposed_actor, crafted_input, environment), what
+evidence it has, its repro and the name of its root. The hook, not the model, then decides
+BLOCKING or MINOR (`hooks/lib/external_review.py`) and writes the same `[ADVERSARY-VERDICT: ...]`
+line as before. An ordinary-use defect of the work counts even when it could not be confirmed; a
+supposed actor or a crafted input counts only with evidence that it occurs (`actor_evidence`; a cited line of the vulnerable code is evidence of the hole, not of the actor); the verifier's own
+environment never counts. From the second round of a cycle, a root an earlier round already raised
+counts again only with a new failing scenario and its repro, and when the blocking count did not
+fall the hook prints `NOT CONVERGED`: stop and hand the decision to the human. After
+`adversary.max_external_rounds` rounds in one goal-spec cycle (default 3, `0` = no cap; a new
+`## Goal-spec` starts a new cycle) the partner does not run until the human raises it. Why: on one
+production plan, 7 rounds broke in a row, 9 of 32 blocking findings needed an actor nobody showed
+acts there, and a prompt rule saying so was ignored in a real run; elsewhere, the severity a model
+gives its own finding proved close to random. `GOAL_ADVERSARY_SCHEMA=0` turns the structured answer
+off (the text answer and its own severity, as before). Other CLIs and Windows keep the text answer;
+their rounds still count toward the cap when they give a filled verdict. A run that reviewed nothing
+(a usage limit, an auth or network error) never counts. The fields are the model's report: it can fill them
+falsely, and the evidence it gives is printed for you to read.
+
 **Time cap (0.65.7).** The hook stops the partner after `GOAL_ADVERSARY_TIMEOUT` seconds (default
 1800; `0` turns it off), killing it and every process below it at that moment —
 the commands codex runs in sessions of their own included; one that already left that tree (a double

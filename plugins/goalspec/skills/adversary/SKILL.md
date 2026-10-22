@@ -159,7 +159,9 @@ breaks; a non-terminal claim with no streak closes on the subagent alone. The ex
   tests it against what the user asked, and one narrowed after a finding counts as BLOCKING. A hole found only by an
   input the adversary built counts only when that input can really occur (found in real data, an ordinary producer
   named, its class named by a criterion or the threat model, or a documented input) — otherwise it is MINOR, and so
-  is a further crafted variant of a root that already has a BLOCKING finding (0.65.7). A round whose findings are all MINOR is a `hold`. Report MINOR notes to the user as notes: they
+  is a further crafted variant of a root that already has a BLOCKING finding (0.65.7). A hole that needs an actor the
+  adversary supposed (another admin in the same seconds, a spoof, an attacker) counts only when that actor can really
+  act, by the same four tests; an ordinary failure nobody causes on purpose counts as before (0.68.0). A round whose findings are all MINOR is a `hold`. Report MINOR notes to the user as notes: they
   open no round and no pending item (the goalspec skill's step 6, "Severity").
 - On **`break`**: report the confirmed violations to the user with the adversary's ground-truth
   for each. This command runs **one round per invocation** — it does not loop. What happens next

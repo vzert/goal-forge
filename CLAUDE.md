@@ -42,7 +42,7 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    the mechanical sweep surfaces the planted decision; the `goal-adversary` runs (every run
    since 0.47.0; with an external backend configured, the terminal action adds that one too) and returns a `break|hold` verdict; a `[COMPLETION-REVIEW: …]` is emitted; the Stop gate
    stays advisory (blocks only with `GOAL_GATE_ENFORCE=1`).
-3. Run **the twenty branch suites plus the carrier suite** (twenty-one commands; one of them is not a
+3. Run **the twenty-one branch suites plus the carrier suite** (twenty-two commands; one of them is not a
    branch suite — it checks written rules across their carriers): `python3 test/gate-branches.py` (Stop gate — includes the
    terminal-action staleness backstop cases, `stale-01`..`12`, which need live git repos and
    `CLAUDE_PLUGIN_ROOT` set, unlike every other case in that file),
@@ -99,6 +99,10 @@ hermetic suites do not have. Whether that trade is worth it is open. To sanity-c
    and `python3 test/subagent-gate-branches.py` (the external partner runs only on a tree the
    goal-adversary subagent held, or after two subagent breaks in a row — throwaway git repos, synthetic
    SubagentStop payloads, per-case state directory; new in 0.66.0 with no predecessor, so run
+   `--selftest` too), and `python3 test/external-schema-branches.py` (the structured answer and the
+   round cap of the external partner: a fake codex writes a chosen JSON answer, and the cases assert
+   the severity the hook computed, the repeated-root and NOT CONVERGED rules, and the cap per
+   goal-spec cycle — hermetic, per-case state directory; new in 0.68.0 with no predecessor, so run
    `--selftest` too).
    Plus `python3 test/manifest-checks.py` (**not a branch suite**: version sync between
    `plugin.json` and `marketplace.json`, frontmatter that a real YAML parser accepts, every

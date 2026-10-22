@@ -937,6 +937,11 @@ def _classify(res, case_name, repo=REPO):
             branch += "+codexsilent"
         m = re.search(r"STUB-ARGS=(.*)", out)
         args = m.group(1).split() if m else []
+        # 0.68.0: the structured answer appends `--output-schema <scratch>/review-schema.json -o
+        # <scratch>/review-answer.json` to a codex command; the sandbox flags are checked before it.
+        if (len(args) >= 4 and args[-4] == "--output-schema" and args[-3].endswith("/review-schema.json")
+                and args[-2] == "-o" and args[-1].endswith("/review-answer.json")):
+            args = args[:-4]
         if case_name[:2] in ("22", "68"):
             branch += "+ww" if args[-2:] == ["-s", "workspace-write"] else "+noflag"
         else:
@@ -993,6 +998,9 @@ def suite(hook, workdir):
         # The subagent-first gate (0.66.0) has its own suite, test/subagent-gate-branches.py; here it
         # is off, so a case with a session id still reaches the partner it is about.
         env["GOAL_ADVERSARY_AFTER_SUBAGENT"] = "0"
+        # The round cap (0.68.0) keeps a ledger in the per-session state directory: give each case
+        # its own, never the real one (a shared one made later cases hit the cap of earlier ones).
+        env["XDG_STATE_HOME"] = env["LOCALAPPDATA"] = os.path.join(workdir, "state-" + name[:2])
         # The sessions that exist (0.63.1): never the real ~/.claude, so a case sees only these.
         cfg = os.path.join(workdir, "claude-config-" + name[:2])
         env["CLAUDE_CONFIG_DIR"] = cfg

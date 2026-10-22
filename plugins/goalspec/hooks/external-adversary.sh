@@ -131,6 +131,25 @@ if [ -f "$GATE_PY" ]; then
   esac
 fi
 
+# ROUND CAP (0.68.0, p-d33dc17af4). Rounds did not converge: on one production plan 7 external rounds
+# broke in a row with ever finer findings, and nothing stopped them. Once this goal-spec cycle has
+# used the rounds the human allowed (adversary.max_external_rounds, default 3; 0 = no cap), this
+# refuses and the human decides. hooks/lib/external_review.py has the rule and its limits. Fail-open.
+REVIEW_PY="$(dirname "$0")/lib/external_review.py"
+[ -f "$REVIEW_PY" ] || REVIEW_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/external_review.py"
+REVIEW_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
+if [ -f "$REVIEW_PY" ]; then
+  CAP_OUT=$("$PY" "$REVIEW_PY" cap "$(pwd -W 2>/dev/null || pwd)" "$REVIEW_REPO" 2>/dev/null || true)
+  case "$CAP_OUT" in
+    BLOCK*)
+      CAP_WHY=${CAP_OUT#BLOCK	}
+      echo "external-adversary: NOT RUN -- $CAP_WHY" >&2
+      echo "NOT RUN (goalspec external adversary): no round ran, so there is no verdict to quote. $CAP_WHY" >&2
+      exit 3
+      ;;
+  esac
+fi
+
 PAYLOAD=$(cat)
 
 # EDITING THE PROMPT BELOW: keep single quotes/apostrophes BALANCED inside this heredoc. It sits in a
@@ -343,6 +362,24 @@ input and say which of (a) to (d) you checked. Once a root claim has one BLOCKIN
 crafted variant of the same root is MINOR unless (a) or (b) holds for that variant: the executor
 fixes the root, not each spelling. This narrows what you COUNT, never what you probe or read; a false
 claim, a failed criterion and a real instance count exactly as before.
+A HOLE THAT NEEDS AN ACTOR YOU SUPPOSED IS BLOCKING ONLY WHEN THAT ACTOR CAN REALLY ACT (0.68.0). The
+same test applies when the trigger is not an input but a person or agent you posit: another
+administrator acting in the same seconds, a deliberate spoof, an attacker, a second session racing
+this one. Measured 2026-10-21 by one reader, on the 32 blocking findings of 7 consecutive external
+rounds over one production change plan (one case, not a rate): 9 needed such an actor and showed no
+sign it acts there, 7 were defects that cause harm or a false clean result in ordinary execution, and
+14 repeated a root an earlier round had already raised. So a hole that needs an actor you supposed
+counts as BLOCKING only when at least one of these holds: (a) you find that actor at work, or its
+kind of action, in the real data, logs, history or transcripts (another login changing the same
+setting, a job that does it); (b) you name who acts that way in normal use, not "another admin
+could"; (c) a success criterion or the declared threat model names that actor, or the threat model
+covers deliberate evasion; (d) the work states that it handles that actor (a line that it is safe
+against concurrent changes; a general "safe" is not that line). Otherwise it is MINOR: name the actor
+and say which of (a) to (d) you checked. An ordinary failure the operator meets without anyone
+acting against them (a dropped connection, a timeout, a full disk, the mistyped value of the operator)
+is not a supposed actor and counts as before. This does not touch the negative-claim rule: a claim
+that only some can do a thing, or that nothing else uses it, still needs its option surface audited,
+and an unaudited surface counts.
 If the goal-spec declares no threat model, nothing is outside it and a hole counts (the rule on built
 inputs above still applies). THE THREAT
 MODEL IS FIXED WHEN THE SPEC IS WRITTEN AND ONLY GROWS: test the declared line against what the user
@@ -449,6 +486,46 @@ any other goal-spec.
 $PAYLOAD
 EOF
 )
+
+# STRUCTURED ANSWER (0.68.0). With codex, the final answer is JSON checked against a schema
+# (hooks/lib/external_review.py), and the hook computes severity and the verdict from its fields: the
+# severity a model gives its own finding proved unreliable. Other CLIs keep the text answer above.
+# GOAL_ADVERSARY_SCHEMA=0 turns it off. Not on Windows: codex there cannot read a Git Bash path.
+ADV_SCHEMA=0
+case "${BIN##*/}" in
+  codex)
+    case "$(uname -s 2>/dev/null)" in
+      MINGW*|MSYS*|CYGWIN*) ;;
+      *) [ "${GOAL_ADVERSARY_SCHEMA:-1}" != 0 ] && [ -f "$REVIEW_PY" ] && ADV_SCHEMA=1 ;;
+    esac
+    ;;
+esac
+if [ "$ADV_SCHEMA" = 1 ]; then
+  PROMPT="$PROMPT
+
+=== YOUR FINAL ANSWER IS JSON (this overrides the verdict-line instruction above) ===
+Your final answer must match the JSON schema you are given. Do NOT grade severity and do NOT write a
+verdict line: the hook computes both from the facts you report, by the rubric above. Report every
+confirmed finding, BLOCKING-looking or not, with honest fields:
+about: work (the deliverable or a claim the outcome rests on), record (a line in the run record or a
+document), process (the bookkeeping of the run itself).
+reader_acts_on_it: true when a human or agent will decide something from that statement.
+trigger: ordinary_use (normal execution by the stated operator and users), supposed_actor (a person or
+agent you posit: another admin acting at the same time, a spoof, an attacker), crafted_input (an
+input only you built), environment (your own sandbox, network or a stale ref), not_applicable.
+evidence_kind and evidence: what shows it occurs here -- observed_in_run (a command you ran and its
+output), cited_file_line, in_real_data (logs, history, transcripts), documented, or none. For a
+supposed actor or a crafted input, say in actor_evidence what shows that the actor or the input
+occurs here: seen_in_real_data (logs, history, transcripts show it), named_producer (who sends it in
+normal use), named_in_threat_model, documented_as_supported, or none. A line of the code that has the
+hole is evidence of the hole, not of the actor: then actor_evidence is none. Use not_applicable for
+any other trigger.
+repro: the command or steps that show it. root: a short kebab-case name of the root cause, the same
+words each time you meet the same root. new_scenario: true only when this finding brings a failing
+scenario that differs from one already raised on the same root.
+criterion: the success criterion it breaks, or none. introduced_by_change: true when the change under
+review caused it. attacks: every angle you were given or chose, with its outcome."
+fi
 
 # Partners burn findings on the limits of their own sandbox, systematically (two consecutive
 # phases observed it): an unwritable TMPDIR fails their suite runs, a cwd outside the repo hides
@@ -747,6 +824,20 @@ set -e
 FP_BEFORE=$(_adv_fingerprint "$REVIEW_ROOT" 2>/dev/null || true)
 HEAD_BEFORE=$(git -C "$REVIEW_ROOT" rev-parse HEAD 2>/dev/null || echo unborn)
 
+# The schema and the answer file for the structured answer (STRUCTURED ANSWER above). A path with a
+# blank cannot ride in the unquoted $EXT_CMD, so then the text answer is used.
+ADV_ANSWER=""
+if [ "$ADV_SCHEMA" = 1 ]; then
+  if [ -n "$ADV_TMP" ] && [ -d "$ADV_TMP" ] && ! printf '%s' "$ADV_TMP" | grep -q '[[:space:]]' \
+     && "$PY" "$REVIEW_PY" schema "$ADV_TMP/review-schema.json" 2>/dev/null; then
+    ADV_ANSWER="$ADV_TMP/review-answer.json"
+    EXT_CMD="$EXT_CMD --output-schema $ADV_TMP/review-schema.json -o $ADV_ANSWER"
+  else
+    ADV_SCHEMA=0
+    echo "external-adversary: could not set up the structured answer (no usable scratch directory) -- the partner answers in text and states its own severity." >&2
+  fi
+fi
+
 # Pipe the prompt to the external CLI on stdin. Some CLIs accept a prompt on stdin (codex exec,
 # claude -p); others want it as an argument (gemini -p) — wrap those in a small adapter.
 #
@@ -826,6 +917,19 @@ else
   OUT=$(printf '%s' "$PROMPT" | $EXT_CMD 2>&1)
 fi
 RC=$?
+# The structured answer, rendered with code-computed severity and appended LAST, so the verdict
+# parsing below anchors on it as the answer (its [ADVERSARY-MODEL:] line opens it). A missing or
+# unreadable answer leaves the text path as before. A text-path round counts toward the cap only when
+# the partner gave a filled verdict (below): a run that reviewed nothing (a usage limit, an auth or
+# network error) is not a round the human allowed (adversary round on 0.68.0).
+if [ "$ADV_SCHEMA" = 1 ] && [ -n "$ADV_ANSWER" ] && [ -s "$ADV_ANSWER" ] \
+   && RENDERED=$("$PY" "$REVIEW_PY" render "$ADV_ANSWER" "$REVIEW_REPO" 2>/dev/null) && [ -n "$RENDERED" ]; then
+  OUT="$OUT
+$RENDERED"
+else
+  [ "$ADV_SCHEMA" = 1 ] && echo "external-adversary: the partner gave no answer that matches the schema -- the verdict is read from its text, with the severity it gave itself." >&2
+  ADV_TEXT_ROUND=1
+fi
 if [ "$ADV_CAPPED" = 1 ] && [ "$RC" -eq 124 ]; then
   echo "external-adversary: stopped the partner after ${ADV_CAP}s (GOAL_ADVERSARY_TIMEOUT). A break it had already printed stands; with none, this round is UNVERIFIED. Re-run it with a narrower payload, or route it to the subagent." >&2
 fi
@@ -874,6 +978,11 @@ if [ "$TEMPLATE_LAST" = 1 ]; then
     TEMPLATE_LAST=0
     DERIVED_BREAK=1
   fi
+fi
+# A text-path round spends the cap only when it gave a verdict: a filled one, or a break derived from
+# the placeholder word just above (adversary rounds on 0.68.0). A run that reviewed nothing does not.
+if [ "${ADV_TEXT_ROUND:-0}" = 1 ] && [ -n "$VERDICT" ] && [ -f "$REVIEW_PY" ]; then
+  "$PY" "$REVIEW_PY" text-round "$REVIEW_REPO" 2>/dev/null || true
 fi
 # The model self-report is requested by the prompt, so requesting it is not enforcing it (two
 # different-model reviews confirmed this gap by reading this very file). Extract it mechanically;

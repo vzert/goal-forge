@@ -6,6 +6,51 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.68.0] - 2026-10-21
+
+### Changed
+
+- **With codex, the hook decides what blocks, not the partner, and it caps the rounds (p-d33dc17af4).**
+  Severity rules written in the prompt were not obeyed reliably and the rounds did not converge.
+  Measured on one production change plan (2026-10-21): 7 external rounds broke in a row; of their 32
+  blocking findings, 7 were defects of ordinary execution, 9 needed an actor the partner supposed
+  (another administrator in the same seconds, a spoof) with no sign it acts there, and 14 repeated a
+  root an earlier round had raised (one reader's classification, one case). A prompt rule that made
+  a supposed actor MINOR was then ignored in a real run, and two runs over the same content shared
+  almost no findings. Outside this repo, a code-review vendor measured the severity a model gives its
+  own finding as close to random. So, with `codex exec`, the hook adds `--output-schema` and `-o`:
+  the partner reports, per finding, what it attacks (work, record, process), what triggers it
+  (ordinary use, a supposed actor, a crafted input, its own environment), its evidence, its repro
+  and the name of its root, and `hooks/lib/external_review.py` computes BLOCKING or MINOR and the
+  same `[ADVERSARY-VERDICT: ...]` line every consumer already reads. An ordinary-use defect of the
+  work counts even unconfirmed; a supposed actor or a crafted input only with evidence; the
+  verifier's own environment never. For a supposed actor the evidence is a separate field (`actor_evidence`: seen in real data, a named producer, the threat model, the documentation, or none), because in a real round codex cited the vulnerable line of the code as evidence that a concurrent administrator exists. From the second round of a goal-spec cycle a root already
+  raised counts again only with a new failing scenario and its repro, and when the blocking count
+  did not fall the hook prints `NOT CONVERGED`. After `adversary.max_external_rounds` rounds in one
+  cycle (default 3; `0` = no cap; a new `## Goal-spec` starts a new cycle) the partner does not run
+  until the human raises it; rounds of other CLIs count too, but only when they gave a filled verdict (a run that reviewed nothing, such as a usage limit or a network error, does not spend the cap). `GOAL_ADVERSARY_SCHEMA=0` keeps the
+  text answer. Other CLIs and Windows keep the text answer and its own severity. The fields are the
+  model's report and can be filled falsely; the evidence is printed. Measured before release, and not
+  shown to help yet: on a copy of that plan, two codex rounds per side, the old prompt gave 4 and 5
+  blocking findings and the structured answer 10 and 5 (1 to 10 across all its runs on the same
+  content); supposed-actor findings still counted when codex marked them as named in the threat model,
+  and one ordinary-use finding marked as observed was false on inspection. Shipped on by the
+  maintainer's call for the per-finding reasons and the cap; its effect is to be measured in real use. New suite
+  `test/external-schema-branches.py` (30 cases, 26 mutations in `--selftest`).
+- **A hole that needs an actor the adversary supposed counts only when that actor can really act**,
+  by the same four tests as a crafted input (0.65.7), in the subagent's rubric and the partner's
+  prompt (`agents/goal-adversary.md`, `external-adversary.sh`, both SKILL.md, README). An ordinary
+  failure nobody causes on purpose (a dropped connection, a timeout, the operator's own typo) counts
+  as before, and the negative-claim rule is unchanged.
+
+### Fixed
+
+- `test/external-adversary-branches.py` and `test/claim-surface-carriers.py` ran the external hook
+  with the state directory of the real user, and the carrier suite with the session id of the
+  session running it: each now has its own state directory, so a test run neither leaves files under
+  `~/.local/state/goalspec` nor spends the round cap of a real session.
+- `test/manifest-checks.py` reads a hyphenated suite count (`twenty-one`) whole; it read its last word.
+
 ## [0.67.2] - 2026-10-21
 
 ### Fixed
