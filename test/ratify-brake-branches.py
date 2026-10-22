@@ -29,6 +29,8 @@ LIB = os.path.join("hooks", "lib", "terminal_actions.py")
 TMP = tempfile.mkdtemp(prefix="ratify-brake-branches-")
 PROJ = os.path.join(TMP, "proj")
 os.makedirs(PROJ, exist_ok=True)
+OUTSIDE = os.path.join(TMP, "outside")  # where a `cd` took the session (0.67.2)
+os.makedirs(OUTSIDE, exist_ok=True)
 
 SPEC = ("## Goal-spec\nAsked (your words): whatever.\n1. Real objective: make the report exist.\n"
         "2. Measurable success: the file is committed and every figure re-derives.\n")
@@ -41,6 +43,9 @@ def transcript(events, name, entrypoint="cli"):
     with open(p, "w", encoding="utf-8") as fh:
         for ev in events:
             base = {"entrypoint": entrypoint} if entrypoint else {}
+            if "start" in ev:  # the harness records the session's cwd on its events (0.67.2)
+                fh.write(json.dumps({**base, "type": "system", "cwd": ev["start"]}) + "\n")
+                continue
             if "typed" in ev:
                 fh.write(json.dumps({**base, "type": "user", "message": {"content": [
                     {"type": "text", "text": ev["typed"]}]}}) + "\n")
@@ -201,6 +206,14 @@ CASES = [
     ("37-read-tool-allows", lambda: pre([LOAD, TXT], "37", tool="Read"), "allow"),
     # The pre-spec brake still comes first.
     ("40-no-spec-is-the-spec-brake", lambda: pre([LOAD], "40"), "deny-spec"),
+    # 0.67.2 (issue #2): after a `cd` out of the start directory, the checkpoint spec written there
+    # still counts -- the ratify brake holds (not the spec brake), and an answered modal releases it.
+    ("41-cd-out-checkpoint-spec-is-ratify",
+     lambda: pre([{"start": PROJ}, LOAD, {"write": (os.path.join(PROJ, CKPT), SPEC), "id": "w1"}],
+                 "41", cwd=OUTSIDE), "deny-ratify"),
+    ("42-cd-out-checkpoint-spec-answered-allows",
+     lambda: pre([{"start": PROJ}, LOAD, {"write": (os.path.join(PROJ, CKPT), SPEC), "id": "w1"},
+                  {"ask": "q1"}, {"result": ("q1", False)}], "42", cwd=OUTSIDE), "allow"),
 ]
 ENV_CASES = [
     ("50-ratify-opt-out", lambda: pre([LOAD, TXT], "50"), {"GOAL_RATIFY_BRAKE": "0"}, "allow"),

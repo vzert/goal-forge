@@ -894,13 +894,13 @@ Measured 2026-10-15 over the maintainer's local transcripts: of 188 interactive 
 and a later Bash, Write or Edit, 59 raised any `AskUserQuestion` between the spec and that call — 5
 of 67 on 0.49.0 or later. The sdk-cli and sdk-ts sessions (4555) never got one answered, so they are not held.
 
-41 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
-session's checkpoint, VS Code, a modal with no answer yet, a modal raised only before the spec, a
+43 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
+session's checkpoint -- also one written to the start directory's checkpoint before a `cd` out of it (0.67.2), VS Code, a modal with no answer yet, a modal raised only before the spec, a
 modal whose result is an error, a harness notification, a new spec after a completion-review written plain, in bold, in backticks or as a bullet, the close
 marker quoted inside the spec, the marker quoted in prose after the modal (asks once more, by
 design), a modal before the real spec when the first "spec" was another
 session's checkpoint); allowed (an answered modal after the spec, a typed reply, a spec re-emitted
-in the same cycle, a new cycle that was asked, a closed run with no new spec, the close marker inside a ``` or ~~~ fence, closed or not,
+in the same cycle, a new cycle that was asked, the start-directory checkpoint spec after a `cd` once asked, a closed run with no new spec, the close marker inside a ``` or ~~~ fence, closed or not,
 sdk-cli, sdk-ts, no entrypoint, no loop entry, interview only, a
 subagent call, a checkpoint write, Read, `GOAL_RATIFY_BRAKE=0`, `GOAL_SPEC_BRAKE=0`); and the
 pre-spec hold still comes first. The deny reason must name the modal, its four options, that Stop
@@ -1161,7 +1161,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-166 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+169 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -1211,7 +1211,9 @@ Write (114; a newer hand-back hold after it can be quoted, 115) or as an old hol
 history after a break (107); a failed adversary spawn result is no report (113); a hand-back break
 after a hold quoted in text now wins (108); the deny names the checkpoint to write (110); a quote only
 in thinking is still nothing (111). Rows 01-99 are byte-identical to 0.50.0's; against 0.50.0, 100,
-101, 108, 110, 112, 113 and 115 fail.
+101, 108, 110, 112, 113 and 115 fail. Since 0.67.2 (issue #2): a hold quoted into the checkpoint of
+the directory the session started in still counts after a `cd` out of it (115b), and with no start
+directory on record the same Write is in another root (115c, the control); 115b fails against 0.67.1.
 
 New in 0.57.0, a `[GOAL-CLOSE-WAIVED ...]` written with a Write/Edit into this session's own
 checkpoint in place of visible text (cases 150-164): it allows, with the line in the allow message,

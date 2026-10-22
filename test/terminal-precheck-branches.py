@@ -917,6 +917,30 @@ case("115-newer-handback-hold-after-text-break-ALLOW", _fq(
                      {"write": (CKPT, HOLD_LINE), "write_id": "w115"}], True))
 
 
+# 0.67.2 (issue #2): the payload cwd follows a `cd` in Bash. A hold quoted into the checkpoint of
+# the directory the session started in still counts after the session moved out of it (115b); with
+# no start directory on record, the same Write from the same cwd is in another root (115c).
+def _fq_moved(name, with_start, want_allow):
+    def fn():
+        LAST_MESSAGE[0] = ""
+        work = make_repo(name, None, None)
+        outside = os.path.join(TMP, name, "outside")
+        os.makedirs(outside)
+        events = ([{"raw": {"type": "system", "cwd": work}}] if with_start else []) + HB_REL + [
+            {"write": (os.path.join(work, CKPT), HOLD_LINE), "write_id": "w" + name}]
+        decision, detail = run_hook(outside, "gh pr merge", transcript(events, name), session_id=SID)
+        if not want_allow:
+            return (decision, detail) if decision == "deny" else (decision, "expected a deny")
+        if decision != "allow-with-message":
+            return decision, "expected an allow with the line: " + detail
+        return (decision, HOLD_LINE[:40]) if HOLD_LINE in LAST_MESSAGE[0] else ("wrong-text", LAST_MESSAGE[0][:70])
+    return fn
+
+
+case("115b-cd-out-hold-quoted-in-start-dir-checkpoint-ALLOW", _fq_moved("115b", True, True))
+case("115c-cd-out-no-start-dir-on-record-DENY", _fq_moved("115c", False, False))
+
+
 # --- 0.55.0 (p-ff03d9a39d): the canonical own-mktemp-dir delete is not terminal -------------------
 # Measured 2026-10-10: 76-77 of 159 real `destructive` denials were a local delete of a temp dir the
 # session made. Only `rm -rf <abs path>...` with no shell syntax passes, each path's REAL location
