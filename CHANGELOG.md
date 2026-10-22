@@ -6,6 +6,22 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.68.1] - 2026-10-22
+
+### Fixed
+
+- **A `cd` into another git repository no longer makes a checkpoint there count** (external
+  adversary on 0.67.2). 0.67.2 added the directory the session started in as a checkpoint root but
+  kept the payload `cwd` and its git top level, so after a `cd` into another repo, a spec, a waiver
+  or a quoted hold written to that repo's `.goalspec/checkpoint-<sid>.md` counted for the spec
+  brake, the ratify brake and the terminal precheck. That was already true on 0.67.1 (same probe,
+  same result); 0.67.2 did not add it, and its CHANGELOG line "Another directory still does not
+  count" overstated it. Now, when the transcript records a start directory, only that directory and
+  its git top level are roots; the payload `cwd` counts only when no start directory is on record.
+  `test/spec-brake-branches.py`: 28d and 28e, one more mutation (32); `test/terminal-precheck-branches.py`:
+  115d. Against the 0.67.2 module, 28d, 28e and 115d come back `allow`; `gate-branches` gives the
+  same output in both modes with either module.
+
 ## [0.68.0] - 2026-10-21
 
 ### Changed

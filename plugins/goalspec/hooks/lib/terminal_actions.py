@@ -1079,24 +1079,25 @@ def session_start_cwd(items):
 
 
 def own_checkpoint_roots(cwd, items=None):
-    """The directories whose .goalspec/ may hold this session's checkpoint: the working directory,
-    the directory the session started in (from `items`), and the git top level above each. Release
-    round 3 (external adversary): a Write to `../../elsewhere/.goalspec/checkpoint-<id>.md` or
-    `/tmp/.goalspec/...` released the brake, because the path regex matched any directory.
+    """The directories whose .goalspec/ may hold this session's checkpoint: the directory the
+    session started in (from `items`) and the git top level above it; with no start directory on
+    record, the working directory and its git top level. Release round 3 (external adversary): a
+    Write to `../../elsewhere/.goalspec/checkpoint-<id>.md` or `/tmp/.goalspec/...` released the
+    brake, because the path regex matched any directory.
     0.67.2 (issue #2): the payload cwd follows a `cd` in Bash. Keyed on it alone, a session that
     moved out of the project stopped counting the checkpoint it wrote there, the spec brake re-armed,
-    and Bash -- the way back -- was held with it. The start directory is the session's own."""
+    and Bash -- the way back -- was held with it. 0.68.1 (external adversary on 0.67.2): counting the
+    payload cwd next to the start directory still let a `cd` into another git repository make a
+    checkpoint there count, so with a start directory on record the payload cwd is not a root."""
+    base = session_start_cwd(items) or (cwd if isinstance(cwd, str) and cwd else os.getcwd())
     roots = set()
-    for base in (cwd if isinstance(cwd, str) and cwd else os.getcwd(), session_start_cwd(items)):
-        if not isinstance(base, str) or not base:
-            continue
-        try:
-            roots.add(os.path.realpath(base))
-        except Exception:
-            continue
-        top = _run(["git", "rev-parse", "--show-toplevel"], base)
-        if top and top.strip():
-            roots.add(os.path.realpath(top.strip()))
+    try:
+        roots.add(os.path.realpath(base))
+    except Exception:
+        return roots
+    top = _run(["git", "rev-parse", "--show-toplevel"], base)
+    if top and top.strip():
+        roots.add(os.path.realpath(top.strip()))
     return roots
 
 

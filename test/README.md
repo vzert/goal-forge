@@ -870,17 +870,17 @@ unlike the earlier rounds): 6 of 6 wrote the spec before the first Bash that ran
 most 2 denials. An interleaved control with the same tools (Write and Edit, no brake) then gave 2 of
 6 against 6 of 6 with the brake, none stuck. N=6 per arm.
 
-45 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
+47 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
 a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path,
-another session's checkpoint, a checkpoint outside the working directory (also after a `cd` out of the start directory), a bare heading in text or
+another session's checkpoint, a checkpoint outside the start directory (also after a `cd` out of it, or into another git repo, 0.68.1), a bare heading in text or
 checkpoint, a checkpoint Write whose result is an error), and allowed (a spec with a body in text, in this session's checkpoint or in the plain
 checkpoint.md, a checkpoint Write whose result succeeded or has not arrived while another call failed, at the working directory or the git top level above it, or at the directory the session started in (or its git top level) after a `cd` out of it (0.67.2, issue #2), a checkpoint write, Read, a subagent
 call, interview-only, adversary-only, no goalspec, another event, malformed input, no transcript,
 `GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path, absolute under the directory the session started in (or `.goalspec/checkpoint.md` there when the
 payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
 silent for no spec, another file, a spec already in text, a subagent, another event, malformed
-input). New with no predecessor, so `--selftest` mutates the components (31 mutations; 0.51.0 added the one that
-lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause, 0.67.2 four for the start directory and the absolute path) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
+input). New with no predecessor, so `--selftest` mutates the components (32 mutations; 0.51.0 added the one that
+lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause, 0.67.2 four for the start directory and the absolute path, 0.68.1 one that counts the payload cwd next to it) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
 
 ```sh
 python3 test/spec-brake-branches.py
@@ -1161,7 +1161,7 @@ inside the working tree was tried first and broke every case, since `git add -A`
 repo's own object files as untracked content (a fixture bug, not a hook bug, but an easy one to
 reintroduce).
 
-169 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
+170 cases cover: the `## Goal-spec` precondition (no spec → allow regardless of content, cases
 01-02); the core policy (spec + no verdict → deny, + break → deny, + hold → allow, + waiver →
 allow, cases 03-06); content exemption (memory/docs/root-`*.md`-only → allow, mixed diff → deny,
 cases 07-10); branch scoping (a feature-branch push is out of scope unless `--force`, cases
@@ -1213,7 +1213,8 @@ after a hold quoted in text now wins (108); the deny names the checkpoint to wri
 in thinking is still nothing (111). Rows 01-99 are byte-identical to 0.50.0's; against 0.50.0, 100,
 101, 108, 110, 112, 113 and 115 fail. Since 0.67.2 (issue #2): a hold quoted into the checkpoint of
 the directory the session started in still counts after a `cd` out of it (115b), and with no start
-directory on record the same Write is in another root (115c, the control); 115b fails against 0.67.1.
+directory on record the same Write is in another root (115c, the control); 115b fails against 0.67.1. Since 0.68.1, a hold quoted into the checkpoint of another git
+repo the session moved into is no quote (115d); it allows against the 0.67.2 module.
 
 New in 0.57.0, a `[GOAL-CLOSE-WAIVED ...]` written with a Write/Edit into this session's own
 checkpoint in place of visible text (cases 150-164): it allows, with the line in the allow message,

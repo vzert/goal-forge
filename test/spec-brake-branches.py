@@ -208,6 +208,9 @@ CASES += [
 # re-armed and held Bash, the way back. The start directory counts too -- and only it.
 OUTSIDE = os.path.join(TMP, "outside")
 os.makedirs(OUTSIDE, exist_ok=True)
+REPO3 = os.path.join(TMP, "repo3")  # another git repo the session `cd`s into (0.68.1)
+os.makedirs(os.path.join(REPO3, "sub"), exist_ok=True)
+subprocess.run(["git", "init", "-q", REPO3], check=True)
 CASES += [
     ("28-cd-out-of-project-checkpoint-still-allows",
      lambda: pre([LOAD, {"write": (os.path.join(REPO2, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
@@ -218,6 +221,14 @@ CASES += [
     ("28c-foreign-dir-still-denies-after-cd",
      lambda: pre([LOAD, {"write": (os.path.join(TMP, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
                  "28c", start_cwd=REPO2, cwd=OUTSIDE), "deny-none"),
+    # 0.68.1 (external adversary on 0.67.2): with a start directory on record, the payload cwd is
+    # not a root -- a `cd` into another git repo does not make a checkpoint there count.
+    ("28d-cd-into-other-repo-checkpoint-there-denies",
+     lambda: pre([LOAD, {"write": (os.path.join(REPO3, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "28d", start_cwd=REPO2, cwd=REPO3), "deny-none"),
+    ("28e-cd-into-other-repo-subdir-checkpoint-at-its-top-denies",
+     lambda: pre([LOAD, {"write": (os.path.join(REPO3, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "28e", start_cwd=REPO2, cwd=os.path.join(REPO3, "sub")), "deny-none"),
     ("29-reason-names-start-dir-path-after-cd",
      lambda: pre([LOAD], "29", start_cwd=REPO2, cwd=OUTSIDE, session_id="SID-42"), "deny-startpath"),
     ("29b-later-cwd-in-transcript-is-not-the-start",
@@ -323,7 +334,10 @@ MUTATIONS = [
     ("fallback path back to a placeholder", HOOK, 'else ".goalspec/checkpoint.md"',
      'else ".goalspec/checkpoint-<session>.md"'),
     ("start directory not a root", LIB,
-     "os.getcwd(), session_start_cwd(items)):", "os.getcwd(), None):"),
+     "    base = session_start_cwd(items) or (cwd if", "    base = None or (cwd if"),
+    ("payload cwd counted next to the start directory", LIB,
+     "    roots = set()\n    try:\n        roots.add(os.path.realpath(base))",
+     "    roots = {os.path.realpath(cwd)} if isinstance(cwd, str) and cwd else set()\n    try:\n        roots.add(os.path.realpath(base))"),
     ("start directory never recorded", LIB,
      'if isinstance(scwd, str) and scwd and "start_cwd" not in state:', "if False:"),
     ("reason path relative again", HOOK,

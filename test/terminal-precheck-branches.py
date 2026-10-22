@@ -920,14 +920,17 @@ case("115-newer-handback-hold-after-text-break-ALLOW", _fq(
 # 0.67.2 (issue #2): the payload cwd follows a `cd` in Bash. A hold quoted into the checkpoint of
 # the directory the session started in still counts after the session moved out of it (115b); with
 # no start directory on record, the same Write from the same cwd is in another root (115c).
-def _fq_moved(name, with_start, want_allow):
+def _fq_moved(name, with_start, want_allow, quote_in_cwd=False):
     def fn():
         LAST_MESSAGE[0] = ""
         work = make_repo(name, None, None)
         outside = os.path.join(TMP, name, "outside")
         os.makedirs(outside)
+        if quote_in_cwd:  # 0.68.1: the session moved into another git repo and quoted the hold there
+            sh(["git", "init", "-q", "."], outside)
         events = ([{"raw": {"type": "system", "cwd": work}}] if with_start else []) + HB_REL + [
-            {"write": (os.path.join(work, CKPT), HOLD_LINE), "write_id": "w" + name}]
+            {"write": (os.path.join(outside if quote_in_cwd else work, CKPT), HOLD_LINE),
+             "write_id": "w" + name}]
         decision, detail = run_hook(outside, "gh pr merge", transcript(events, name), session_id=SID)
         if not want_allow:
             return (decision, detail) if decision == "deny" else (decision, "expected a deny")
@@ -939,6 +942,9 @@ def _fq_moved(name, with_start, want_allow):
 
 case("115b-cd-out-hold-quoted-in-start-dir-checkpoint-ALLOW", _fq_moved("115b", True, True))
 case("115c-cd-out-no-start-dir-on-record-DENY", _fq_moved("115c", False, False))
+# 0.68.1 (external adversary on 0.67.2): with a start directory on record the payload cwd is not
+# a root, so a hold quoted into a checkpoint of another git repo the session moved into is no quote.
+case("115d-cd-into-other-repo-hold-quoted-there-DENY", _fq_moved("115d", True, False, quote_in_cwd=True))
 
 
 # --- 0.55.0 (p-ff03d9a39d): the canonical own-mktemp-dir delete is not terminal -------------------
