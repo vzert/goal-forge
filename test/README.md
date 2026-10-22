@@ -870,11 +870,11 @@ unlike the earlier rounds): 6 of 6 wrote the spec before the first Bash that ran
 most 2 denials. An interleaved control with the same tools (Write and Edit, no brake) then gave 2 of
 6 against 6 of 6 with the brake, none stuck. N=6 per arm.
 
-47 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
+48 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
 a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path,
 another session's checkpoint, a checkpoint outside the start directory (also after a `cd` out of it, or into another git repo, 0.68.1), a bare heading in text or
 checkpoint, a checkpoint Write whose result is an error), and allowed (a spec with a body in text, in this session's checkpoint or in the plain
-checkpoint.md, a checkpoint Write whose result succeeded or has not arrived while another call failed, at the working directory or the git top level above it, or at the directory the session started in (or its git top level) after a `cd` out of it (0.67.2, issue #2), a checkpoint write, Read, a subagent
+checkpoint.md, a checkpoint Write whose result succeeded or has not arrived while another call failed, at the directory the session started in or the git top level above it -- also after a `cd` out of it, including into a nested repo inside the project (0.67.2, issue #2) -- or, only when the transcript records no start directory, at the working directory or its git top level, a checkpoint write, Read, a subagent
 call, interview-only, adversary-only, no goalspec, another event, malformed input, no transcript,
 `GOAL_SPEC_BRAKE=0`); the deny reason must name this session's checkpoint path, absolute under the directory the session started in (or `.goalspec/checkpoint.md` there when the
 payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,

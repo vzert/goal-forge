@@ -26,6 +26,7 @@ os.makedirs(os.path.join(PROJ, "sub"), exist_ok=True)
 REPO2 = os.path.join(TMP, "repo2")  # a git repo: the agent works in a subdir, checkpoint at the top
 os.makedirs(os.path.join(REPO2, "sub"), exist_ok=True)
 subprocess.run(["git", "init", "-q", REPO2], check=True)
+subprocess.run(["git", "init", "-q", os.path.join(REPO2, "nested")], check=True)  # a repo inside it (issue #2)
 
 SPEC = ("## Goal-spec\nAsked (your words): whatever.\n1. Real objective: make the report exist.\n"
         "2. Measurable success: the file is committed and every figure re-derives.\n")
@@ -218,6 +219,11 @@ CASES += [
     ("28b-started-in-subdir-git-toplevel-allows",
      lambda: pre([LOAD, {"write": (os.path.join(REPO2, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
                  "28b", start_cwd=os.path.join(REPO2, "sub"), cwd=OUTSIDE), "allow"),
+    # Issue #2 as the reporter confirmed it: the `cd` went into a subdirectory of the project that is
+    # its own git repo, so neither the payload cwd nor its git top level reached the checkpoint.
+    ("28f-cd-into-nested-repo-checkpoint-at-project-allows",
+     lambda: pre([LOAD, {"write": (os.path.join(REPO2, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "28f", start_cwd=REPO2, cwd=os.path.join(REPO2, "nested")), "allow"),
     ("28c-foreign-dir-still-denies-after-cd",
      lambda: pre([LOAD, {"write": (os.path.join(TMP, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
                  "28c", start_cwd=REPO2, cwd=OUTSIDE), "deny-none"),
