@@ -22,7 +22,7 @@ version bump are never delivered to already-installed users.
   the hook names them when the partner runs. The session's own write during the round still makes it
   `hold-moved`. A start record written by 0.67.0 or older (no time), a path git cannot list, or no
   transcript found keeps `hold-moved`, as before. `test/subagent-gate-branches.py`: six new cases
-  (35 to 40) and five new mutations.
+  (35 to 40) and five new mutations; 35 and 40 come back `block` against the 0.67.0 module.
 
 ## [0.67.0] - 2026-10-21
 

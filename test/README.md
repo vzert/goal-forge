@@ -1046,7 +1046,7 @@ and tracked), the held content committed, one break, two breaks, a hold between 
 a deleted file, no session id, the off switch, another session's hold, a report with no verdict after
 a hold, a hold measured on another repository, an edit during the subagent's round, the real rail
 with no change, and content git cannot hash (chmod 000; skipped on Windows). New in 0.66.0 with no
-predecessor, so `--selftest` applies 22 mutations to a copy of the plugin and requires a case to notice each.
+predecessor, so `--selftest` applies each mutation (27 since 0.67.1) to a copy of the plugin and requires a case to notice it.
 
 Since 0.67.0, 34 cases: fifteen more for a change after the hold that no tool call of this session made
 (a synthetic transcript of the session under `CLAUDE_CONFIG_DIR/projects/`). Another writer's
@@ -1061,6 +1061,15 @@ session's, 33 that an Edit that failed is not a write, and 34 that a heredoc bod
 string naming the ledger and a git verb are data. Cases 20, 24 and 27 come back `block` against
 the 0.66.1 gate (measured with that module swapped into a copy of the plugin); the other five
 already blocked there, because 0.66.1 counted every change.
+
+Since 0.67.1, 40 cases and 27 mutations: six more for a change made DURING the subagent's round,
+through the real `start`/`stop` rail. Another writer's file during the round runs and prints the
+notice (35), and so does a change during the round to a file this session edited only before it
+started (40); this session's Edit during the round (36), that Edit plus another writer (37), a start
+record in the 0.67.0 format with no time (38) and no transcript found (39) block. Cases 35 and 40
+come back `block` against the 0.67.0 gate (measured with that module swapped into a copy of the
+plugin); 36, 37 and 39 already blocked there, and 38 cannot run there, since 0.67.0 writes no
+`trees` key in the start record.
 `external-adversary-branches.py` sets `GOAL_ADVERSARY_AFTER_SUBAGENT=0` for its own cases.
 
 The content hash is `git write-tree` of a copy of the index made with `shutil.copy2`: a plain copy
