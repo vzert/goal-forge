@@ -12,9 +12,9 @@
 # What it does: while this session has entered the goalspec loop and has no `## Goal-spec` -- in
 # visible text or written to its .goalspec/ checkpoint (terminal_actions.spec_brake_armed) -- it
 # denies Bash, Write, Edit, MultiEdit and NotebookEdit, with a reason that names the exact
-# checkpoint path to write (from the payload session_id). v1/v2 accepted visible text only and left
-# 2 of 6 agents stuck; a Write call is a tool call they do make, and show-checkpoint-spec.sh shows
-# its spec to the human. It does NOT hold: Read/Grep/Glob (not
+# checkpoint path to write (from the payload session_id; absolute since 0.67.2). v1/v2 accepted
+# visible text only and left 2 of 6 agents stuck; a Write call is a tool call they do make, and
+# show-checkpoint-spec.sh shows its spec to the human. It does NOT hold: Read/Grep/Glob (not
 # matched — grounding the spec needs them), a write under .goalspec/ (the checkpoint), any tool
 # call made inside a subagent (the payload carries agent_id; its transcript_path is the parent's,
 # so without this an explorer spawned before the spec would be held for the parent's missing spec),
@@ -85,6 +85,9 @@ if not ta.spec_brake_armed(items, sid, cwd):
     sys.exit(0)
 
 path = ".goalspec/checkpoint-%s.md" % sid if ta.SESSION_ID_RE.fullmatch(sid) else ".goalspec/checkpoint.md"
+# 0.67.2 (issue #2): absolute, under the directory the session started in. A relative path read
+# against a cwd the agent has since left named a file that the brake did not count.
+path = os.path.join(ta.session_start_cwd(items) or cwd, path).replace(os.sep, "/")
 reason = ta.SPEC_BRAKE_REASON.format(path=path) + ta.spec_brake_evidence(items)
 print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
                                          "permissionDecision": "deny",

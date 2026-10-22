@@ -32,10 +32,15 @@ SPEC = ("## Goal-spec\nAsked (your words): whatever.\n1. Real objective: make th
 BARE = "## Goal-spec\nAsked (your words): x\n"
 
 
-def transcript(events, name):
+def transcript(events, name, start_cwd=None):
     p = os.path.join(TMP, name + ".jsonl")
     with open(p, "w", encoding="utf-8") as fh:
+        if start_cwd:  # the harness records the session's cwd on its events; the first one counts
+            fh.write(json.dumps({"type": "system", "cwd": start_cwd}) + "\n")
         for ev in events:
+            if "moved" in ev:  # a later event recorded after a `cd`: its cwd is not the start
+                fh.write(json.dumps({"type": "system", "cwd": ev["moved"]}) + "\n")
+                continue
             if "typed" in ev:
                 fh.write(json.dumps({"type": "user", "message": {"content": [
                     {"type": "text", "text": ev["typed"]}]}}) + "\n")
@@ -86,23 +91,26 @@ def run(plugin, payload_text, env_extra=None):
         if "1 visible text block(s)" in reason and "Asked (your words): x" in reason:
             return "deny-quotes-bare"
         if "no visible text from you at all" in reason:
-            if ".goalspec/checkpoint-SID-42.md" in reason:
+            # 0.67.2 (issue #2): the path is absolute, under the directory the session started in.
+            if "create %s/.goalspec/checkpoint-SID-42.md " % REPO2.replace(os.sep, "/") in reason:
+                return "deny-startpath"
+            if "create %s/.goalspec/checkpoint-SID-42.md " % PROJ.replace(os.sep, "/") in reason:
                 return "deny-path"
-            if "create .goalspec/checkpoint.md " in reason:
+            if "create %s/.goalspec/checkpoint.md " % PROJ.replace(os.sep, "/") in reason:
                 return "deny-plainpath"
             return "deny-none"
         return "deny"
     return "other-output"
 
 
-def pre(events, name, tool="Bash", tool_input=None, **extra):
+def pre(events, name, tool="Bash", tool_input=None, start_cwd=None, **extra):
     if tool_input is None:
         tool_input = {"command": "ls"} if tool == "Bash" else {"file_path": "src/app.py"}
     extra.setdefault("session_id", "sess-1")  # real payloads carry one; case 27 removes it
     extra.setdefault("cwd", PROJ)
     extra = {k: v for k, v in extra.items() if v is not None}
     return json.dumps({"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": tool_input,
-                       "transcript_path": transcript(events, name), **extra})
+                       "transcript_path": transcript(events, name, start_cwd), **extra})
 
 
 LOAD = {"skill": "goalspec:goalspec"}
@@ -194,6 +202,27 @@ CASES += [
     ("25-evidence-quotes-last-text",
      lambda: pre([LOAD, {"text": "first words"}, {"text": "the spec is above QUOTE-ME-BACK"}], "25"),
      "deny-quotes"),
+]
+# 0.67.2 (issue #2): the payload cwd follows a `cd` in Bash. A session that started in the project
+# and moved out of it kept its checkpoint spec there; keyed on the payload cwd alone, the brake
+# re-armed and held Bash, the way back. The start directory counts too -- and only it.
+OUTSIDE = os.path.join(TMP, "outside")
+os.makedirs(OUTSIDE, exist_ok=True)
+CASES += [
+    ("28-cd-out-of-project-checkpoint-still-allows",
+     lambda: pre([LOAD, {"write": (os.path.join(REPO2, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "28", start_cwd=REPO2, cwd=OUTSIDE), "allow"),
+    ("28b-started-in-subdir-git-toplevel-allows",
+     lambda: pre([LOAD, {"write": (os.path.join(REPO2, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "28b", start_cwd=os.path.join(REPO2, "sub"), cwd=OUTSIDE), "allow"),
+    ("28c-foreign-dir-still-denies-after-cd",
+     lambda: pre([LOAD, {"write": (os.path.join(TMP, ".goalspec", "checkpoint-sess-1.md"), SPEC)}],
+                 "28c", start_cwd=REPO2, cwd=OUTSIDE), "deny-none"),
+    ("29-reason-names-start-dir-path-after-cd",
+     lambda: pre([LOAD], "29", start_cwd=REPO2, cwd=OUTSIDE, session_id="SID-42"), "deny-startpath"),
+    ("29b-later-cwd-in-transcript-is-not-the-start",
+     lambda: pre([LOAD, {"moved": OUTSIDE}], "29b", start_cwd=REPO2, cwd=OUTSIDE, session_id="SID-42"),
+     "deny-startpath"),
 ]
 ENV_CASES = [
     ("23-opt-out-env-allowed", lambda: pre([LOAD], "23"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
@@ -293,6 +322,14 @@ MUTATIONS = [
     ("session id not validated", HOOK, 'if ta.SESSION_ID_RE.fullmatch(sid) else', 'if sid else'),
     ("fallback path back to a placeholder", HOOK, 'else ".goalspec/checkpoint.md"',
      'else ".goalspec/checkpoint-<session>.md"'),
+    ("start directory not a root", LIB,
+     "os.getcwd(), session_start_cwd(items)):", "os.getcwd(), None):"),
+    ("start directory never recorded", LIB,
+     'if isinstance(scwd, str) and scwd and "start_cwd" not in state:', "if False:"),
+    ("reason path relative again", HOOK,
+     'path = os.path.join(ta.session_start_cwd(items) or cwd, path).replace(os.sep, "/")', "pass"),
+    ("reason path under the current cwd", HOOK,
+     "os.path.join(ta.session_start_cwd(items) or cwd, path)", "os.path.join(cwd, path)"),
     ("reason path not filled", HOOK, 'ta.SPEC_BRAKE_REASON.format(path=path)',
      'ta.SPEC_BRAKE_REASON.format(path=".goalspec/checkpoint-<session>.md")'),
 ]

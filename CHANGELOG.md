@@ -6,6 +6,26 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.67.2] - 2026-10-21
+
+### Fixed
+
+- **A `cd` out of the project no longer re-arms the spec brake** (issue #2). The brake counted a
+  `## Goal-spec` written to the checkpoint only under the payload `cwd` or its git top level, and
+  that `cwd` follows a `cd` in Bash. A session that moved out of the project stopped counting the
+  checkpoint it wrote there, the brake held Bash, Write and Edit again, and Bash was the way back.
+  Reproduced with a synthetic transcript: a full spec at `<project>/.goalspec/checkpoint-<sid>.md`
+  is not held with `cwd` at the project or a subdirectory, and is held with `cwd` outside the repo
+  or at `/tmp`. The directory the session started in (the first transcript event's `cwd`) and its
+  git top level now count as roots too, for the spec brake, the ratify brake and the checkpoint
+  waiver and quoted-hold paths of the terminal precheck. Another directory still does not count.
+  The deny now names the checkpoint by its absolute path under that start directory: a relative
+  path, read against a `cwd` the agent had left, named a file the brake did not count. Not yet
+  confirmed against the reporter's transcript (asked on the issue). `test/spec-brake-branches.py`:
+  five new cases (28 to 29b) and four new mutations; against 0.67.1, 28 and 28b come back `deny`,
+  and 26, 27, 27b and 29 fail on the relative path. `gate-branches` (both modes) and
+  `terminal-precheck-branches` give the same output with the old and the new module.
+
 ## [0.67.1] - 2026-10-21
 
 ### Fixed

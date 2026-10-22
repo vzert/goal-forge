@@ -684,6 +684,13 @@ def _collect_event(ev, items, state=None):
     if isinstance(ep, str) and ep and "entrypoint" not in state:
         state["entrypoint"] = ep
         items.append({"kind": "entrypoint", "timestamp": ev.get("timestamp"), "text": "", "value": ep})
+    # 0.67.2 (issue #2): the directory the session started in, read once from the first event that
+    # carries a cwd. own_checkpoint_roots counts it, so a later `cd` out of the project does not
+    # make the project's own checkpoint stop counting.
+    scwd = ev.get("cwd")
+    if isinstance(scwd, str) and scwd and "start_cwd" not in state:
+        state["start_cwd"] = scwd
+        items.append({"kind": "start_cwd", "timestamp": ev.get("timestamp"), "text": "", "value": scwd})
     if ev.get("type") == "attachment":
         att = ev.get("attachment") or {}
         prompt = att.get("prompt") if isinstance(att, dict) else None
@@ -1066,20 +1073,30 @@ def own_checkpoint_re(session_id):
     return re.compile(r"(^|/)\.goalspec/checkpoint%s\.md$" % tail)
 
 
-def own_checkpoint_roots(cwd):
-    """The directories whose .goalspec/ may hold this session's checkpoint: the working directory
-    and the git top level above it. Release round 3 (external adversary): a Write to
-    `../../elsewhere/.goalspec/checkpoint-<id>.md` or `/tmp/.goalspec/...` released the brake,
-    because the path regex matched any directory."""
+def session_start_cwd(items):
+    """The directory the session started in (the first transcript event's cwd), or None."""
+    return next((it.get("value") for it in items or () if it["kind"] == "start_cwd"), None)
+
+
+def own_checkpoint_roots(cwd, items=None):
+    """The directories whose .goalspec/ may hold this session's checkpoint: the working directory,
+    the directory the session started in (from `items`), and the git top level above each. Release
+    round 3 (external adversary): a Write to `../../elsewhere/.goalspec/checkpoint-<id>.md` or
+    `/tmp/.goalspec/...` released the brake, because the path regex matched any directory.
+    0.67.2 (issue #2): the payload cwd follows a `cd` in Bash. Keyed on it alone, a session that
+    moved out of the project stopped counting the checkpoint it wrote there, the spec brake re-armed,
+    and Bash -- the way back -- was held with it. The start directory is the session's own."""
     roots = set()
-    base = cwd if isinstance(cwd, str) and cwd else os.getcwd()
-    try:
-        roots.add(os.path.realpath(base))
-    except Exception:
-        return roots
-    top = _run(["git", "rev-parse", "--show-toplevel"], base)
-    if top and top.strip():
-        roots.add(os.path.realpath(top.strip()))
+    for base in (cwd if isinstance(cwd, str) and cwd else os.getcwd(), session_start_cwd(items)):
+        if not isinstance(base, str) or not base:
+            continue
+        try:
+            roots.add(os.path.realpath(base))
+        except Exception:
+            continue
+        top = _run(["git", "rev-parse", "--show-toplevel"], base)
+        if top and top.strip():
+            roots.add(os.path.realpath(top.strip()))
     return roots
 
 
@@ -1109,7 +1126,7 @@ def spec_brake_armed(items, session_id=None, cwd=None):
     if not any(it["kind"] == "goalspec_entry" and it.get("skill") == "goalspec" for it in items):
         return False
     own = own_checkpoint_re(session_id)
-    roots = own_checkpoint_roots(cwd)
+    roots = own_checkpoint_roots(cwd, items)
     if any(it["kind"] == "goal_spec_file" and own.search(it.get("path") or "")
            and _in_own_root(it.get("path") or "", cwd, roots)
            and spec_has_body(it["text"]) for it in items):
@@ -1188,7 +1205,7 @@ def _first_spec_index(items, session_id=None, cwd=None, start=0):
             return i
         if it["kind"] == "goal_spec_file" and spec_has_body(it["text"]):
             if own is None:
-                own, roots = own_checkpoint_re(session_id), own_checkpoint_roots(cwd)
+                own, roots = own_checkpoint_re(session_id), own_checkpoint_roots(cwd, items)
             p = it.get("path") or ""
             if own.search(p) and _in_own_root(p, cwd, roots):
                 return i
@@ -1310,7 +1327,7 @@ def file_waiver_line(items, command, tool_use_id=None, session_id=None, cwd=None
         line, key = it["line"], _waiver_key(it["line"])
         if i >= start and key not in seen:
             if roots is None:
-                roots = own_checkpoint_roots(cwd)
+                roots = own_checkpoint_roots(cwd, items)
             path = it.get("path") or ""
             if own.search(path) and _in_own_root(path, cwd, roots):
                 return line
@@ -1413,7 +1430,7 @@ def file_quoted_hold(items, session_id=None, cwd=None):
         break -- including a break quoted in text between the hold and the Write, which the
         visible-text path would also stop at (external adversary round on this design)."""
     own = own_checkpoint_re(session_id)
-    roots = own_checkpoint_roots(cwd)
+    roots = own_checkpoint_roots(cwd, items)
     seq = [it for it in items if _is_verdict_item(it) and (
         it["kind"] != "verdict_file"
         or (own.search(it.get("path") or "") and _in_own_root(it.get("path") or "", cwd, roots)))]
