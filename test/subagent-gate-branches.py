@@ -17,7 +17,7 @@ and HOME, no network, no real ~/.claude.
 No predecessor exists (new in 0.66.0), so `--selftest` copies the plugin, applies one mutation at a
 time, and requires at least one case to notice.
 """
-import datetime, glob, json, os, shutil, subprocess, sys, tempfile
+import concurrent.futures, datetime, glob, json, os, shutil, subprocess, sys, tempfile
 import tmp_cleanup  # this run's own TMPDIR, removed at exit (p-1a5a4e9828)
 from suite_bash import BASH  # noqa: E402 — Git Bash on Windows, plain "bash" elsewhere
 
@@ -803,7 +803,10 @@ MUTATIONS = [
 ]
 
 
-def suite(plugin):
+def suite(plugin, first_miss=False):
+    """-> (name, want, got) per case. first_miss=True (the selftest): stop at the first case whose
+    outcome differs, since one is enough to catch a mutation. With 47 mutations by 60 full runs
+    the selftest passed the 30-minute cap of temp-leak-check.py on macOS CI (0.68.4)."""
     rows = []
     # Windows has no mode bits: a chmod 000 file is still readable there. Shown, never dropped.
     nt_skip = {"19": "mode bits", "29": "mode bits", "42": "a bash git on PATH",
@@ -820,28 +823,43 @@ def suite(plugin):
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         rows.append((name, want, got))
+        if first_miss and want != got:
+            break
     return rows
 
 
 def main():
     if "--selftest" in sys.argv:
         failed = []
-        for desc, rel, old, new in MUTATIONS:
+
+        def one(mutation):
+            # -> (description, the first case that caught it, or None; or "TARGET NOT FOUND")
+            desc, rel, old, new = mutation
             d = tempfile.mkdtemp(prefix="gate-mut-")
-            mp = os.path.join(d, "goalspec")
-            shutil.copytree(PLUGIN, mp)
-            f = os.path.join(mp, rel)
-            s = open(f, encoding="utf-8").read()
-            if old not in s:
+            try:
+                mp = os.path.join(d, "goalspec")
+                shutil.copytree(PLUGIN, mp)
+                f = os.path.join(mp, rel)
+                s = open(f, encoding="utf-8").read()
+                if old not in s:
+                    return desc, "TARGET NOT FOUND"
+                open(f, "w", encoding="utf-8").write(s.replace(old, new, 1))
+                caught = [n for n, want, got in suite(mp, first_miss=True) if want != got]
+                return desc, caught[0] if caught else None
+            finally:
+                shutil.rmtree(d, ignore_errors=True)
+        # Each mutation has its own plugin copy and each case its own temp dir, so they run side by
+        # side: one after another they passed the 30-minute cap of temp-leak-check.py on macOS CI.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(4, os.cpu_count() or 1)) as pool:
+            results = list(pool.map(one, MUTATIONS))
+        for desc, caught in results:
+            if caught == "TARGET NOT FOUND":
                 failed.append("%s: mutation target not found (suite drifted from the code)" % desc)
                 print("%-34s TARGET NOT FOUND" % desc)
                 continue
-            open(f, "w", encoding="utf-8").write(s.replace(old, new, 1))
-            caught = [n for n, want, got in suite(mp) if want != got]
-            print("%-34s %s" % (desc, ("caught by " + ", ".join(caught)) if caught else "NOT CAUGHT"))
+            print("%-34s %s" % (desc, ("caught by " + caught) if caught else "NOT CAUGHT"))
             if not caught:
                 failed.append(desc)
-            shutil.rmtree(d, ignore_errors=True)
         if failed:
             print("\nSELFTEST FAILURES: %d\n  %s" % (len(failed), "\n  ".join(failed)))
             return 1

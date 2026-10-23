@@ -1123,6 +1123,10 @@ The codex round on the same release added two: a brace group, `{ cd OTHER && git
 hid the `cd` (59), and after RUN-IN the round cap read the config of the tree it moved to, not the
 project's where the hook was run (60: `max_external_rounds: 1` in the original checkout, the second
 round blocks, and the cap's refusal names the version too).
+`--selftest` runs the mutations in parallel (up to 4) and stops each at the first case that
+catches it: one after another, 47 mutations by 60 cases passed the 30-minute cap of
+`temp-leak-check.py` on macOS CI (run 40008934280); now about 4 minutes on a Mac. Checked with a
+no-op mutation, which still comes out NOT CAUGHT.
 
 
 ## `external-schema-branches.py` — structured answer and round cap of the external partner (0.68.0)
