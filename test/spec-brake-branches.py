@@ -283,7 +283,8 @@ ENV_CASES = [
      lambda: pre([LOAD, {"write": (PLAN, "# Plan\n\n" + SPEC)}], "p2"), CFG_ENV, "allow"),
     ("p2b-default-home-plan-file-releases",
      lambda: pre([LOAD, {"write": (os.path.join(HOMEDIR, ".claude", "plans", "x.md"), SPEC)}], "p2b"),
-     {"CLAUDE_CONFIG_DIR": "", "HOME": HOMEDIR}, "allow"),
+     # Python on Windows takes ~ from USERPROFILE, not HOME (Windows CI, run 39886771454).
+     {"CLAUDE_CONFIG_DIR": "", "HOME": HOMEDIR, "USERPROFILE": HOMEDIR}, "allow"),
     ("p3-plans-subdir-write-denied",
      lambda: pre([LOAD], "p3", tool="Write",
                  tool_input={"file_path": os.path.join(CFG, "plans", "sub", "x.md")}), CFG_ENV, "deny-none"),
