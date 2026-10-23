@@ -735,6 +735,13 @@ def _collect_event(ev, items, state=None):
     # 0.67.2 (issue #2): the directory the session started in, read once from the first event that
     # carries a cwd. own_checkpoint_roots counts it, so a later `cd` out of the project does not
     # make the project's own checkpoint stop counting.
+    # 0.68.2 (issue #1): the harness records the permission mode on its events ("permission-mode"
+    # events and user events). A .md written while it reads "plan" is the plan file, wherever the
+    # plansDirectory setting put it (--settings and managed settings included, which no file read
+    # here can see). Second external round on 0.68.2.
+    pm = ev.get("permissionMode")
+    if isinstance(pm, str) and pm:
+        state["mode"] = pm
     scwd = ev.get("cwd")
     if isinstance(scwd, str) and scwd and "start_cwd" not in state:
         state["start_cwd"] = scwd
@@ -902,7 +909,8 @@ def _collect_event(ev, items, state=None):
             # 0.68.2 (issue #1): in plan mode the plan file is the only file the agent may write, so a
             # spec written there counts as one written to the checkpoint (for the spec and ratify
             # brakes and for "a spec exists"). Never a verdict or waiver line: those stay checkpoint-only.
-            if isinstance(fp, str) and is_plan_file(fp):
+            if isinstance(fp, str) and (is_plan_file(fp) or (state.get("mode") == "plan"
+                                                             and fp.endswith(".md"))):
                 for key in ("content", "new_string"):
                     v = ti.get(key)
                     if isinstance(v, str) and re.search(GOAL_SPEC_RE, v, re.I):

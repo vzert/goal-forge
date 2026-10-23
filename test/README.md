@@ -870,21 +870,23 @@ unlike the earlier rounds): 6 of 6 wrote the spec before the first Bash that ran
 most 2 denials. An interleaved control with the same tools (Write and Edit, no brake) then gave 2 of
 6 against 6 of 6 with the brake, none stuck. N=6 per arm.
 
-66 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
+73 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
 a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path,
 another session's checkpoint, a checkpoint outside the start directory (also after a `cd` out of it, or into another git repo, 0.68.1), a bare heading in text or
 checkpoint, a checkpoint Write whose result is an error), and allowed (a spec with a body in text, in this session's checkpoint or in the plain
 checkpoint.md, a checkpoint Write whose result succeeded or has not arrived while another call failed, at the directory the session started in or the git top level above it -- also after a `cd` out of it, including into a nested repo inside the project (0.67.2, issue #2) -- or, only when the transcript records no start directory, at the working directory or its git top level, a checkpoint write, Read, a subagent
 call, interview-only, adversary-only, no goalspec, another event, malformed input, no transcript,
-`GOAL_SPEC_BRAKE=0`). Since 0.68.2 (issue #1), eighteen plan-mode cases: a Write or Edit to a .md directly in
+`GOAL_SPEC_BRAKE=0`). Since 0.68.2 (issue #1), twenty-five plan-mode cases: a Write or Edit to a .md directly in
 `$CLAUDE_CONFIG_DIR/plans` (or `~/.claude/plans`), or in the directory `plansDirectory` names (project
-settings.local.json, then settings.json, then the user's; relative to the project root), is not held and a spec with a body written there releases the brake;
+settings.local.json, then settings.json, then the user's; relative to the project root), is not held, nor is
+any Write or Edit while the payload says `permission_mode: plan` (Bash still is); a spec in a .md written while the
+transcript records plan mode counts wherever it is, and a spec with a body written there releases the brake;
 a subdirectory of `plans/`, a lookalike `plans/` elsewhere, a relative path, another extension, a bare heading or a
 failed Write is neither. The deny reason must name this session's checkpoint path, absolute under the directory the session started in (or `.goalspec/checkpoint.md` there when the
 payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
 silent for no spec, another file, a spec already in text, a subagent, another event, malformed
-input). New with no predecessor, so `--selftest` mutates the components (42 mutations; 0.51.0 added the one that
-lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause, 0.67.2 four for the start directory and the absolute path, 0.68.1 one that counts the payload cwd next to it, 0.68.2 ten for the plan-mode plan file) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
+input). New with no predecessor, so `--selftest` mutates the components (46 mutations; 0.51.0 added the one that
+lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause, 0.67.2 four for the start directory and the absolute path, 0.68.1 one that counts the payload cwd next to it, 0.68.2 fourteen for the plan-mode plan file) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
 
 ```sh
 python3 test/spec-brake-branches.py
@@ -898,7 +900,7 @@ Measured 2026-10-15 over the maintainer's local transcripts: of 188 interactive 
 and a later Bash, Write or Edit, 59 raised any `AskUserQuestion` between the spec and that call — 5
 of 67 on 0.49.0 or later. The sdk-cli and sdk-ts sessions (4555) never got one answered, so they are not held.
 
-51 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
+53 cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit after a spec in text or in this
 session's checkpoint -- also one written to the start directory's checkpoint before a `cd` out of it (0.67.2), VS Code, a modal with no answer yet, a modal raised only before the spec, a
 modal whose result is an error, a harness notification, a new spec after a completion-review written plain, in bold, in backticks or as a bullet, the close
 marker quoted inside the spec, the marker quoted in prose after the modal (asks once more, by
@@ -911,7 +913,7 @@ pre-spec hold still comes first. The deny reason must name the modal, its four o
 executes nothing, the later-message clause, the text fallback, that an approval relayed by another
 session does not release it (0.60.3), and the human's opt-out. New with no
 predecessor, so `--selftest` applies 32 mutations and requires a case to catch each. Since 0.68.2 (issue #1),
-eight plan-mode cases: an ExitPlanMode after the spec whose result is not an error and reads "User has approved
+ten plan-mode cases: an ExitPlanMode after the spec whose result is not an error and reads "User has approved
 your plan" releases it (also with the spec in text); no approval, a rejection (error), another result, no result
 yet, or an approval before the spec does not; a write to the plan file is not held. What no suite
 can show: that an agent then asks a good question, or honours a Stop.

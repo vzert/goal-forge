@@ -28,9 +28,12 @@
 # sessions with a spec asked before their first Bash, Write or Edit. Same exemptions as above
 # (Read-class tools, .goalspec/ writes, subagents); headless (sdk-*) sessions are never held.
 #
-# 0.68.2 (issue #1) -- native plan mode: a write to the plan file (a .md directly in
-# $CLAUDE_CONFIG_DIR/plans or ~/.claude/plans) is held by neither, a spec written there counts, and
-# an ExitPlanMode whose result is the approval ratifies the spec (terminal_actions.is_plan_file).
+# 0.68.2 (issue #1) -- native plan mode: while the payload says permission_mode "plan", a Write or
+# Edit is held by neither (the harness limits plan mode to the plan file); outside it, a write to a
+# .md directly in $CLAUDE_CONFIG_DIR/plans (or ~/.claude/plans) or in the plansDirectory directory
+# (project settings.local.json, settings.json, user settings.json) is not held either. A spec in a
+# .md written while the transcript reads plan mode, or in those directories, counts; an
+# ExitPlanMode whose result is the approval ratifies it (terminal_actions.is_plan_file).
 #
 # Escape hatches for the human: GOAL_SPEC_BRAKE=0 turns off both holds; GOAL_RATIFY_BRAKE=0 only
 # the second.
@@ -78,6 +81,10 @@ if tool != "Bash":
     if path.startswith(".goalspec/") or "/.goalspec/" in path:
         sys.exit(0)
     # 0.68.2 (issue #1): the plan-mode plan file is the only file plan mode lets the agent write.
+    # In plan mode (the payload says so) the harness itself limits writes to it, wherever the
+    # plansDirectory setting put it; outside plan mode the known locations still count.
+    if data.get("permission_mode") == "plan":
+        sys.exit(0)
     if ta.is_plan_file(str(inp.get("file_path") or inp.get("notebook_path") or "")):
         sys.exit(0)
 

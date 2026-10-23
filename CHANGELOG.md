@@ -17,18 +17,23 @@ version bump are never delivered to already-installed users.
   ratify a plan that was not on disk yet. Now a Write or Edit to a `.md` directly in
   `$CLAUDE_CONFIG_DIR/plans` (else `~/.claude/plans`), or directly in the directory the
   `plansDirectory` setting names (project `settings.local.json`, then `settings.json`, then the
-  user's; a relative value from the project root), is held by neither brake; a `## Goal-spec` with a
-  body written there counts as the spec (for both brakes and for the terminal precheck's "a spec
+  user's; a relative value from the project root), is held by neither brake, and while the hook
+  payload says `permission_mode: plan` no Write or Edit is (the harness itself limits plan mode to
+  the plan file; Bash is still held); a `## Goal-spec` with a
+  body written there, or in any `.md` written while the transcript records plan mode (which covers a
+  `plansDirectory` set through `--settings` or managed settings, which the hook cannot read), counts
+  as the spec (for both brakes and for the terminal precheck's "a spec
   exists"), never as a verdict or waiver line; and an `ExitPlanMode` after the spec whose result is
   not an error and starts "User has approved your plan" counts as the ratification. That text is
   measured from 2 approvals in about 1500 local transcripts; no rejection was found, so anything
   else (an error, other text, no result yet) does not count. SKILL.md step 4b says so, and both deny
-  reasons name the plan-mode path. Tests: `spec-brake-branches.py` 18 cases (p1 to p9f) and 10
-  mutations, `ratify-brake-branches.py` 8 cases (p1 to p8) and 5 mutations,
+  reasons name the plan-mode path. Tests: `spec-brake-branches.py` 25 cases (p1 to p11d) and 14
+  mutations, `ratify-brake-branches.py` 10 cases (p1 to p9b) and 5 mutations,
   `terminal-precheck-branches.py` 115e to 115g. Against the 0.68.1 hook and module, spec-brake p1,
   p1b, p2 and p2b, ratify p2, p7 and p8, and precheck 115e change direction; the rest are controls.
   `gate-branches` gives the same output in both modes with either module. The external round on
-  the first cut found that `plansDirectory` moved the plan file out of reach; p9 to p9f cover it.
+  the first cut found that `plansDirectory` moved the plan file out of reach (p9 to p9f), and the
+  second that it can also come from `--settings` or managed settings (p10 to p11d, ratify p9, p9b).
 
 ## [0.68.1] - 2026-10-22
 

@@ -39,6 +39,9 @@ def transcript(events, name, start_cwd=None):
         if start_cwd:  # the harness records the session's cwd on its events; the first one counts
             fh.write(json.dumps({"type": "system", "cwd": start_cwd}) + "\n")
         for ev in events:
+            if "mode" in ev:  # the harness records the permission mode (0.68.2)
+                fh.write(json.dumps({"type": "permission-mode", "permissionMode": ev["mode"]}) + "\n")
+                continue
             if "moved" in ev:  # a later event recorded after a `cd`: its cwd is not the start
                 fh.write(json.dumps({"type": "system", "cwd": ev["moved"]}) + "\n")
                 continue
@@ -320,6 +323,29 @@ ENV_CASES = [
     ("p9f-plansDirectory-subdir-denied",
      lambda: pre([LOAD], "p9f", tool="Write",
                  tool_input={"file_path": os.path.join(SPROJ, "docs", "plans", "deep", "x.md")}), SP_ENV, "deny-none"),
+    # Second external round on 0.68.2: plansDirectory can also come from --settings or managed
+    # settings, which the hook cannot read. In plan mode the payload says permission_mode "plan":
+    # Write/Edit pass (Bash does not), and a .md written while the transcript reads plan mode is the
+    # plan file, wherever it is.
+    ("p10-plan-mode-payload-write-anywhere-exempt",
+     lambda: pre([LOAD], "p10", tool="Write", tool_input={"file_path": os.path.join(TMP, "custom", "x.md")},
+                 permission_mode="plan"), CFG_ENV, "allow"),
+    ("p10b-default-mode-same-write-denied",
+     lambda: pre([LOAD], "p10b", tool="Write", tool_input={"file_path": os.path.join(TMP, "custom", "x.md")},
+                 permission_mode="default"), CFG_ENV, "deny-none"),
+    ("p10c-plan-mode-bash-still-denied", lambda: pre([LOAD], "p10c", permission_mode="plan"), CFG_ENV, "deny-none"),
+    ("p11-spec-written-in-plan-mode-anywhere-releases",
+     lambda: pre([LOAD, {"mode": "plan"}, {"write": (os.path.join(TMP, "custom", "x.md"), SPEC)},
+                  {"mode": "default"}], "p11"), CFG_ENV, "allow"),
+    ("p11b-same-write-outside-plan-mode-denies",
+     lambda: pre([LOAD, {"mode": "default"}, {"write": (os.path.join(TMP, "custom", "x.md"), SPEC)}], "p11b"),
+     CFG_ENV, "deny-none"),
+    ("p11c-spec-in-non-md-in-plan-mode-denies",
+     lambda: pre([LOAD, {"mode": "plan"}, {"write": (os.path.join(TMP, "custom", "x.txt"), SPEC)}], "p11c"),
+     CFG_ENV, "deny-none"),
+    ("p11d-plan-mode-ended-before-the-write-denies",
+     lambda: pre([LOAD, {"mode": "plan"}, {"mode": "auto"}, {"write": (os.path.join(TMP, "custom", "x.md"), SPEC)}],
+                 "p11d"), CFG_ENV, "deny-none"),
     ("23-opt-out-env-allowed", lambda: pre([LOAD], "23"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
     ("24-other-env-value-still-denies", lambda: pre([LOAD], "24"), {"GOAL_SPEC_BRAKE": "1"}, "deny-none"),
 ]
@@ -438,6 +464,14 @@ MUTATIONS = [
     ("plan file directory not anchored to the config dir", LIB,
      "return os.path.dirname(os.path.realpath(path)) in plans_dirs()",
      'return os.path.basename(os.path.dirname(path)) == "plans"'),
+    ("plan-mode payload exemption dropped", HOOK, '    if data.get("permission_mode") == "plan":\n        sys.exit(0)\n', ""),
+    ("plan-mode exemption covers Bash", HOOK,
+     'inp = data.get("tool_input") or {}\nif tool != "Bash":\n',
+     'inp = data.get("tool_input") or {}\nif data.get("permission_mode") == "plan":\n    sys.exit(0)\nif tool != "Bash":\n'),
+    ("permission mode not tracked", LIB, '        state["mode"] = pm\n', "        pass\n"),
+    ("any file written in plan mode is the plan", LIB,
+     """                                                             and fp.endswith(".md"))):""",
+     """                                                             and True)):"""),
     ("plansDirectory setting ignored", LIB, '                v = json.load(fh).get("plansDirectory")',
      '                v = None'),
     ("plansDirectory: user settings win over the project", LIB,
@@ -449,7 +483,8 @@ MUTATIONS = [
      "v if os.path.isabs(v) else os.path.join(proj, v)", "os.path.abspath(v)"),
     ("plan file needs no .md", LIB, 'not path.endswith(".md") or ', ""),
     ("CLAUDE_CONFIG_DIR ignored", LIB, 'os.environ.get("CLAUDE_CONFIG_DIR") or ', ""),
-    ("plan-file spec not a carrier", LIB, "if isinstance(fp, str) and is_plan_file(fp):", "if False:"),
+    ("plan-file spec not a carrier", LIB, "if isinstance(fp, str) and (is_plan_file(fp) or (state",
+     "if isinstance(fp, str) and (False or (state"),
     ("reason loses the plan-mode clause", LIB, "put the ## Goal-spec at the top of the plan file instead",
      "say nothing of it"),
     ("reason path not filled", HOOK, 'ta.SPEC_BRAKE_REASON.format(path=path)',

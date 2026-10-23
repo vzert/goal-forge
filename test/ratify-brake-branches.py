@@ -43,6 +43,9 @@ def transcript(events, name, entrypoint="cli"):
     with open(p, "w", encoding="utf-8") as fh:
         for ev in events:
             base = {"entrypoint": entrypoint} if entrypoint else {}
+            if "mode" in ev:  # the harness records the permission mode (0.68.2)
+                fh.write(json.dumps({**base, "type": "permission-mode", "permissionMode": ev["mode"]}) + "\n")
+                continue
             if "start" in ev:  # the harness records the session's cwd on its events (0.67.2)
                 fh.write(json.dumps({**base, "type": "system", "cwd": ev["start"]}) + "\n")
                 continue
@@ -254,6 +257,15 @@ ENV_CASES = [
      lambda: pre([LOAD, TXT, {"exit": "x1"}, {"exit_result": ("x1", False, APPROVED)}], "p7"), CFG_ENV, "allow"),
     ("p8-plan-file-write-not-held",
      lambda: pre([LOAD, TXT], "p8", tool="Write", tool_input={"file_path": PLAN}), CFG_ENV, "allow"),
+    # Second external round on 0.68.2: a plan file outside every known location (--settings or managed
+    # plansDirectory) still anchors the cycle when written in plan mode, and its approval releases it.
+    ("p9-plan-mode-spec-anywhere-approved-releases",
+     lambda: pre([LOAD, {"mode": "plan"}, {"write": (os.path.join(TMP, "custom", "x.md"), SPEC), "id": "wc"},
+                  {"exit": "x1"}, {"exit_result": ("x1", False, APPROVED)}, {"mode": "default"}], "p9"),
+     CFG_ENV, "allow"),
+    ("p9b-plan-mode-spec-anywhere-no-approval-denied",
+     lambda: pre([LOAD, {"mode": "plan"}, {"write": (os.path.join(TMP, "custom", "x.md"), SPEC), "id": "wc"},
+                  {"mode": "default"}], "p9b"), CFG_ENV, "deny-ratify"),
     ("50-ratify-opt-out", lambda: pre([LOAD, TXT], "50"), {"GOAL_RATIFY_BRAKE": "0"}, "allow"),
     ("51-spec-brake-opt-out-covers-both", lambda: pre([LOAD, TXT], "51"), {"GOAL_SPEC_BRAKE": "0"}, "allow"),
     ("52-ratify-opt-out-keeps-spec-brake", lambda: pre([LOAD], "52"), {"GOAL_RATIFY_BRAKE": "0"},
