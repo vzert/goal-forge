@@ -66,8 +66,11 @@
 # session's transcript records its whole change (0.65.0, p-2bf372e6e3: see WHO WROTE IT below).
 # A path outside the cwd's repository is reported absolute, so the human sees which
 # tree it is in; a path in the cwd's repository stays relative, as before.
-# hooks/external-adversary.sh is not changed: it runs in the directory the executor runs it from,
-# so the executor already picks its tree (and it reviews a private copy of it since 0.44.9).
+# hooks/external-adversary.sh runs in the directory the executor runs it from, and the executor does
+# not always cd to the reviewed tree first (14 refusals on one shared server, 2026-10-15..23). Since
+# 0.68.4 its gate moves the partner to the tree the subagent held when that is a worktree of the
+# cwd's repository or a repository nested in it (hooks/lib/subagent_gate.py held_elsewhere); it
+# reviews a private copy of it since 0.44.9.
 #
 # Usage: watch-adversary-writes.sh spawn|start|stop   (payload JSON on stdin)
 

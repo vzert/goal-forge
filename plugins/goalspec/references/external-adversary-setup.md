@@ -37,14 +37,23 @@ hold whose record the harness cut before it hashed the content (a hook timeout o
 very dirty tree): it then prints that the record was cut and the held content is unknown, and a cut
 break still blocks. Otherwise the hook
 prints why and an unprefixed `NOT RUN (goalspec external adversary): ...` line, exits 3, and gives
-no verdict. "Content" is everything git would add, ignored files left out. Three changes do not
+no verdict; the line ends with the goalspec version the session loaded, and says when a newer one
+is installed (0.68.4: a session keeps the version it started with; on that server 25 of 27 refused
+rounds came from sessions still on 0.66.1 or 0.67.0). When the subagent held a worktree of the
+repository the hook runs from, or a repository nested in it, and not that repository, the partner
+reviews the held tree and the hook says so (0.68.4: 14 refusals there named such a tree); the
+round cap still reads the config of the project the hook was run from, and counts its rounds there. "Content" is everything git would add, ignored files left out. Three changes do not
 count: a commit of the held content, this session's `.goalspec/` files, and (0.67.0) a change that
 no tool call of this session or its subagents made after the hold. Every other change counts,
 `memory/` included, because a tracked memory directory is where an unconfirmed conclusion lands.
 "Made by this session" is read from its own transcript: a Write, Edit, MultiEdit or NotebookEdit of
 the path that did not fail, or a git command that rewrites the tree without naming files (merge,
 pull, rebase, checkout, reset, stash and the like; not one inside a heredoc body or a quoted
-string), which makes every changed path this session's. A Bash write is not attributed. Why: on a shared server where several accounts append to
+string), which makes every changed path this session's in the repository it ran in (0.68.4: read
+from the cwd the transcript records for that call, a `cd <dir>` earlier in the same command, each
+`-C <dir>`, and a variable assigned in the same command; a command in another repository, or in a
+directory that cannot be resolved, is not attributed: on a shared server 15 of 27 refused rounds
+had one, in a clone under /tmp, another skill's clone, or a nested repository). A Bash write is not attributed. Why: on a shared server where several accounts append to
 `memory/review-stats/`, the gate refused the partner on 2026-10-20 in 6 of 32 attempts that the
 server's session log states, and probably in 9 more it cannot prove (it keeps no tool outputs), because
 the ledger changed between the subagent's hold and the partner. A write this does not see (any

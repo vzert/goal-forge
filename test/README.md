@@ -1103,6 +1103,27 @@ a nested untracked repository after the hold still blocks (45: those go through 
 the run directory). 41 and 42 are red against 0.68.2 (3 objects added; the cut hold blocked with
 "no round has finished"); 43-45 already held there.
 
+Since 0.68.4, 60 cases and 47 mutations, from a shared server where the gate refused the partner 50
+times in 8 days. A held worktree of the cwd's repository (46) or a repository nested in it (47) is
+where the partner runs: the stub partner prints the `work.py` of the tree it reviewed, and the
+outcome names it. A cwd nested inside the held tree still blocks and says why (48); two held
+worktrees block (49, through the real `spawn` mode). A tree-rewriting git command counts only for
+the repository it ran in: one in a clone during the round (50), after a `cd` (51, in a subagent),
+through a variable assigned in the same command (52) does not; the same variable naming this
+repository does (53); a directory that cannot be resolved is not attributed (54); one in a nested
+repository counts only for its own paths (55). A refusal names the loaded version and a newer one
+in a fake plugin cache beside it (56). The synthetic transcript entries carry `cwd`, as real ones
+do. 46-48, 50, 51 and 53-56 are red against 0.68.3; 49 and 52 already held there (52 because the
+old matcher did not see a quoted `-C "$W"` at all, which 53 shows).
+The adversary round on 0.68.4 found that a quoted directory with a blank in it (`cd "$(git
+rev-parse --show-toplevel)"`, `cd "my dir"`) was blanked and read as `cd ~`: 57 and 58 pin that it is
+the repository again (the adversary probed the draft directly; here the mutation that drops the
+quoted text turns both red; 0.68.3 blocked both, because any such command counted every path).
+The codex round on the same release added two: a brace group, `{ cd OTHER && git checkout; }`,
+hid the `cd` (59), and after RUN-IN the round cap read the config of the tree it moved to, not the
+project's where the hook was run (60: `max_external_rounds: 1` in the original checkout, the second
+round blocks, and the cap's refusal names the version too).
+
 
 ## `external-schema-branches.py` — structured answer and round cap of the external partner (0.68.0)
 

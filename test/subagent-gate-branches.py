@@ -108,9 +108,10 @@ class Case:
         with open(p, "w") as fh:
             fh.write(text)
 
-    def transcript(self, *calls, sid=SID, sub=False, ago=0):
+    def transcript(self, *calls, sid=SID, sub=False, ago=0, cwd=None):
         """Append tool calls to this session's own transcript (sub=True: a subagent's), stamped now
-        minus `ago` seconds. Each call is (name, input)."""
+        minus `ago` seconds, with the cwd the harness records on every entry (default: the repo).
+        Each call is (name, input)."""
         base = os.path.join(self.env["CLAUDE_CONFIG_DIR"], "projects", "-tmp-repo")
         d = os.path.join(base, sid, "subagents") if sub else base
         os.makedirs(d, exist_ok=True)
@@ -118,22 +119,35 @@ class Case:
         with open(os.path.join(d, "w.jsonl" if sub else sid + ".jsonl"), "a", encoding="utf-8") as fh:
             for name, inp in calls:
                 self.n += 1
-                fh.write(json.dumps({"type": "assistant", "timestamp": ts.replace("+00:00", "Z"), "message": {
-                    "content": [{"type": "tool_use", "id": "t%d" % self.n, "name": name, "input": inp}]}}) + "\n")
+                fh.write(json.dumps({"type": "assistant", "timestamp": ts.replace("+00:00", "Z"), "cwd": cwd or self.repo,
+                                     "message": {"content": [{"type": "tool_use", "id": "t%d" % self.n, "name": name,
+                                                              "input": inp}]}}) + "\n")
 
-    def partner(self, sid=SID, **extra):
+    def partner(self, sid=SID, cwd=None, show=False, **extra):
+        """show=True: the stub partner prints the work.py of the tree it reviews first, and the
+        outcome says which tree that was (run-in:<its first line>) when the gate moved it."""
         fx = os.path.join(self.tmp, "partner.txt")
         with open(fx, "w") as fh:
             fh.write(PARTNER_OUT)
-        env = dict(self.env, GOAL_ADVERSARY_CMD="cat " + fx, GOAL_ADVERSARY_TIMEOUT="0")
+        cmd = "cat " + fx
+        if show:
+            stub = os.path.join(self.tmp, "partner.sh")
+            with open(stub, "w") as fh:
+                fh.write('printf "reviewed: %%s\\n" "$(head -n 1 work.py)"\ncat "%s"\n' % fx.replace("\\", "/"))
+            cmd = "bash " + stub.replace("\\", "/")
+        env = dict(self.env, GOAL_ADVERSARY_CMD=cmd, GOAL_ADVERSARY_TIMEOUT="0")
         if sid:
             env["CLAUDE_CODE_SESSION_ID"] = sid
         env.update(extra)
         r = subprocess.run([BASH, os.path.join(self.plugin, EXT_REL)], input="pointers: work.py\n",
-                           capture_output=True, text=True, env=env, cwd=self.repo)
+                           capture_output=True, text=True, env=env, cwd=cwd or self.repo)
         out = r.stdout + r.stderr
+        self.last_out = out
         if r.returncode == 3 and "NOT RUN (goalspec external adversary):" in out and "[ADVERSARY-VERDICT:" not in out:
             return "block"
+        if "re-ran the suite: green" in out and "so the partner reviews" in r.stderr:
+            seen = [l.split("reviewed: ", 1)[1].strip() for l in out.splitlines() if "reviewed: " in l]
+            return "run-in:" + (seen[0] if seen else "?")
         if "re-ran the suite: green" in out:
             if "was cut before it finished" in r.stderr:
                 return "run+cut"
@@ -493,6 +507,161 @@ def c45(c):  # a commit inside an untracked nested repository after the hold is 
     return c.partner()
 
 
+def make_repo(path, text):
+    os.makedirs(path)
+    git(path, "init", "-q")
+    git(path, "config", "user.email", "t@t")
+    git(path, "config", "user.name", "t")
+    with open(os.path.join(path, "work.py"), "w") as fh:
+        fh.write(text)
+    git(path, "add", "-A")
+    git(path, "commit", "-qm", "init")
+    return path
+
+
+def worktree(c, name, text):
+    wt = os.path.join(c.tmp, name)
+    git(c.repo, "worktree", "add", "-q", "-b", name, wt)
+    with open(os.path.join(wt, "work.py"), "w") as fh:
+        fh.write(text)
+    return wt
+
+
+def c46(c):  # 0.68.4: the subagent held a worktree of this repository; run from the main checkout
+    wt = worktree(c, "wt", "x = 'wt'\n")
+    c.subagent(H, cwd=wt)
+    return c.partner(show=True)
+
+
+def c47(c):  # 0.68.4: the subagent held a repository nested in this one (the executor had cd'd in)
+    with open(os.path.join(c.repo, ".gitignore"), "a") as fh:
+        fh.write("app/\n")
+    app = make_repo(os.path.join(c.repo, "app"), "x = 'app'\n")
+    c.subagent(H, cwd=app)
+    return c.partner(show=True)
+
+
+def c48(c):  # run from a repository nested INSIDE the held tree: its hold does not cover it
+    with open(os.path.join(c.repo, ".gitignore"), "a") as fh:
+        fh.write("app/\n")
+    app = make_repo(os.path.join(c.repo, "app"), "x = 'app'\n")
+    c.subagent(H)
+    got = c.partner(cwd=app)
+    return got + ("+inside" if "separate repository inside it" in c.last_out else "")
+
+
+def c49(c):  # two held worktrees: which one the review is of is not known, so it blocks
+    wt1 = worktree(c, "wt1", "x = 'wt1'\n")
+    wt2 = worktree(c, "wt2", "x = 'wt2'\n")
+    payload = {"hook_event_name": "PreToolUse", "session_id": SID, "cwd": c.repo, "tool_name": "Agent",
+               "tool_input": {"subagent_type": "goalspec:goal-adversary",
+                              "prompt": "review %s and %s" % (os.path.join(wt1, "work.py"), os.path.join(wt2, "work.py"))}}
+    subprocess.run([BASH, os.path.join(c.plugin, WATCH_REL), "spawn"], input=json.dumps(payload),
+                   capture_output=True, text=True, env=c.env, cwd=c.repo)
+    c.begin()
+    c.subagent(H, stop=True)
+    got = c.partner()
+    return got + ("+two" if "wt1" in c.last_out and "wt2" in c.last_out else "")
+
+
+def c50(c):  # 0.68.4 (VPS hold-moved): a checkout in a clone under /tmp during the round is not this tree's
+    other = make_repo(os.path.join(c.tmp, "clone"), "y = 1\n")
+    c.begin()
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    n = c.n
+    c.transcript(("Bash", {"command": "git -C %s checkout -q -b review" % other}))
+    c.n = n  # the transcript's tool ids advance the counter the agent id is read from
+    c.subagent(H, stop=True)
+    return c.partner()
+
+
+def c51(c):  # a `cd <other repo> &&` before the git command: it ran there
+    other = make_repo(os.path.join(c.tmp, "clone"), "y = 1\n")
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.transcript(("Bash", {"command": "cd %s && git stash" % other}), sub=True)
+    return c.partner()
+
+
+def c52(c):  # a variable assigned in the same command names another repository
+    other = make_repo(os.path.join(c.tmp, "clone"), "y = 1\n")
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.transcript(("Bash", {"command": 'W="%s"; git -C "$W" reset --hard' % other}))
+    return c.partner()
+
+
+def c53(c):  # the same variable naming THIS repository: every path is this session's
+    c.subagent(H)
+    c.write("other.py", "y = 1\n")
+    c.transcript(("Bash", {"command": 'W="%s"; git -C "$W" reset --hard' % c.repo}), cwd=c.tmp)
+    return c.partner()
+
+
+def c54(c):  # a directory that cannot be resolved is not attributed (a Bash write is not either)
+    c.subagent(H)
+    c.write("other.py", "y = 1\n")
+    c.transcript(("Bash", {"command": "git -C $W reset --hard"}))
+    return c.partner()
+
+
+def c55(c):  # a checkout in a repository nested in the tree counts only for paths inside it
+    sub = make_repo(os.path.join(c.repo, "sub"), "z = 1\n")
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.transcript(("Bash", {"command": "git -C sub checkout -q -b x"}))
+    return c.partner()
+
+
+def c56(c):  # 0.68.4: a refusal names the loaded version and a newer one installed beside it
+    with open(os.path.join(c.plugin, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+        ver = json.load(fh)["version"]
+    cache = os.path.join(c.tmp, "cache", "goalspec")
+    loaded = os.path.join(cache, ver)
+    shutil.copytree(c.plugin, loaded, ignore=shutil.ignore_patterns("__pycache__"))
+    os.makedirs(os.path.join(cache, "99.0.0", ".claude-plugin"))
+    with open(os.path.join(cache, "99.0.0", ".claude-plugin", "plugin.json"), "w") as fh:
+        json.dump({"version": "99.0.0"}, fh)
+    c.plugin = loaded
+    c.env["CLAUDE_PLUGIN_ROOT"] = loaded
+    got = c.partner()
+    return got + ("+newer" if ("goalspec %s is what this session loaded; 99.0.0 is installed" % ver) in c.last_out else "")
+
+
+def c57(c):  # adversary round, 0.68.4: the usual quoted form, cd "$(git rev-parse --show-toplevel)"
+    c.subagent(H)
+    c.write("other.py", "y = 1\n")
+    c.transcript(("Bash", {"command": 'cd "$(git rev-parse --show-toplevel)" && git checkout -- .'}))
+    return c.partner()
+
+
+def c58(c):  # a quoted directory with a blank in it is the directory, not `cd` alone (~)
+    os.makedirs(os.path.join(c.repo, "my dir"))
+    c.subagent(H)
+    c.write("other.py", "y = 1\n")
+    c.transcript(("Bash", {"command": 'cd "my dir" && git stash'}))
+    return c.partner()
+
+
+def c59(c):  # codex round, 0.68.4: a brace group, { cd OTHER && git checkout; }, ran in OTHER
+    other = make_repo(os.path.join(c.tmp, "clone"), "y = 1\n")
+    c.subagent(H)
+    c.write("memory/review-stats/ledger.jsonl", '{"r": 1}\n')
+    c.transcript(("Bash", {"command": "{ cd %s && git checkout -- .; }" % other}))
+    return c.partner()
+
+
+def c60(c):  # codex round, 0.68.4: after RUN-IN the round cap is the project's, where the hook was run
+    os.makedirs(os.path.join(c.repo, ".claude"))
+    with open(os.path.join(c.repo, ".claude", "goal.config.json"), "w") as fh:
+        json.dump({"adversary": {"max_external_rounds": 1}}, fh)
+    wt = worktree(c, "wt", "x = 'wt'\n")
+    c.subagent(H, cwd=wt)
+    first = c.partner(show=True)
+    second = c.partner(show=True)
+    return first + "," + second + ("+version" if "[goalspec " in c.last_out else "")
+
+
 def c40(c):  # an edit BEFORE the round does not make a change during it this session's
     c.transcript(("Edit", {"file_path": os.path.join(c.repo, "memory", "sessions", "other.md"),
                            "old_string": "a", "new_string": "b"}), ago=3600)
@@ -548,6 +717,21 @@ CASES = [
     ("43-cut-record-after-break-blocks", c43, "block"),
     ("44-full-round-after-cut-one-runs", c44, "run"),
     ("45-commit-in-nested-repo-blocks", c45, "block"),
+    ("46-held-worktree-runs-there", c46, "run-in:x = 'wt'"),
+    ("47-held-nested-repo-runs-there", c47, "run-in:x = 'app'"),
+    ("48-cwd-nested-in-held-blocks", c48, "block+inside"),
+    ("49-two-held-worktrees-block", c49, "block+two"),
+    ("50-git-in-other-clone-during-round-runs", c50, "run+notice"),
+    ("51-cd-other-repo-git-not-own-runs", c51, "run+notice"),
+    ("52-var-other-repo-git-not-own-runs", c52, "run+notice"),
+    ("53-var-this-repo-git-blocks", c53, "block"),
+    ("54-unresolved-git-dir-not-own-runs", c54, "run+notice"),
+    ("55-nested-repo-checkout-not-root-runs", c55, "run+notice"),
+    ("56-refusal-names-newer-version", c56, "block+newer"),
+    ("57-quoted-toplevel-cd-git-blocks", c57, "block"),
+    ("58-quoted-dir-with-blank-blocks", c58, "block"),
+    ("59-brace-group-cd-other-repo-runs", c59, "run+notice"),
+    ("60-run-in-keeps-project-round-cap", c60, "run-in:x = 'wt',block+version"),
 ]
 
 MUTATIONS = [
@@ -576,7 +760,7 @@ MUTATIONS = [
      '        return False, "the content of the held tree could not be hashed'),
     ("own writes ignored", GATE_REL, "                if real == fp:\n                    own.add(abs_p)",
      "                if real == fp:\n                    pass"),
-    ("git rewrite not counted", GATE_REL, 'elif name == "Bash" and _GIT_REWRITE.search(', 'elif False and _GIT_REWRITE.search('),
+    ("git rewrite not counted", GATE_REL, '                    elif name == "Bash":\n', '                    elif False:\n'),
     ("hold time ignored", GATE_REL, "                    if t is None or t < int(start):", "                    if t is None:"),
     ("subagent transcripts skipped", GATE_REL, '"subagents", "*.jsonl"))\n    return found',
      '"nosubagents", "*.jsonl"))\n    return found'),
@@ -585,8 +769,8 @@ MUTATIONS = [
     ("current content unhashable crashes", GATE_REL, '        return True, "the current content could not be hashed (git add failed)"',
      '        pass'),
     ("failed edits counted", GATE_REL, "            if tid in failed:\n                continue", "            pass"),
-    ("heredoc not stripped", GATE_REL, "    return _QUOTED.sub(\" \", _HEREDOC.sub(\" \", cmd))", "    return _QUOTED.sub(\" \", cmd)"),
-    ("quoted not stripped", GATE_REL, "    return _QUOTED.sub(\" \", _HEREDOC.sub(\" \", cmd))", "    return _HEREDOC.sub(\" \", cmd)"),
+    ("heredoc not stripped", GATE_REL, "    return _QUOTED.sub(keep, _HEREDOC.sub(\" \", cmd))", "    return _QUOTED.sub(keep, cmd)"),
+    ("quoted not stripped", GATE_REL, "    return _QUOTED.sub(keep, _HEREDOC.sub(\" \", cmd))", "    return _HEREDOC.sub(\" \", cmd)"),
     ("record never called", HBV_REL, "        subagent_gate.record(", "        (lambda *a: None)("),
     ("during-round never attributed", GATE_REL, "    if own is None or own:\n        return []", "    if True:\n        return []"),
     ("during-round own writes ignored", GATE_REL, "    if own is None or own:\n        return []",
@@ -596,6 +780,26 @@ MUTATIONS = [
     ("old start record attributed", GATE_REL, 'began_ts = began.get("ts") if isinstance(began.get("trees"), dict) else None',
      'began_ts = began.get("ts") if isinstance(began.get("trees"), dict) else "1970-01-01T00:00:00Z"'),
     ("during-round notice dropped", GATE_REL, '    if last.get("moved_by_other"):', "    if False:"),
+    ("held tree never moved to", GATE_REL, "    return found[0] if len(found) == 1 else None", "    return None"),
+    ("ambiguous held trees pick one", GATE_REL, "    return found[0] if len(found) == 1 else None",
+     "    return found[0] if found else None"),
+    ("nested-inside message dropped", GATE_REL, "    if inside:\n        return (", "    if False:\n        return ("),
+    ("hook ignores the held tree", EXT_REL, '      if ! cd "$GATE_ROOT" 2>/dev/null; then', "      if ! cd . 2>/dev/null; then"),
+    ("git target ignored", GATE_REL, "own.update(a for a, real in want_real.items() if (real + os.sep).startswith(top))",
+     "own.update(want_real)"),
+    ("unresolved git dir counted", GATE_REL, "                            if not top:\n                                continue",
+     "                            if not top:\n                                own.update(want_real)\n                                continue"),
+    ("cd ignored", GATE_REL, '        if words[i] in ("cd", "pushd"):', '        if False:'),
+    ("assignment ignored", GATE_REL, "            names[n] = v if n not in names", "            names[n] = None if n not in names"),
+    ("entry cwd ignored", GATE_REL, 'str(inp.get("command") or ""), e.get("cwd"))', 'str(inp.get("command") or ""), None)'),
+    ("toplevel substitution unread", GATE_REL, "    if _TOPLEVEL.fullmatch(word.strip()):", "    if False:"),
+    ("quoted directory text dropped", GATE_REL, "        word = _PLACEHOLDER.sub(lambda m: quoted[int(m.group(1))], word)",
+     "        word = _PLACEHOLDER.sub(\"\", word)"),
+    ("brace group hides cd", GATE_REL, '        while i < len(words) and words[i] in ("{", "}", "!",',
+     '        while i < len(words) and words[i] in ("}", "!",'),
+    ("cap read where RUN-IN moved", EXT_REL, 'cap "$RUN_FROM" "$REVIEW_REPO"', 'cap "$(pwd)" "$REVIEW_REPO"'),
+    ("cap refusal names no version", EXT_REL, '      [ -f "$GATE_PY" ] && CAP_WHY="$CAP_WHY [$(', '      false && CAP_WHY="$CAP_WHY [$('),
+    ("version note dropped", GATE_REL, '            why += " [%s]" % version_note()', "            pass"),
 ]
 
 

@@ -6,6 +6,55 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.68.4] - 2026-10-23
+
+### Fixed
+
+Reported from a shared server (five Linux accounts on one repository, 2026-10-15..23, by the
+session that operates it, from those accounts' transcripts): the external partner printed `NOT RUN`
+50 times in 3 accounts, and that report found codex itself healthy (27 rounds with rc=0 since
+2026-10-22 19:32Z, a log not shipped with it). The counts below are re-derived from the event files
+it sent. The subagent-first
+gate refused it before it started. Three causes, three changes:
+
+- **A git command in another repository no longer makes every change this session's.** Until now
+  any `merge`, `checkout`, `reset`, `stash` and the like, in the session or any of its subagents,
+  counted every changed path as the session's own, wherever it ran. 15 of 27 `hold-moved`
+  refusals had one: `git -C $P checkout` in a clone under /tmp, another skill's subagent running
+  `git stash` in its own clone, `git -C ia checkout` in a nested repository. Now
+  `subagent_gate.own_changes` reads where each one ran (the cwd the transcript records for that
+  call, a `cd <dir>` earlier in the same command, each `-C <dir>`, a variable assigned in the same
+  command, `$(git rev-parse --show-toplevel)`) and counts it only for the paths inside that
+repository. A directory it cannot resolve
+  is not attributed, like a Bash write: that costs a round and never blocks a review. A quoted
+  `-C "$W"` was invisible before and is read now.
+- **The partner reviews the tree the subagent held when the executor runs the hook from another
+  checkout of it.** 14 refusals said "the subagent's last hold measured X, not this repository (Y).
+  Run the subagent on this tree", and the agent ran the subagent again on the wrong tree. When the
+  held tree is a worktree of Y, or a repository nested in Y, and only one tree qualifies, the gate
+  prints `RUN-IN` and `external-adversary.sh` changes to that tree before the partner starts, with a
+  notice. A cwd nested inside the held tree still blocks (the outer hold sees a nested repository as
+  one entry), and the message now says so; otherwise the message says to run the hook from the held
+  tree or to run the subagent with a path in this one.
+- **A refusal names the goalspec version the session loaded, and says when a newer one is
+  installed.** 25 of 27 `hold-moved` refusals came from sessions still on 0.66.1 or 0.67.0 while the
+  account had 0.68.x installed: a session keeps the version it started with, and the attribution of
+  other writers during a round arrived in 0.67.1.
+
+Not changed: the content hash still covers the whole repository, not only the reviewed diff (H4 of
+the report). With the two fixes above, another account's writes already let the partner run; a
+hash limited to the diff would need a base fixed at the round's start and still the attribution
+for writes inside it. Left as a design decision.
+
+### Tests
+
+`test/subagent-gate-branches.py`: 15 new cases (46-60), 9 of the first 11 fail against 0.68.3; 15
+new mutations. 57-58 come from the subagent round on this release: a quoted directory with a blank
+(`cd "$(git rev-parse --show-toplevel)"`) was read as `cd ~` in the first draft. 59-60 come from
+the codex round: a brace group `{ cd OTHER && ...; }` hid the `cd`, and after RUN-IN the round cap
+read the moved tree's config; it now reads the project's where the hook was run, and counts the
+cycle's rounds there. The cap's refusal names the version too. Its synthetic transcript entries now carry the `cwd` every real entry has.
+
 ## [0.68.3] - 2026-10-23
 
 ### Fixed

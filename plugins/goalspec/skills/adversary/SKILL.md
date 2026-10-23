@@ -112,7 +112,9 @@ The subagent always runs; `external` adds a backend, it does not replace one (0.
 action (then close `backends=both`), or as the mandated switch after two consecutive subagent
 breaks; a non-terminal claim with no streak closes on the subagent alone. The external one runs
 **after** the subagent's hold, on the content it held (0.66.0; since 0.67.0 a change no tool call of this session made after the hold, such as a shared ledger, does not count): otherwise its hook prints
-`NOT RUN (goalspec external adversary): <why>`, exits 3 and gives no verdict. Since 0.68.3, a hold whose
+`NOT RUN (goalspec external adversary): <why>`, exits 3 and gives no verdict (since 0.68.4 the
+line ends with the goalspec version the session loaded; when the subagent held a worktree of the
+repository the hook runs from, or a repository nested in it, the partner reviews that tree). Since 0.68.3, a hold whose
 record was cut by a hook timeout lets it run with a notice (the held content is unknown); a cut break still blocks.
 
 - **subagent** (always): spawn the `goal-adversary` agent via the Task tool with the payload.

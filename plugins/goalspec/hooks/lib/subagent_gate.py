@@ -303,8 +303,60 @@ def gate(session_id, cwd):
                       "this gate cannot tell whether that is the current content" % last["ts"])
     trees = last.get("trees") or {}
     if here not in trees:
-        return False, ("the subagent's last hold (%s) measured %s, not this repository (%s). Run the "
-                       "subagent on this tree." % (last["ts"], ", ".join(sorted(trees)) or "no tree", here))
+        held = held_elsewhere(here, trees)
+        if held is None:
+            return False, _not_here(last["ts"], here, trees)
+        ok, why = _judge(session_id, last, trees, snap)
+        if not ok:
+            why = "the subagent held %s, not this repository (%s), and for that tree: %s" % (held, here, why)
+        return ok, why, held
+    return _judge(session_id, last, trees, snap)
+
+
+def held_elsewhere(here, trees):
+    """-> the one held tree the partner should review instead of `here`, or None (0.68.4).
+
+    WHY (measured 2026-10-15..23 on a shared server, 14 of 50 NOT RUN): the subagent measures the
+    trees its prompt names, or the repository of the session's cwd when it spawned; this hook ran in
+    the executor's cwd at that later moment. A worktree of the same repository (wt-app-631) or a
+    repository nested in the cwd's (workspace/app, a different repository the executor had cd'd
+    into) was held, and the gate said "Run the subagent on this tree", which sent the agent around
+    the loop again. Such a tree is the review the subagent held, so the partner reviews it. Only when
+    exactly one held tree is such a tree; a cwd nested INSIDE a held tree is not covered by its hold
+    (the outer hash sees a nested repository as one entry) and still blocks."""
+    common = _common_dir(here)
+    real_here = os.path.realpath(here)
+    found = []
+    for t in sorted(trees):
+        if not os.path.isdir(t):
+            continue
+        real_t = os.path.realpath(t)
+        if real_t.startswith(real_here.rstrip(os.sep) + os.sep) or (common and _common_dir(t) == common):
+            found.append(t)
+    return found[0] if len(found) == 1 else None
+
+
+def _common_dir(path):
+    d = _git(path, "rev-parse", "--git-common-dir")
+    if not d:
+        return None
+    return os.path.normcase(os.path.realpath(d if os.path.isabs(d) else os.path.join(path, d)))
+
+
+def _not_here(ts, here, trees):
+    named = ", ".join(sorted(trees)) or "no tree"
+    inside = [t for t in sorted(trees)
+              if os.path.realpath(here).startswith(os.path.realpath(t).rstrip(os.sep) + os.sep)]
+    if inside:
+        return ("the subagent's last hold (%s) measured %s, and this repository (%s) is a separate "
+                "repository inside it, which that hold sees as one entry and does not cover. Run the "
+                "subagent with a path in %s in its prompt." % (ts, named, here, here))
+    return ("the subagent's last hold (%s) measured %s, not this repository (%s). If the review is of "
+            "that tree, run this hook from it (cd there first); if it is of this repository, run the "
+            "subagent with a path in it in its prompt." % (ts, named, here))
+
+
+def _judge(session_id, last, trees, snap):
     if any(h is None for h in trees.values()):
         return True, "the content of the held tree could not be hashed (git add failed)"
     store = _store(snap)
@@ -332,6 +384,34 @@ def gate(session_id, cwd):
     return True, "the subagent held this content at %s" % last["ts"]
 
 
+def version_note():
+    """-> "goalspec <loaded>", plus a restart hint when a newer version sits beside it in the plugin
+    cache (0.68.4). A session keeps the version it started with: on a shared server 25 of 27
+    hold-moved refusals came from sessions still on 0.66.1 or 0.67.0 while 0.68.x was installed,
+    and nothing said so. Cache layout: <cache>/goalspec/<version>/hooks/lib/this file."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    try:
+        with open(os.path.join(root, ".claude-plugin", "plugin.json"), encoding="utf-8") as fh:
+            cur = str(json.load(fh).get("version") or "")
+    except (OSError, ValueError, AttributeError):
+        return "goalspec version unknown"
+    key = lambda v: tuple(int(x) for x in v.split("."))
+    note = "goalspec " + cur
+    if os.path.basename(root) != cur or not re.match(r"^\d+(\.\d+)*$", cur):
+        return note
+    try:
+        listed = os.listdir(os.path.dirname(root))
+    except OSError:
+        return note
+    newer = [v for v in listed if re.match(r"^\d+(\.\d+)*$", v)
+             and os.path.isfile(os.path.join(os.path.dirname(root), v, ".claude-plugin", "plugin.json"))
+             and key(v) > key(cur)]
+    if newer:
+        note += (" is what this session loaded; %s is installed. A session keeps the version it started "
+                 "with: start a new session to use it" % max(newer, key=key))
+    return note
+
+
 def _few(items, n=5):
     return ", ".join(items[:n]) + (" and %d more" % (len(items) - n) if len(items) > n else "")
 
@@ -344,20 +424,124 @@ def changed_paths(root, before, after, store=None):
 
 
 # A git command that rewrites the working tree without naming the files it changes: after one of
-# these, every changed path counts as this session's.
+# these, every changed path in the tree it ran in counts as this session's (_rewrite_targets).
 _GIT_REWRITE = re.compile(r"\bgit\b(?:\s+-[Cc]\s+\S+)*\s+(merge|pull|rebase|checkout|switch|reset|stash|am|"
                           r"apply|cherry-pick|revert|restore|mv|rm|clean|read-tree|checkout-index)\b")
 
 
 # Text a command carries as data, not as a command: a heredoc body (an adversary payload, a file
 # written with cat <<EOF) and a quoted string (a commit message). A git verb inside either is not a
-# git command that ran.
+# git command that ran. A quoted string becomes one placeholder word, \x02<n>\x02, whose text
+# _resolve_dir reads back: the directory a command ran in is often quoted (cd "$W", cd "/a dir",
+# cd "$(git rev-parse --show-toplevel)"), and blanking it read the bare `cd` as `cd ~` (adversary
+# round, 0.68.4).
 _HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?\n[ \t]*\2[ \t]*(?=\n|$)", re.S)
 _QUOTED = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
+_PLACEHOLDER = re.compile("\x02(\\d+)\x02")
 
 
-def _command_text(cmd):
-    return _QUOTED.sub(" ", _HEREDOC.sub(" ", cmd))
+def _command_text(cmd, quoted=None):
+    """-> `cmd` without heredoc bodies, each quoted string replaced by a placeholder word; the
+    strings go to `quoted` (a list), in order."""
+    quoted = [] if quoted is None else quoted
+
+    def keep(m):
+        quoted.append(m.group(0)[1:-1])
+        return "\x02%d\x02" % (len(quoted) - 1)
+    return _QUOTED.sub(keep, _HEREDOC.sub(" ", cmd))
+
+
+# WHERE a tree-rewriting git command ran (0.68.4). Until then any such command, in the session or
+# in any of its subagents, made every changed path this session's, wherever it ran. On a shared
+# server that refused the partner in 15 of 27 hold-moved rounds (2026-10-15..23): `git -C $P
+# checkout` in a clone under /tmp, `git stash` of another skill's subagent in its own clone, `git -C
+# ia checkout` in a nested repository. Now the command counts only for the measured paths inside
+# the repository it ran in: the cwd the transcript records for that call, changed by a `cd <dir>`
+# earlier in the same command and by each `-C <dir>`; `$NAME` and `${NAME}` resolve from an
+# assignment in the same command (a Bash call starts a fresh shell, so there is nowhere else to
+# set one) and $HOME and ~ from this user's home. A directory that cannot be resolved (a variable
+# set elsewhere, $(...), a glob, a call with no recorded cwd) is not attributed: the same direction
+# as a Bash write (own_changes), it costs a round and never blocks a review. Declared limit: a `cd`
+# inside a subshell counts for the rest of the command.
+_SEGMENT = re.compile(r"&&|\|\||[;\n|()]")
+_ASSIGN = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+_VAR = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))")
+
+
+_TOPLEVEL = re.compile(r"\$\(\s*git\s+rev-parse\s+--show-toplevel\s*\)")
+_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _resolve_dir(word, base, names, quoted=()):
+    """-> the absolute directory `word` names from `base`, or None when it cannot be known."""
+    try:
+        word = _PLACEHOLDER.sub(lambda m: quoted[int(m.group(1))], word)
+    except (IndexError, ValueError):
+        return None
+    if _TOPLEVEL.fullmatch(word.strip()):
+        return repo_root(base) if base else None
+
+    def sub(m):
+        n = m.group(1) or m.group(2)
+        if n in names and names[n] is not None:
+            return names[n]
+        if n == "HOME":
+            return os.path.expanduser("~")
+        raise KeyError(n)
+    try:
+        for _ in range(3):  # W=$ROOT/wt: one assignment may name another
+            if "$" not in word:
+                break
+            word = _VAR.sub(sub, word)
+    except KeyError:
+        return None
+    if word == "~" or word.startswith("~/"):
+        word = os.path.expanduser("~") + word[1:]
+    if not word or re.search(r"[$`*?\[\]{}]", word):
+        return None
+    if not (os.path.isabs(word) or _DRIVE.match(word)):
+        if not base:
+            return None
+        word = os.path.join(base, word)
+    return os.path.normpath(word)
+
+
+def _rewrite_targets(cmd, cwd):
+    """-> one entry per tree-rewriting git command in `cmd`: the directory it ran in, or None."""
+    quoted = []
+    text = _command_text(cmd, quoted)
+    if not _GIT_REWRITE.search(text):
+        return []
+    names, out = {}, []
+    cur = cwd if isinstance(cwd, str) and os.path.isabs(cwd) else None
+    for seg in _SEGMENT.split(text):
+        words = seg.split()
+        i = 0
+        # Words that open a command without being it: { cd x && ...; }, if/then, while/do, !, time.
+        while i < len(words) and words[i] in ("{", "}", "!", "if", "then", "else", "elif", "while",
+                                              "until", "do", "time", "export"):
+            i += 1
+        while i < len(words) and _ASSIGN.match(words[i]):
+            n, v = _ASSIGN.match(words[i]).groups()
+            v = _PLACEHOLDER.sub(lambda m: quoted[int(m.group(1))], v)
+            names[n] = v if n not in names or names[n] == v else None  # two values: unknown
+            i += 1
+        if i >= len(words):
+            continue
+        if words[i] in ("cd", "pushd"):
+            args = words[i + 1:]
+            while args and args[0] in ("-P", "-L", "--"):
+                args = args[1:]
+            cur = _resolve_dir(args[0] if args else "~", cur, names, quoted) if len(args) <= 1 else None
+            continue
+        m = _GIT_REWRITE.search(seg)
+        if not m:
+            continue
+        where = cur
+        for d in re.findall(r"\s-C\s+(\S+)", m.group(0)):
+            where = _resolve_dir(d, where, names, quoted)
+        out.append(where)
+    return out
 
 
 def session_transcripts(session_id):
@@ -382,8 +566,10 @@ def own_changes(session_id, since, paths):
 
     A path is this session's when, at or after the hold, one of its own or its subagents' Write,
     Edit, MultiEdit or NotebookEdit calls wrote it and did not fail, or when a git command that
-    rewrites the tree without naming files ran (merge, pull, rebase, checkout, reset, stash and the
-    like; then every path is). A git verb inside a heredoc body or a quoted string is data, not a
+    rewrites the tree without naming files ran in the repository it is in (merge, pull, rebase,
+    checkout, reset, stash and the like; then every path in that repository is; since 0.68.4 a
+    command in another repository, or in a directory that cannot be resolved, is not, see
+    _rewrite_targets). A git verb inside a heredoc body or a quoted string is data, not a
     command. Anything else is another writer's: the shared memory ledger other accounts append to on
     a shared server, which kept the partner from running there on 2026-10-20 in 6 of 32 attempts the
     server's log states, and probably in 9 more it cannot prove.
@@ -405,6 +591,7 @@ def own_changes(session_id, since, paths):
             want[os.path.join(root, p)] = (root, p)
     want_real = {abs_p: os.path.normcase(os.path.realpath(abs_p)) for abs_p in want}
     own = set()
+    tops = {}  # directory a git command ran in -> its repository (None: not one, or not resolved)
     for f in files:
         writes = []  # (tool_use id, real path)
         failed = set()
@@ -443,8 +630,13 @@ def own_changes(session_id, since, paths):
                         # wrote /var/... (a symlink on macOS), and a match by spelling misses it.
                         if isinstance(fp, str) and os.path.isabs(fp):
                             writes.append((b.get("id"), os.path.normcase(os.path.realpath(fp))))
-                    elif name == "Bash" and _GIT_REWRITE.search(_command_text(str(inp.get("command") or ""))):
-                        return set(want)
+                    elif name == "Bash":
+                        for where in _rewrite_targets(str(inp.get("command") or ""), e.get("cwd")):
+                            top = tops.setdefault(where, repo_root(where) if where and len(tops) < 64 else None)
+                            if not top:
+                                continue
+                            top = os.path.normcase(os.path.realpath(top)).rstrip(os.sep) + os.sep
+                            own.update(a for a, real in want_real.items() if (real + os.sep).startswith(top))
         for tid, fp in writes:
             if tid in failed:
                 continue
@@ -462,10 +654,28 @@ if __name__ == "__main__":
         except Exception:
             pass
         sys.exit(0)
-    # gate <cwd>   (session id from CLAUDE_CODE_SESSION_ID). Prints RUN|BLOCK<TAB>reason; exit 0.
-    if len(sys.argv) >= 3 and sys.argv[1] == "gate":
+    # version   (for the other refusals of external-adversary.sh)
+    if len(sys.argv) >= 2 and sys.argv[1] == "version":
         try:
-            ok, why = gate(os.environ.get("CLAUDE_CODE_SESSION_ID", ""), sys.argv[2])
+            print(version_note())
+        except Exception:
+            print("goalspec version unknown")
+        sys.exit(0)
+    # gate <cwd>   (session id from CLAUDE_CODE_SESSION_ID). Prints RUN|BLOCK|RUN-IN<TAB>...; exit 0.
+    if len(sys.argv) >= 3 and sys.argv[1] == "gate":
+        held = None
+        try:
+            got = gate(os.environ.get("CLAUDE_CODE_SESSION_ID", ""), sys.argv[2])
+            ok, why = got[0], got[1]
+            held = got[2] if len(got) > 2 else None
         except Exception as e:  # fail-open: a broken gate never stops a review
             ok, why = True, "the gate failed (%s)" % e.__class__.__name__
-        print(("RUN" if ok else "BLOCK") + "\t" + why)
+        if not ok:
+            why += " [%s]" % version_note()
+            print("BLOCK\t" + why)
+        elif held:
+            # external-adversary.sh changes to this tree before it starts the partner.
+            print("RUN-IN\t%s\tthe subagent held %s, not the repository this hook was run from, so the "
+                  "partner reviews %s. %s" % (held, held, held, why))
+        else:
+            print("RUN\t" + why)

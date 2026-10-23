@@ -111,9 +111,16 @@ esac
 # row (the switch SKILL.md step 6 mandates). hooks/lib/subagent_gate.py has the rule and its limits.
 # Fail-open with no session id, outside a git repository, when the gate itself fails, or (0.68.3)
 # after a hold whose record a hook timeout cut, with a notice (the case below); the human
-# turns it off with GOAL_ADVERSARY_AFTER_SUBAGENT=0. A refusal prints no verdict line at all.
+# turns it off with GOAL_ADVERSARY_AFTER_SUBAGENT=0. A refusal prints no verdict line at all, and
+# names the goalspec version this session loaded (0.68.4). When the subagent held a worktree of
+# this repository or a repository nested in it, and not this one, the partner reviews that tree
+# (RUN-IN below): the executor need not run this from the tree the subagent reviewed.
 GATE_PY="$(dirname "$0")/lib/subagent_gate.py"
 [ -f "$GATE_PY" ] || GATE_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/subagent_gate.py"
+# Where the executor ran this, before RUN-IN may move it: the round cap below reads the project's
+# config and counts the cycle's rounds there, wherever the partner reviews (codex round, 0.68.4).
+RUN_FROM=$(pwd -W 2>/dev/null || pwd)
+RUN_FROM_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -f "$GATE_PY" ]; then
   # The native form of the cwd: on Git Bash $PWD is /c/..., which python.exe cannot open, and the
   # gate would fail open on every Windows run. `pwd -W` exists only there.
@@ -125,6 +132,20 @@ if [ -f "$GATE_PY" ]; then
       echo "external-adversary: NOT RUN -- the external partner reviews only a tree the goal-adversary subagent held. $GATE_WHY (GOAL_ADVERSARY_AFTER_SUBAGENT=0 turns this off; only the human sets it.)" >&2
       echo "NOT RUN (goalspec external adversary): no round ran, so there is no verdict to quote. $GATE_WHY" >&2
       exit 3
+      ;;
+    RUN-IN*)
+      # The subagent held a worktree of this repository, or a repository nested in it, not the one
+      # this was run from (0.68.4, hooks/lib/subagent_gate.py held_elsewhere): review that tree.
+      GATE_WHY=${GATE_OUT#RUN-IN	}
+      GATE_ROOT=${GATE_WHY%%	*}
+      GATE_WHY=${GATE_WHY#*	}
+      if ! cd "$GATE_ROOT" 2>/dev/null; then
+        GATE_WHY="The subagent held $GATE_ROOT and this hook cannot enter it. [$("$PY" "$GATE_PY" version 2>/dev/null)]"
+        echo "external-adversary: NOT RUN -- $GATE_WHY" >&2
+        echo "NOT RUN (goalspec external adversary): no round ran, so there is no verdict to quote. $GATE_WHY" >&2
+        exit 3
+      fi
+      echo "external-adversary: $GATE_WHY" >&2
       ;;
     RUN*"another writer made it"*|RUN*"was cut before it finished"*)
       echo "external-adversary: ${GATE_OUT#RUN	}." >&2
@@ -138,12 +159,13 @@ fi
 # refuses and the human decides. hooks/lib/external_review.py has the rule and its limits. Fail-open.
 REVIEW_PY="$(dirname "$0")/lib/external_review.py"
 [ -f "$REVIEW_PY" ] || REVIEW_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/external_review.py"
-REVIEW_REPO=$(git rev-parse --show-toplevel 2>/dev/null || true)
+REVIEW_REPO=$RUN_FROM_REPO
 if [ -f "$REVIEW_PY" ]; then
-  CAP_OUT=$("$PY" "$REVIEW_PY" cap "$(pwd -W 2>/dev/null || pwd)" "$REVIEW_REPO" 2>/dev/null || true)
+  CAP_OUT=$("$PY" "$REVIEW_PY" cap "$RUN_FROM" "$REVIEW_REPO" 2>/dev/null || true)
   case "$CAP_OUT" in
     BLOCK*)
       CAP_WHY=${CAP_OUT#BLOCK	}
+      [ -f "$GATE_PY" ] && CAP_WHY="$CAP_WHY [$("$PY" "$GATE_PY" version 2>/dev/null)]"
       echo "external-adversary: NOT RUN -- $CAP_WHY" >&2
       echo "NOT RUN (goalspec external adversary): no round ran, so there is no verdict to quote. $CAP_WHY" >&2
       exit 3
