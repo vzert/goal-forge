@@ -462,6 +462,11 @@ def main():
           and "running both in parallel is fine" not in _fl(setup))
     check("after-hold:adversary-skill", "after** the subagent's hold, on the content it held (0.66.0" in _fl(adv_skill_txt)
           or "after the subagent's hold, on the content it held (0.66.0" in _fl(adv_skill_txt))
+    # 0.68.3: a hold whose record the harness cut (a hook timeout) lets the partner run with a
+    # notice; a cut break still blocks. Same three carriers.
+    for _name, _txt in (("skill-step6", skill), ("setup", setup), ("adversary-skill", adv_skill_txt)):
+        check("cut-record:" + _name, "0.68.3" in _fl(_txt) and "cut" in _fl(_txt)
+              and "a cut break still blocks" in _fl(_txt))
     # 0.67.0: a change no tool call of this session made after the hold does not count (shared
     # ledger on a multi-account server, 6 of 32 partner attempts refused on 2026-10-20 by the log,
     # 9 more probable).

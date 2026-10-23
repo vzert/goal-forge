@@ -34,6 +34,9 @@ version bump are never delivered to already-installed users.
     the held content is unknown (the same fail-open as content git cannot hash); a cut break still
     blocks as a break. A cut before the verdict is known still reads as no round (declared limit).
   - The three rail hooks' timeouts go from 15/15/10 s to 30 s, as a margin on top of the fix.
+  - The rule's carriers say so: SKILL.md step 6, the adversary skill and
+    `references/external-adversary-setup.md` name the cut-record exception, and
+    `test/claim-surface-carriers.py` checks all three (`cut-record:*`).
   Tests: `test/subagent-gate-branches.py` cases 41-45 (41 and 42 red against 0.68.2: 3 objects
   added; the cut hold blocked with "no round has finished"), five new `--selftest` mutations;
   `test/adversary-writes-branches.py` cases 59-60 (an unreadable file in the tree, without and with a

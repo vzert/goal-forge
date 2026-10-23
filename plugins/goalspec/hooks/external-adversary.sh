@@ -109,7 +109,8 @@ esac
 # their breaks were real defects the cheaper subagent round exists to find first. So this refuses,
 # with the reason, unless the subagent's last round held the current content, or it broke twice in a
 # row (the switch SKILL.md step 6 mandates). hooks/lib/subagent_gate.py has the rule and its limits.
-# Fail-open with no session id, outside a git repository, or when the gate itself fails; the human
+# Fail-open with no session id, outside a git repository, when the gate itself fails, or (0.68.3)
+# after a hold whose record a hook timeout cut, with a notice (the case below); the human
 # turns it off with GOAL_ADVERSARY_AFTER_SUBAGENT=0. A refusal prints no verdict line at all.
 GATE_PY="$(dirname "$0")/lib/subagent_gate.py"
 [ -f "$GATE_PY" ] || GATE_PY="${CLAUDE_PLUGIN_ROOT:-}/hooks/lib/subagent_gate.py"

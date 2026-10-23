@@ -32,7 +32,10 @@ is what brings the capable reader on terminal actions, and after two subagent br
 `hooks/external-adversary.sh` asks `hooks/lib/subagent_gate.py` before it starts the partner. The
 partner runs when the subagent's last round in this session held the current content of the
 repository, or after two subagent breaks in a row (the switch SKILL.md step 6 mandates). It also
-runs with no session id, outside a git repository, or when the gate fails. Otherwise the hook
+runs with no session id, outside a git repository, or when the gate fails, and (0.68.3) after a
+hold whose record the harness cut before it hashed the content (a hook timeout on a very large or
+very dirty tree): it then prints that the record was cut and the held content is unknown, and a cut
+break still blocks. Otherwise the hook
 prints why and an unprefixed `NOT RUN (goalspec external adversary): ...` line, exits 3, and gives
 no verdict. "Content" is everything git would add, ignored files left out. Three changes do not
 count: a commit of the held content, this session's `.goalspec/` files, and (0.67.0) a change that
