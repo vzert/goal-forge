@@ -250,6 +250,49 @@ _gs_foreign_runstate() {
   return 1
 }
 SESSION_DIR=$(_gs_session_dir "$SESSION_KEY")
+# ONE git process for every file (0.68.3). One `git hash-object` per path took 19 s on a checkout
+# with ~2000 untracked files, past this hook's timeout, so the harness cut it at SubagentStart and
+# SubagentStop (46 times in one user's checkout, 2026-10-14..23) and the round went unmeasured.
+# `--stdin-paths` hashes them all in one process (2.4 s there). When it fails (an unreadable file
+# stops it) or a name holds a newline (it reads one path per line), each such path is hashed alone,
+# as before, so the output is the same line for line. Keep in step with external-adversary.sh.
+_gs_hash_paths() {
+  # $1 = the tree's root, $2 = the prefix printed before each path. stdin: NUL-delimited paths
+  # relative to $1. Prints "<blob|unreadable|absent> <prefix><path>" per path, in input order.
+  _hr=$1 _hp=$2 _hn=0 _hb=0 _hok=0
+  _hpaths=() _hkind=() _hbatch=() _hsum=()
+  while IFS= read -r -d '' _x; do
+    _hpaths[_hn]=$_x
+    if [ ! -f "$_hr/$_x" ]; then
+      _hkind[_hn]=absent
+    else
+      case "$_x" in
+        *$'\n'*) _hkind[_hn]=one ;;
+        *) _hkind[_hn]=batch; _hbatch[_hb]="$_hr/$_x"; _hb=$((_hb + 1)) ;;
+      esac
+    fi
+    _hn=$((_hn + 1))
+  done
+  if [ "$_hb" -gt 0 ] && _hout=$(printf '%s\n' "${_hbatch[@]}" | git -C "$_hr" hash-object --stdin-paths 2>/dev/null); then
+    _hi=0
+    while IFS= read -r _x; do _hsum[_hi]=$_x; _hi=$((_hi + 1)); done <<EOF_HASHES
+$_hout
+EOF_HASHES
+    [ "$_hi" -eq "$_hb" ] && _hok=1
+  fi
+  _hi=0 _hj=0
+  while [ "$_hi" -lt "$_hn" ]; do
+    _x=${_hpaths[_hi]}
+    case "${_hkind[_hi]}" in
+      absent) printf 'absent %s\n' "$_hp$_x" ;;
+      batch) if [ "$_hok" = 1 ]; then printf '%s %s\n' "${_hsum[_hj]}" "$_hp$_x"
+             else printf '%s %s\n' "$(git -C "$_hr" hash-object -- "$_hr/$_x" 2>/dev/null || echo unreadable)" "$_hp$_x"; fi
+             _hj=$((_hj + 1)) ;;
+      *) printf '%s %s\n' "$(git -C "$_hr" hash-object -- "$_hr/$_x" 2>/dev/null || echo unreadable)" "$_hp$_x" ;;
+    esac
+    _hi=$((_hi + 1))
+  done
+}
 fingerprint_tree() {
   # $1 = the tree's root. Its paths are relative when it is the cwd's repository (as before 0.64.0)
   # and absolute otherwise, so the notice says which tree a path is in.
@@ -258,14 +301,7 @@ fingerprint_tree() {
   [ "$_r" = "$REPO_ROOT" ] || _pre="$_r/"
   printf 'HEAD %s\n' "$(git -C "$_r" rev-parse HEAD 2>/dev/null || echo unborn)"
   printf 'staged %s\n' "$(git -C "$_r" diff --cached 2>/dev/null | git hash-object --stdin 2>/dev/null || echo none)"
-  git -C "$_r" ls-files -m -o -d --exclude-standard -z 2>/dev/null \
-    | while IFS= read -r -d '' p; do
-        if [ -f "$_r/$p" ]; then
-          printf '%s %s\n' "$(git -C "$_r" hash-object -- "$_r/$p" 2>/dev/null || echo unreadable)" "$_pre$p"
-        else
-          printf 'absent %s\n' "$_pre$p"
-        fi
-      done
+  git -C "$_r" ls-files -m -o -d --exclude-standard -z 2>/dev/null | _gs_hash_paths "$_r" "$_pre"
   for f in "$_r"/.goalspec/*; do
     [ -f "$f" ] || continue
     _gs_foreign_runstate "${f##*/}" "$SESSION_KEY" "$SESSION_DIR" && continue

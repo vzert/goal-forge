@@ -247,6 +247,11 @@ CASES = [
     # One path explained, one not: only the explained one moves.
     ("58-other-and-unexplained-together", "write-plus-new", None,
      "recorded:adversary-notes.md,other(831306ab):tracked.txt"),
+    # 0.68.3: the fingerprint hashes every path in one `git hash-object --stdin-paths`, which an
+    # unreadable file stops. A file this user cannot read sits in the tree for the whole round:
+    # with no change the rail stays silent, and a change beside it is still named.
+    ("59-unreadable-file-no-change-silent", noop, None, "silent"),
+    ("60-unreadable-file-plus-append-recorded", append_dirty, None, "recorded:tracked.txt"),
 ]
 
 # SessionEnd cleanup (cleanup-run-dir.sh): name, setup, expected.
@@ -497,8 +502,20 @@ def run_dir_of(tmp, session):
     return os.path.join(tmp, "state", "goalspec", "run-" + session)
 
 
+def unreadable_file(root):
+    p = os.path.join(root, "secret.bin")
+    with open(p, "w") as f:
+        f.write("not for this user\n")
+    os.chmod(p, 0)
+
+
+# What a case puts in the tree BEFORE the round starts (cases 59-60).
+PRE_START = {"59": unreadable_file, "60": unreadable_file}
+
+
 def run_case(hook, workdir, name, mutate, agent_type, skip_start, tmp=None, session="sess-abc"):
     root = make_repo(workdir, name)
+    PRE_START.get(name[:2], noop)(root)
     tmp = tmp or tempfile.mkdtemp(prefix="tmp-" + name + "-", dir=workdir)
     env = dict(os.environ)
     env["TMPDIR"] = tmp
@@ -817,7 +834,7 @@ def suite(hook, workdir, plugin=PLUGIN):
     copy, --compare swaps only the watcher."""
     rows = []
     for name, mutate, agent_type, expect in CASES:
-        if os.name == "nt" and name[:2] == "12":
+        if os.name == "nt" and name[:2] in ("12", "59", "60"):
             rows.append((name, "skipped (windows): mode bits", "skipped (windows): mode bits"))
             continue
         if name[:2] in ("11", "12", "13", "14", "30", "34"):

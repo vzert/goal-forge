@@ -71,7 +71,7 @@ class Case:
         subprocess.run([BASH, os.path.join(self.plugin, WATCH_REL), "start"], input=json.dumps(payload),
                        capture_output=True, text=True, env=self.env, cwd=self.repo)
 
-    def subagent(self, report, sid=SID, cwd=None, stop=False):
+    def subagent(self, report, sid=SID, cwd=None, stop=False, cut=False):
         """One finished goal-adversary round, recorded as the harness would on SubagentStop (with
         stop=True the rail's own `stop` runs first, as it does beside `record`)."""
         if stop:
@@ -87,8 +87,20 @@ class Case:
                  "input": {"message": report}}]}}) + "\n")
         payload = {"hook_event_name": "SubagentStop", "session_id": sid, "agent_type": "goalspec:goal-adversary",
                    "agent_id": "a%d" % self.n, "agent_transcript_path": tp, "cwd": cwd or self.repo}
+        env = self.env
+        if cut:
+            # The harness killing `record` mid-hash (a hook timeout): a `git` that kills the
+            # process that ran it, the moment the content hash starts listing the tree (0.68.3) or
+            # adding it (0.68.2 and older, so the case reproduces the bug there).
+            bindir = os.path.join(self.tmp, "cutbin")
+            os.makedirs(bindir, exist_ok=True)
+            with open(os.path.join(bindir, "git"), "w") as fh:
+                fh.write('#!/bin/bash\ncase " $* " in *" ls-files -z -m "*|*" add -A "*) kill -9 $PPID; exit 1 ;; esac\n'
+                         'exec %s "$@"\n' % shutil.which("git"))
+            os.chmod(os.path.join(bindir, "git"), 0o755)
+            env = dict(self.env, PATH=bindir + os.pathsep + self.env.get("PATH", ""))
         subprocess.run([BASH, os.path.join(self.plugin, HBV_REL), "record"], input=json.dumps(payload),
-                       capture_output=True, text=True, env=self.env, cwd=self.repo)
+                       capture_output=True, text=True, env=env, cwd=self.repo)
 
     def write(self, rel, text):
         p = os.path.join(self.repo, rel)
@@ -123,6 +135,8 @@ class Case:
         if r.returncode == 3 and "NOT RUN (goalspec external adversary):" in out and "[ADVERSARY-VERDICT:" not in out:
             return "block"
         if "re-ran the suite: green" in out:
+            if "was cut before it finished" in r.stderr:
+                return "run+cut"
             return "run+notice" if "so another writer made it" in r.stderr else "run"
         return "other(rc=%d)" % r.returncode
 
@@ -432,6 +446,53 @@ def c39(c):  # a change during the round with no transcript found: nothing can b
     return c.partner()
 
 
+def loose_objects(repo):
+    d = os.path.join(repo, ".git", "objects")
+    return sum(len(fs) for r, _, fs in os.walk(d) if os.path.basename(r) not in ("pack", "info"))
+
+
+def c41(c):  # 0.68.3: hashing the content stores nothing in the repository's .git
+    c.write("big/new.bin", "x" * 100000)
+    before = loose_objects(c.repo)
+    c.begin()
+    c.subagent(H, stop=True)
+    got = c.partner()
+    return "%s,objects+%d" % (got, loose_objects(c.repo) - before)
+
+
+def c42(c):  # 0.68.3: `record` cut after the hold (a hook timeout): run, and say why
+    c.subagent(H, cut=True)
+    return c.partner()
+
+
+def c43(c):  # the same cut after a break still blocks as a break
+    c.subagent(B, cut=True)
+    return c.partner()
+
+
+def c44(c):  # a cut hold, then a full round of a later agent: judged on the full one
+    c.subagent(H, cut=True)
+    c.subagent(H)
+    return c.partner()
+
+
+def c45(c):  # a commit inside an untracked nested repository after the hold is a change
+    sub = os.path.join(c.repo, "sub")
+    os.makedirs(sub)
+    git(sub, "init", "-q")
+    git(sub, "config", "user.email", "t@t")
+    git(sub, "config", "user.name", "t")
+    with open(os.path.join(sub, "f"), "w") as fh:
+        fh.write("1\n")
+    git(sub, "add", "-A")
+    git(sub, "commit", "-qm", "1")
+    c.subagent(H)
+    with open(os.path.join(sub, "f"), "w") as fh:
+        fh.write("2\n")
+    git(sub, "commit", "-qam", "2")
+    return c.partner()
+
+
 def c40(c):  # an edit BEFORE the round does not make a change during it this session's
     c.transcript(("Edit", {"file_path": os.path.join(c.repo, "memory", "sessions", "other.md"),
                            "old_string": "a", "new_string": "b"}), ago=3600)
@@ -482,6 +543,11 @@ CASES = [
     ("38-old-start-record-stays-moved", c38, "block"),
     ("39-during-round-no-transcript-blocks", c39, "block"),
     ("40-own-edit-before-round-runs", c40, "run+notice"),
+    ("41-hash-writes-no-objects", c41, "run,objects+0"),
+    ("42-cut-record-after-hold-runs", c42, "run+cut"),
+    ("43-cut-record-after-break-blocks", c43, "block"),
+    ("44-full-round-after-cut-one-runs", c44, "run"),
+    ("45-commit-in-nested-repo-blocks", c45, "block"),
 ]
 
 MUTATIONS = [
@@ -490,8 +556,15 @@ MUTATIONS = [
     ("streak of one switches", GATE_REL, "    if streak >= 2:", "    if streak >= 1:"),
     ("checkpoint counts as a change", GATE_REL, '"--ignore-unmatch", "--", ".goalspec"',
      '"--ignore-unmatch", "--", ".goalspec-none"'),
-    ("hash is HEAD's tree", GATE_REL, '        return _git(root, "write-tree", env=env)',
+    ("hash is HEAD's tree", GATE_REL, '        return _git(root, "write-tree", "--missing-ok", env=env)',
      '        return _git(root, "rev-parse", "HEAD^{tree}")'),
+    ("hash stores objects in the repo", GATE_REL, "GIT_OBJECT_DIRECTORY=store, ", ""),
+    ("verdict not written before hashing", GATE_REL, '"verdict": verdict, "pending": True}) + "\\n")',
+     '"verdict": verdict, "pending": True}) + "\\n") if False else None'),
+    ("cut hold blocks", GATE_REL, "    if last.get(\"pending\"):\n        # Fail-open", "    if False:\n        # Fail-open"),
+    ("full line does not supersede pending", GATE_REL, "                if not r.get(\"pending\"):\n                    # The full",
+     "                if False:\n                    # The full"),
+    ("nested repository not added", GATE_REL, '        nested = any(p.endswith(b"/")', '        nested = False and any(p.endswith(b"/")'),
     ("off switch ignored", GATE_REL, 'os.environ.get("GOAL_ADVERSARY_AFTER_SUBAGENT", "1") == "0"', "False"),
     ("malformed recorded as break", GATE_REL, '    if verdict not in ("hold", "break"):\n        return',
      '    if verdict not in ("hold", "break"):\n        verdict = "break"'),
@@ -529,7 +602,8 @@ MUTATIONS = [
 def suite(plugin):
     rows = []
     # Windows has no mode bits: a chmod 000 file is still readable there. Shown, never dropped.
-    nt_skip = {"19": "mode bits", "29": "mode bits"} if os.name == "nt" else {}
+    nt_skip = {"19": "mode bits", "29": "mode bits", "42": "a bash git on PATH",
+               "43": "a bash git on PATH", "44": "a bash git on PATH"} if os.name == "nt" else {}
     for name, fn, want in CASES:
         if name[:2] in nt_skip:
             rows.append((name, "skipped (windows): " + nt_skip[name[:2]], "skipped (windows): " + nt_skip[name[:2]]))

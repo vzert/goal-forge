@@ -122,7 +122,7 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/watch-adversary-writes.sh start",
-            "timeout": 15
+            "timeout": 30
           }
         ]
       }
@@ -134,12 +134,12 @@
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/watch-adversary-writes.sh stop",
-            "timeout": 15
+            "timeout": 30
           },
           {
             "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/remind-handback-verdict.sh record",
-            "timeout": 10
+            "timeout": 30
           }
         ]
       }

@@ -6,6 +6,39 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.68.3] - 2026-10-23
+
+### Fixed
+
+- **The external partner no longer refuses with "no goal-adversary subagent round has finished"
+  after a subagent hold on a large or very dirty tree.** The cause was not the background hand-back:
+  the hooks that record the round were cut by the harness for running past their timeout. In one
+  user's checkout with ~2000 untracked files (a 177 MB browser binary among them), the write rail
+  ran one `git hash-object` per path (19 s, past its 15 s timeout at SubagentStart and
+  SubagentStop) and `remind-handback-verdict.sh record` ran `git add -A` for the content hash (past
+  its 10 s timeout), so `subagent-rounds` was never written. Measured over that user's transcripts:
+  50 goalspec hooks cut in 11 sessions, 2026-10-14..23, 46 of them in that checkout. Three changes:
+  - `watch-adversary-writes.sh` and `external-adversary.sh` hash every changed path in one
+    `git hash-object --stdin-paths` (19-21 s -> 3 s on that checkout, the same fingerprint line for
+    line under bash 5 and /bin/bash 3.2). An unreadable file or a name with a newline falls back to
+    one process per path, as before.
+  - `subagent_gate.content_hash` no longer writes anything into the repository's `.git`. `git add -A`
+    stored a compressed copy of every new or changed file there: 3800 loose objects, 311 MiB, in that
+    checkout since 0.66.0. It now enters the changed paths with `update-index --info-only` and writes
+    only tree objects, into this session's run directory (removed at SessionEnd), reading the
+    repository's objects as alternates (about 2 s there, 0 objects added, the same tree as `add -A`
+    on 11 edge cases: symlinks, exec bit, eol attributes, a nested repository, deletions, unicode
+    names). A nested untracked repository still goes through `add -A`, into the run directory.
+  - `record` writes the verdict before it hashes, as a `pending` line that the full line supersedes.
+    A record cut after a hold now lets the partner run with a notice saying the record was cut and
+    the held content is unknown (the same fail-open as content git cannot hash); a cut break still
+    blocks as a break. A cut before the verdict is known still reads as no round (declared limit).
+  - The three rail hooks' timeouts go from 15/15/10 s to 30 s, as a margin on top of the fix.
+  Tests: `test/subagent-gate-branches.py` cases 41-45 (41 and 42 red against 0.68.2: 3 objects
+  added; the cut hold blocked with "no round has finished"), five new `--selftest` mutations;
+  `test/adversary-writes-branches.py` cases 59-60 (an unreadable file in the tree, without and with a
+  change beside it).
+
 ## [0.68.2] - 2026-10-22
 
 ### Fixed

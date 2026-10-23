@@ -21,8 +21,9 @@ Three steps, all fail-open:
     of this session made keeps the hold, with its paths in `moved_by_other` (moved_by_other below).
   gate (from external-adversary.sh, before the partner starts): read that file and decide.
 
-THE CONTENT HASH is `git write-tree` of a private copy of the index after `git add -A`, with the
-session's .goalspec/ left out. It does not depend on HEAD or on the real index, so committing the
+THE CONTENT HASH is `git write-tree` of a private copy of the index after every changed path is
+entered in it, with the session's .goalspec/ left out (content_hash below: since 0.68.3 nothing is
+written to the repository, and the tree objects live in this session's run directory). It does not depend on HEAD or on the real index, so committing the
 held tree does not undo the hold; refreshing the checkpoint does not either. Any other change does:
 a source file, a test, a doc, memory/ (where a tracked memory directory is, an unconfirmed
 conclusion lands, and SKILL.md calls that write terminal). Ignored files are invisible to it.
@@ -63,9 +64,45 @@ def repo_root(path):
     return _git(path, "rev-parse", "--show-toplevel") if path and os.path.isdir(path) else None
 
 
-def content_hash(root):
+def _store(snap):
+    """-> the object directory that keeps this session's tree objects (in its run directory, removed
+    with it at SessionEnd by cleanup-run-dir.sh), created; None when there is no run directory."""
+    if not snap:
+        return None
+    d = os.path.join(snap, "objects")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        return None
+    return d
+
+
+def _store_env(root, store):
+    """-> env that writes to `store` and reads the repository's own objects too, or None."""
+    objects = _git(root, "rev-parse", "--git-path", "objects")
+    if objects is None or not store:
+        return None
+    if not os.path.isabs(objects):
+        objects = os.path.join(root, objects)
+    return dict(os.environ, GIT_OBJECT_DIRECTORY=store, GIT_ALTERNATE_OBJECT_DIRECTORIES=objects)
+
+
+def content_hash(root, store=None):
     """-> the tree hash of the working content of `root` (tracked + untracked, not ignored, without
-    .goalspec/), or None when it cannot be computed."""
+    .goalspec/), or None when it cannot be computed.
+
+    NOTHING IS WRITTEN TO THE REPOSITORY (0.68.3). Until then this ran `git add -A`, which stores a
+    compressed copy of every new or changed file in the repository's own .git/objects: in one
+    user's checkout with ~2000 untracked files (a 177 MB browser binary among them) it left 3800
+    loose objects, 311 MiB, in three days, and took long enough that the harness cut the hooks that
+    call it (SubagentStart at 15 s, SubagentStop at 10 s), so no round was ever recorded and the
+    gate refused the partner with "no round has finished". Now the changed paths go into the
+    private index with `update-index --info-only` (hashed, not stored) and `write-tree --missing-ok`
+    writes only the tree objects, into `store` (this session's object directory, _store()), which
+    reads the repository's own through GIT_ALTERNATE_OBJECT_DIRECTORIES; changed_paths() needs those
+    trees later, so they outlive this call, never in the repository. With no store, a temporary one.
+    Measured on that checkout: 3.2 s, the same tree as `add -A`, nothing in its .git. A nested
+    repository (listed as `dir/`) goes through `add -A` instead, still into the store."""
     index = _git(root, "rev-parse", "--git-path", "index")
     if index is None:
         return None
@@ -74,20 +111,40 @@ def content_hash(root):
     tmpd = tempfile.mkdtemp(prefix="goalspec-gate-")
     try:
         tmp_index = os.path.join(tmpd, "index")
+        tmp_objects = store or os.path.join(tmpd, "objects")
+        os.makedirs(tmp_objects, exist_ok=True)
+        store_env = _store_env(root, tmp_objects)
+        if store_env is None:
+            return None
         if os.path.isfile(index):
-            # Keeps the stat cache (add -A rehashes only changed files) AND the index's own mtime:
+            # Keeps the stat cache (only changed files are rehashed) AND the index's own mtime:
             # git rehashes an entry as "racily clean" only by comparing it with that mtime, so a
             # plain copy (new mtime) missed a same-size edit made in the second of the last index
             # write (measured: case 03 flipped to run once in a selftest pass).
             shutil.copy2(index, tmp_index)
-        env = dict(os.environ, GIT_INDEX_FILE=tmp_index)
-        # No exclude pathspec: git exits 1 on it when .goalspec/ is ignored. Add everything, then
-        # drop .goalspec from the private index (a no-op when it is ignored).
-        if _git(root, "add", "-A", env=env) is None:
+        env = dict(store_env, GIT_INDEX_FILE=tmp_index)
+        listed = subprocess.run(["git", "-C", root, "ls-files", "-z", "-m", "-o", "-d", "--exclude-standard"],
+                                capture_output=True, env=env)
+        if listed.returncode != 0:
             return None
+        # A `dir/` entry is a nested repository: update-index skips it without an error, where
+        # add -A records it as one entry (its HEAD), so a commit inside it would go unseen.
+        nested = any(p.endswith(b"/") for p in listed.stdout.split(b"\0"))
+        staged = None if nested else subprocess.run(
+            ["git", "-C", root, "update-index", "-z", "--add", "--remove", "--info-only", "--stdin"],
+            input=listed.stdout, capture_output=True, env=env)
+        if staged is None or staged.returncode != 0:
+            if os.path.isfile(index):
+                shutil.copy2(index, tmp_index)
+            elif os.path.exists(tmp_index):
+                os.remove(tmp_index)
+            # No exclude pathspec: git exits 1 on it when .goalspec/ is ignored. Add everything,
+            # then drop .goalspec from the private index (a no-op when it is ignored).
+            if _git(root, "add", "-A", env=env) is None:
+                return None
         if _git(root, "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ".goalspec", env=env) is None:
             return None
-        return _git(root, "write-tree", env=env)
+        return _git(root, "write-tree", "--missing-ok", env=env)
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
 
@@ -120,7 +177,7 @@ def start(snap, agent_key, roots):
     # while the hashes are computed must not fall before it.
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     with open(os.path.join(snap, agent_key + ".gate-start"), "w", encoding="utf-8") as fh:
-        json.dump({"ts": ts, "trees": {r: content_hash(r) for r in roots if r}}, fh)
+        json.dump({"ts": ts, "trees": {r: content_hash(r, _store(snap)) for r in roots if r}}, fh)
 
 
 def record(session_id, agent_id, verdict, cwd):
@@ -131,8 +188,17 @@ def record(session_id, agent_id, verdict, cwd):
     snap = run_dir.ensure(session_id, HOOK)
     if not snap:
         return
+    # THE VERDICT FIRST, the hashes after (0.68.3). The harness kills a hook that passes its timeout,
+    # and until then a kill during the hashing left no line at all: the gate then said "no round has
+    # finished" after a hold (measured: 46 cut rail hooks in one user's checkout, 2026-10-14..23).
+    # This line says what the round returned; the full line below supersedes it, and a `pending`
+    # line with no full line after it is a record that was cut (gate() reads it).
+    with open(os.path.join(snap, ROUNDS), "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                             "agent": str(agent_id or ""), "verdict": verdict, "pending": True}) + "\n")
     roots = _roots_of(snap, agent_id, cwd)
-    trees = {r: content_hash(r) for r in roots}
+    store = _store(snap)
+    trees = {r: content_hash(r, store) for r in roots}
     began = {}
     sp = os.path.join(snap, _akey(agent_id) + ".gate-start")
     if os.path.isfile(sp):
@@ -153,7 +219,7 @@ def record(session_id, agent_id, verdict, cwd):
     moved = [r for r, h in sorted(trees.items()) if r in began and began[r] != h]
     by_other = []
     if verdict == "hold" and moved:
-        by_other = moved_by_other(session_id, began_ts, {r: (began[r], trees[r]) for r in moved})
+        by_other = moved_by_other(session_id, began_ts, {r: (began[r], trees[r]) for r in moved}, store)
         if not by_other:
             verdict = "hold-moved"
     rec = {"ts": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -164,7 +230,7 @@ def record(session_id, agent_id, verdict, cwd):
         fh.write(json.dumps(rec) + "\n")
 
 
-def moved_by_other(session_id, since, hashes):
+def moved_by_other(session_id, since, hashes, store=None):
     """-> the paths ("<root>/<path>") that changed during a round when no tool call of this session
     wrote any of them after `since` (the round's start), else []. Since 0.67.1: until then any
     change during the round made it hold-moved, and on 2026-10-21 that refused the partner in 7 of
@@ -173,7 +239,7 @@ def moved_by_other(session_id, since, hashes):
     list the paths, or the transcript is not found: the same direction gate() fails in."""
     if not since or any(b is None or a is None for b, a in hashes.values()):
         return []
-    paths = {r: changed_paths(r, b, a) for r, (b, a) in hashes.items()}
+    paths = {r: changed_paths(r, b, a, store) for r, (b, a) in hashes.items()}
     if not all(paths.values()):
         return []
     own = own_changes(session_id, since, paths)
@@ -203,8 +269,15 @@ def gate(session_id, cwd):
                     r = json.loads(line)
                 except ValueError:
                     continue
-                if isinstance(r, dict) and r.get("verdict") in ("hold", "break", "hold-moved"):
-                    rounds.append(r)
+                if not (isinstance(r, dict) and r.get("verdict") in ("hold", "break", "hold-moved")):
+                    continue
+                if not r.get("pending"):
+                    # The full line of a round supersedes that round's pending line.
+                    for i in range(len(rounds) - 1, -1, -1):
+                        if rounds[i].get("pending") and rounds[i].get("agent") == r.get("agent"):
+                            del rounds[i]
+                            break
+                rounds.append(r)
     if not rounds:
         return False, ("no goal-adversary subagent round has finished in this session yet. Run the "
                        "subagent first; the external partner reviews the tree it held.")
@@ -223,18 +296,24 @@ def gate(session_id, cwd):
     if last["verdict"] == "break":
         return False, ("the last goal-adversary subagent round (%s) broke. Fix what it found and run "
                        "the subagent again; the external partner reviews the tree it held." % last["ts"])
+    if last.get("pending"):
+        # Fail-open, like content git cannot hash: the hold is known, the content it covered is not.
+        return True, ("the subagent held at %s, but the hook that records which content it held was cut "
+                      "before it finished (a hook timeout, usually on a very large or very dirty tree), so "
+                      "this gate cannot tell whether that is the current content" % last["ts"])
     trees = last.get("trees") or {}
     if here not in trees:
         return False, ("the subagent's last hold (%s) measured %s, not this repository (%s). Run the "
                        "subagent on this tree." % (last["ts"], ", ".join(sorted(trees)) or "no tree", here))
     if any(h is None for h in trees.values()):
         return True, "the content of the held tree could not be hashed (git add failed)"
-    now = {r: content_hash(r) for r in sorted(trees)}
+    store = _store(snap)
+    now = {r: content_hash(r, store) for r in sorted(trees)}
     if any(h is None for h in now.values()):
         return True, "the current content could not be hashed (git add failed)"
     changed = [r for r, h in sorted(trees.items()) if now[r] != h]
     if changed:
-        paths = {r: changed_paths(r, trees[r], now[r]) for r in changed}
+        paths = {r: changed_paths(r, trees[r], now[r], store) for r in changed}
         own = own_changes(session_id, last["ts"], paths)
         if own is not None and not own and all(paths[r] for r in changed):
             shown = sorted(p for r in changed for p in paths[r])
@@ -257,9 +336,10 @@ def _few(items, n=5):
     return ", ".join(items[:n]) + (" and %d more" % (len(items) - n) if len(items) > n else "")
 
 
-def changed_paths(root, before, after):
-    """-> the paths that differ between two content hashes of `root`, or [] when git cannot say."""
-    out = _git(root, "diff-tree", "-r", "--name-only", "--no-renames", before, after)
+def changed_paths(root, before, after, store=None):
+    """-> the paths that differ between two content hashes of `root`, or [] when git cannot say.
+    The trees are in this session's store (content_hash), not in the repository."""
+    out = _git(root, "diff-tree", "-r", "--name-only", "--no-renames", before, after, env=_store_env(root, store))
     return [p for p in (out or "").splitlines() if p]
 
 

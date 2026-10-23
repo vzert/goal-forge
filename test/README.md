@@ -712,6 +712,14 @@ reports every path as unexplained), so `--selftest` also applies 6 mutations of 
 one per check, each required to turn its case. The suite drops `CLAUDE_CONFIG_DIR` from its own
 environment, so no case reads this machine's transcripts.
 
+**One git process for the fingerprint (0.68.3)**, cases **59-60**. The fingerprint hashes every
+changed path in one `git hash-object --stdin-paths` (one process per path took 19 s on a checkout
+with ~2000 untracked files, past the hook's timeout). An unreadable file stops that command, so a
+file this user cannot read sits in the tree for the whole round: with no change the rail stays
+silent (59), and an append beside it is still named (60). Both already held against 0.68.2; they
+guard the fallback. Measured once by hand on a mutant copy: making the fallback print `unreadable`
+for every path turns 60, and shifting the batch hashes by one turns 02. Windows: skipped (mode bits).
+
 ## `decompose-nudge-branches.py` — decomposition-nudge Stop-hook suite
 
 Same shape, for `hooks/nudge-decompose.sh` (0.28.0) — Fase 2 of
@@ -1084,6 +1092,16 @@ plugin); 36, 37 and 39 already blocked there, and 38 cannot run there, since 0.6
 The content hash is `git write-tree` of a copy of the index made with `shutil.copy2`: a plain copy
 gave the index a new mtime, git then trusted its stat cache for a same-size edit made in the second
 of the last index write, and case 03 came back `run` in 3 of 30 runs (0 of 30 with `copy2`).
+
+Since 0.68.3, 45 cases and 32 mutations. The hash no longer runs `git add -A`, which stored a copy
+of every changed file in the repository's `.git` (41: zero loose objects added); `record` writes
+the verdict as a `pending` line before it hashes, so a record the harness cut (a hook timeout)
+still says what the round returned: a cut hold runs with a notice (42), a cut break blocks (43), a
+later full round is judged on its own (44). Cases 42-44 cut it with a `git` on PATH that kills its
+parent when the hash starts (Windows: skipped, a bash script is not a `git` there). A commit inside
+a nested untracked repository after the hold still blocks (45: those go through `add -A`, into
+the run directory). 41 and 42 are red against 0.68.2 (3 objects added; the cut hold blocked with
+"no round has finished"); 43-45 already held there.
 
 
 ## `external-schema-branches.py` — structured answer and round cap of the external partner (0.68.0)
