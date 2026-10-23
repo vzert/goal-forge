@@ -6,6 +6,16 @@ All notable changes to the `goalspec` plugin. This project follows
 (`~/.claude/plugins/cache/goal-forge/goalspec/<version>/`), so changes pushed without a
 version bump are never delivered to already-installed users.
 
+## [0.68.5] - 2026-10-23
+
+### Fixed
+
+- **Case 64 of `test/external-adversary-branches.py` no longer fails at random on ubuntu CI
+  (rc 141).** The fake partner of every canned-output case was `cat <file>`, which never reads what
+  the hook pipes to it. If `cat` exited before the hook's `printf` finished, the hook got SIGPIPE,
+  and under `set -o pipefail` that is rc 141. Now the stub drains stdin first and then prints the
+  file. Test-only: no hook, skill or agent changed (p-664d48499e).
+
 ## [0.68.4] - 2026-10-23
 
 ### Fixed

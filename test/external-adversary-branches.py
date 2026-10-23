@@ -1042,7 +1042,13 @@ def suite(hook, workdir):
             fixture = os.path.join(workdir, "out-" + name + ".txt")
             with open(fixture, "w") as f:
                 f.write(transcript)
-            env["GOAL_ADVERSARY_CMD"] = "cat " + fixture
+            # The stub drains stdin first: a bare `cat fixture` never reads what the hook pipes
+            # in, so a fast `cat` could exit before the hook's printf finished and SIGPIPE it
+            # (rc 141 under pipefail, case 64 on ubuntu, p-664d48499e).
+            drain = os.path.join(workdir, "drain-" + name + ".sh")
+            with open(drain, "w") as f:
+                f.write('#!/bin/bash\ncat >/dev/null\ncat "%s"\n' % fixture)
+            env["GOAL_ADVERSARY_CMD"] = "bash " + drain
         env.update(env_extra)
         if env.get("GOAL_ADVERSARY_CMD", "").startswith("FAKEBIN/"):
             env["GOAL_ADVERSARY_CMD"] = fakebin + env["GOAL_ADVERSARY_CMD"][len("FAKEBIN"):]
