@@ -870,23 +870,23 @@ unlike the earlier rounds): 6 of 6 wrote the spec before the first Bash that ran
 most 2 denials. An interleaved control with the same tools (Write and Edit, no brake) then gave 2 of
 6 against 6 of 6 with the brake, none stuck. N=6 per arm.
 
-73 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
+76 brake cases: denied (Bash, Write, Edit, MultiEdit, NotebookEdit, bare skill name, typed command,
 a spec only in thinking, a checkpoint without a spec, a spec in another file, a lookalike path,
 another session's checkpoint, a checkpoint outside the start directory (also after a `cd` out of it, or into another git repo, 0.68.1), a bare heading in text or
 checkpoint, a checkpoint Write whose result is an error), and allowed (a spec with a body in text, in this session's checkpoint or in the plain
 checkpoint.md, a checkpoint Write whose result succeeded or has not arrived while another call failed, at the directory the session started in or the git top level above it -- also after a `cd` out of it, including into a nested repo inside the project (0.67.2, issue #2) -- or, only when the transcript records no start directory, at the working directory or its git top level, a checkpoint write, Read, a subagent
 call, interview-only, adversary-only, no goalspec, another event, malformed input, no transcript,
-`GOAL_SPEC_BRAKE=0`). Since 0.68.2 (issue #1), twenty-five plan-mode cases: a Write or Edit to a .md directly in
+`GOAL_SPEC_BRAKE=0`). Since 0.68.2 (issue #1), twenty-eight plan-mode cases: a Write or Edit to a .md directly in
 `$CLAUDE_CONFIG_DIR/plans` (or `~/.claude/plans`), or in the directory `plansDirectory` names (project
 settings.local.json, then settings.json, then the user's; relative to the project root), is not held, nor is
-any Write or Edit while the payload says `permission_mode: plan` (Bash still is); a spec in a .md written while the
+a Write or Edit of a .md while the payload says `permission_mode: plan` (Bash, MultiEdit and other files still are); a spec in a .md written while the
 transcript records plan mode counts wherever it is, and a spec with a body written there releases the brake;
 a subdirectory of `plans/`, a lookalike `plans/` elsewhere, a relative path, another extension, a bare heading or a
 failed Write is neither. The deny reason must name this session's checkpoint path, absolute under the directory the session started in (or `.goalspec/checkpoint.md` there when the
 payload has no usable session id) and quote back the agent's own last visible text. 8 cases for the show hook (shown and cut at the next section, Edit,
 silent for no spec, another file, a spec already in text, a subagent, another event, malformed
-input). New with no predecessor, so `--selftest` mutates the components (46 mutations; 0.51.0 added the one that
-lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause, 0.67.2 four for the start directory and the absolute path, 0.68.1 one that counts the payload cwd next to it, 0.68.2 fourteen for the plan-mode plan file) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
+input). New with no predecessor, so `--selftest` mutates the components (48 mutations; 0.51.0 added the one that
+lets a failed checkpoint Write count again, 0.59.0 the one that drops the mid-turn clause, 0.67.2 four for the start directory and the absolute path, 0.68.1 one that counts the payload cwd next to it, 0.68.2 sixteen for the plan-mode plan file) and requires a case to catch each. What no suite can show: that an agent then writes the spec.
 
 ```sh
 python3 test/spec-brake-branches.py
@@ -956,14 +956,14 @@ that ran (a spawn a hook denied does not count) and no spec with a body yet. Rep
 on one real interview transcript, it denies its 16th inline read, a WebFetch, with 15 on record;
 that interview made 33 inline reads before its spec.
 
-32 cases: denied (interview, loop, typed entry, reads over several turns, every read tool counted,
+34 cases: denied (interview, loop, typed entry, reads over several turns, every read tool counted,
 the adversary is not delegation, a spawn a hook denied is not either, a spawn before the entry is not either, a bare heading or another
 session's checkpoint does not end the window, a read another hook denied does not count but the
 next one does, `GOAL_GROUNDING_CHECK=1`, a lower or a garbage threshold), and allowed (14 reads,
 reads before the entry, a subagent or the explorer after it, a denied spawn relaunched, a spec in text or in this session's
-checkpoint, its own deny on record, a subagent call, no goalspec, adversary-only, another tool or
+checkpoint, a spec in a .md written in plan mode (0.68.2; the same write outside plan mode does not count), its own deny on record, a subagent call, no goalspec, adversary-only, another tool or
 event, malformed input, no transcript, `GOAL_GROUNDING_CHECK=0`, a higher threshold). New with no
-predecessor, so `--selftest` mutates the component (14 mutations; the equivalent "ignore the entry
+predecessor, so `--selftest` mutates the component (15 mutations; the equivalent "ignore the entry
 in the final test" mutant is left out and the reason written beside the list). What no suite can
 show: that the agent then delegates well, or that a pinned `model` in an agent definition is honored.
 

@@ -106,7 +106,8 @@ try:
                     entered = True
                 elif entered and it.get("kind") == "text" and ta.spec_has_body(it.get("text") or ""):
                     spec = True
-                elif entered and it.get("kind") == "goal_spec_file" and own.search(it.get("path") or "") \
+                elif entered and it.get("kind") == "goal_spec_file" \
+                        and (it.get("plan") or own.search(it.get("path") or "")) \
                         and ta.spec_has_body(it.get("text") or ""):
                     spec = True
             content = (ev.get("message") or {}).get("content")

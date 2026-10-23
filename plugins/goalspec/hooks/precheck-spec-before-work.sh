@@ -29,7 +29,8 @@
 # (Read-class tools, .goalspec/ writes, subagents); headless (sdk-*) sessions are never held.
 #
 # 0.68.2 (issue #1) -- native plan mode: while the payload says permission_mode "plan", a Write or
-# Edit is held by neither (the harness limits plan mode to the plan file); outside it, a write to a
+# Edit of a .md is held by neither (where plansDirectory puts the plan file is not always readable
+# here); outside it, a write to a
 # .md directly in $CLAUDE_CONFIG_DIR/plans (or ~/.claude/plans) or in the plansDirectory directory
 # (project settings.local.json, settings.json, user settings.json) is not held either. A spec in a
 # .md written while the transcript reads plan mode, or in those directories, counts; an
@@ -81,9 +82,11 @@ if tool != "Bash":
     if path.startswith(".goalspec/") or "/.goalspec/" in path:
         sys.exit(0)
     # 0.68.2 (issue #1): the plan-mode plan file is the only file plan mode lets the agent write.
-    # In plan mode (the payload says so) the harness itself limits writes to it, wherever the
-    # plansDirectory setting put it; outside plan mode the known locations still count.
-    if data.get("permission_mode") == "plan":
+    # In plan mode (the payload says so) a Write or Edit of a .md passes wherever the
+    # plansDirectory setting put the plan file; outside plan mode the known locations still count.
+    # Only Write/Edit of a .md: no evidence shows the harness confining every plan-mode write to the
+    # plan file (third external round on 0.68.2), so MultiEdit, NotebookEdit and other files stay held.
+    if data.get("permission_mode") == "plan" and tool in ("Write", "Edit") and path.endswith(".md"):
         sys.exit(0)
     if ta.is_plan_file(str(inp.get("file_path") or inp.get("notebook_path") or "")):
         sys.exit(0)

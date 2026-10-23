@@ -39,6 +39,9 @@ def transcript(events, name):
                 fh.write(json.dumps({"type": "user", "message": {"content": [
                     {"type": "text", "text": ev["typed"]}]}}) + "\n")
                 continue
+            if "mode" in ev:  # the harness records the permission mode (0.68.2)
+                fh.write(json.dumps({"type": "permission-mode", "permissionMode": ev["mode"]}) + "\n")
+                continue
             if "result" in ev:  # a tool_result for the previous tool_use
                 fh.write(json.dumps({"type": "user", "message": {"content": [
                     {"type": "tool_result", "tool_use_id": "t%d" % n, "is_error": True,
@@ -131,6 +134,11 @@ CASES = [
     ("13-spec-in-checkpoint-allowed",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-sess-1.md", SPEC)}, {"reads": 20}], "13"), "allow"),
     ("14-bare-heading-still-denied", lambda: pre([LOAD, {"text": BARE}, {"reads": 15}], "14"), "deny-15"),
+    # 0.68.2 (third external round): a spec written to the plan-mode plan file ends the window too.
+    ("15b-spec-in-plan-file-allowed",
+     lambda: pre([LOAD, {"mode": "plan"}, {"write": ("/elsewhere/plans/x.md", SPEC)}, {"reads": 20}], "15b"), "allow"),
+    ("15c-same-write-outside-plan-mode-denied",
+     lambda: pre([LOAD, {"write": ("/elsewhere/plans/x.md", SPEC)}, {"reads": 15}], "15c"), "deny-15"),
     ("15-foreign-checkpoint-still-denied",
      lambda: pre([LOAD, {"write": (".goalspec/checkpoint-other.md", SPEC)}, {"reads": 15}], "15"), "deny-15"),
     # Deny once: its own deny on record -> silent; a call another hook denied does not count.
@@ -180,6 +188,9 @@ def run_cases(plugin, quiet=False):
 
 
 MUTATIONS = [
+    ("plan-file spec does not end the window",
+     '                        and (it.get("plan") or own.search(it.get("path") or "")) \\\n',
+     '                        and own.search(it.get("path") or "") \\\n'),
     ("no-deny-once", "or spawned or bounced or count < limit", "or spawned or count < limit"),
     ("ignore-spawn", "or spawned or bounced or count < limit", "or bounced or count < limit"),
     ("ignore-spec", "if not entered or spec or spawned", "if not entered or spawned"),
@@ -196,7 +207,7 @@ MUTATIONS = [
     ("threshold-env-ignored", 'int(os.environ.get("MAXR") or "15")', "15"),
     ("bare-heading-releases", 'ta.spec_has_body(it.get("text") or ""):\n                    spec = True\n                elif',
      'ta.has_goal_spec(it.get("text") or ""):\n                    spec = True\n                elif'),
-    ("any-checkpoint-releases", 'and own.search(it.get("path") or "")', ""),
+    ("any-checkpoint-releases", 'and (it.get("plan") or own.search(it.get("path") or ""))', ""),
     ("only-bash-counts", 'if blk.get("name") in READS:', 'if blk.get("name") == "Bash":'),
 ]
 
